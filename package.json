@@ -10,8 +10,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@next/font": "^14.2.15",
     "axios": "^1.13.2",
-    "next": "16.0.6",
+    "next": "^16.0.7",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "socket.io": "^4.8.1",
