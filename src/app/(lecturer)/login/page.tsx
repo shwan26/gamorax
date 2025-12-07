@@ -7,12 +7,11 @@ import { useState } from "react";
 export default function LecturerLogin() {
   const [form, setForm] = useState({ email: "", password: "" });
 
-  function handleChange(e: { target: { name: any; value: any; }; }) {
+  function handleChange(e: any) {
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
   async function handleLogin() {
-    // Later: API call for lecturer login
     console.log("Login clicked", form);
   }
 
@@ -20,10 +19,12 @@ export default function LecturerLogin() {
     <div className="min-h-screen bg-[#f5f7fa]">
       <Navbar />
 
-      <div className="flex flex-col items-center mt-16">
-        <h2 className="text-2xl font-bold mb-8">Login as Lecturer</h2>
+      <div className="flex flex-col items-center mt-10 md:mt-16 px-4">
+        {/* Title */}
+        <h2 className="text-2xl md:text-3xl font-bold mb-6 md:mb-8 text-center">Login as Lecturer</h2>
 
-        <div className="w-[380px] space-y-4">
+        {/* Form Container */}
+        <div className="w-full max-w-sm space-y-4">
 
           {/* Email */}
           <div>
@@ -32,7 +33,8 @@ export default function LecturerLogin() {
               name="email"
               type="email"
               onChange={handleChange}
-              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+              className="w-full border rounded-md p-2 shadow-sm 
+                         focus:ring-2 focus:ring-blue-400 text-sm md:text-base"
             />
           </div>
 
@@ -43,20 +45,23 @@ export default function LecturerLogin() {
               name="password"
               type="password"
               onChange={handleChange}
-              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+              className="w-full border rounded-md p-2 shadow-sm 
+                         focus:ring-2 focus:ring-blue-400 text-sm md:text-base"
             />
           </div>
 
           {/* Login Button */}
           <button
             onClick={handleLogin}
-            className="w-full bg-[#3B8ED6] hover:bg-[#2F79B8] transition text-white py-2 rounded-md font-semibold shadow-md"
+            className="w-full bg-[#3B8ED6] hover:bg-[#2F79B8] transition 
+                       text-white py-2 rounded-md font-semibold shadow-md 
+                       active:scale-[0.98]"
           >
             Login
           </button>
 
           {/* Links */}
-          <div className="flex justify-between mt-2 text-sm text-gray-600">
+          <div className="flex justify-between mt-1 text-xs md:text-sm text-gray-600">
             <Link href="/lecturer/forgot-password" className="hover:underline">
               Forgot Password
             </Link>
