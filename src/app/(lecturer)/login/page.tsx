@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Navbar from "../../../components/Navbar";
 import { useState } from "react";
+import GradientButton from "@/src/components/GradientButton";
 
 export default function LecturerLogin() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -51,14 +52,9 @@ export default function LecturerLogin() {
           </div>
 
           {/* Login Button */}
-          <button
-            onClick={handleLogin}
-            className="w-full bg-[#3B8ED6] hover:bg-[#2F79B8] transition 
-                       text-white py-2 rounded-md font-semibold shadow-md 
-                       active:scale-[0.98]"
-          >
+          <GradientButton onClick={handleLogin} type="submit">
             Login
-          </button>
+          </GradientButton>
 
           {/* Links */}
           <div className="flex justify-between mt-1 text-xs md:text-sm text-gray-600">

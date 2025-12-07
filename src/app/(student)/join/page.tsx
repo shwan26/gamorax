@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Navbar from "../../../components/Navbar";
+import GradientButton from "@/src/components/GradientButton";
 
 export default function StudentJoin() {
   const [code, setCode] = useState("");
@@ -38,14 +39,9 @@ export default function StudentJoin() {
           </div>
 
           {/* Join Button */}
-          <button
-            onClick={handleJoin}
-            className="w-full bg-gradient-to-r from-[#0593D1] to-[#034B6B] 
-                       hover:opacity-90 transition text-white py-2 rounded-md 
-                       font-semibold shadow-md active:scale-[0.98]"
-          >
+          <GradientButton onClick={handleJoin} type="submit">
             Join
-          </button>
+          </GradientButton>
 
           {/* Link to Lecturer */}
           <div className="text-center text-xs md:text-sm text-gray-600">
