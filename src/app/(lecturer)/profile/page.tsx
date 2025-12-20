@@ -1,0 +1,90 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Navbar from "@/src/components/LecturerNavbar";
+import {
+  getCurrentLecturer,
+  fakeLogout,
+} from "@/src/lib/fakeAuth";
+import GradientButton from "@/src/components/GradientButton";
+
+export default function LecturerProfile() {
+  const router = useRouter();
+  const user = getCurrentLecturer();
+
+  const [firstName, setFirstName] = useState(user?.firstName || "");
+  const [lastName, setLastName] = useState(user?.lastName || "");
+
+  function handleSave() {
+    localStorage.setItem(
+      "gamorax_lecturer",
+      JSON.stringify({
+        ...user,
+        firstName,
+        lastName,
+      })
+    );
+    alert("Profile updated (mock)");
+  }
+
+  function handleLogout() {
+    fakeLogout();
+    router.push("/login");
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f5f7fa]">
+      <Navbar />
+
+      <div className="flex flex-col items-center mt-10 px-4">
+        <h2 className="text-2xl font-bold mb-6">Profile</h2>
+
+        {/* Avatar */}
+        <div className="w-24 h-24 rounded-full bg-blue-600 text-white flex items-center justify-center text-3xl font-bold mb-4">
+          {firstName?.charAt(0) || "L"}
+        </div>
+
+        <button className="text-blue-600 text-sm mb-6 hover:underline">
+          Change Avatar (mock)
+        </button>
+
+        {/* Profile Form */}
+        <div className="w-full max-w-sm space-y-4">
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              First Name
+            </label>
+            <input
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              Last Name
+            </label>
+            <input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          <GradientButton onClick={handleSave}>
+            Save Changes
+          </GradientButton>
+
+          <button
+            onClick={handleLogout}
+            className="w-full text-red-600 text-sm mt-2 hover:underline"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
