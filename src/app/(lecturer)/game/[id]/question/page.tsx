@@ -1,6 +1,6 @@
 "use client";
 
-import Navbar from "../../../../../components/Navbar";
+import Navbar from "@/src/components/LecturerNavbar";
 
 export default function QuestionEditor() {
   return (

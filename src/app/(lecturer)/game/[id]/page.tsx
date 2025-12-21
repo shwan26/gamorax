@@ -1,31 +1,57 @@
 "use client";
 
-import Navbar from "../../../../components/Navbar";
+import { useEffect, useState } from "react";
+import Navbar from "@/src/components/LecturerNavbar";
 import Link from "next/link";
+import { useParams } from "next/navigation";
+import { getGameById, Game } from "@/src/lib/gameStorage";
 
-export default function GameSlotPage({ params }: any) {
-  const { id } = params;
+export default function GameSlotPage() {
+  const { id } = useParams<{ id: string }>();
+  const [game, setGame] = useState<Game | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    const foundGame = getGameById(id);
+    setGame(foundGame);
+  }, [id]);
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
       <Navbar />
 
       <div className="px-6 mt-8">
-        <h2 className="text-2xl font-bold mb-6">CSX3001 (541) 2/2025</h2>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold">
+            {game
+              ? `${game.courseCode} (${game.section}) ${game.semester}`
+              : "Game"}
+          </h2>
 
-        <div className="flex justify-end mb-6">
-          <input className="border px-4 py-2 rounded-md w-60" placeholder="Search" />
+          <input
+            className="border px-4 py-2 rounded-md w-60"
+            placeholder="Search"
+          />
         </div>
 
+        {/* Create Question Card — ALWAYS visible */}
         <Link
           href={`/game/${id}/question`}
-          className="bg-gradient-to-b from-[#6AB6E9] to-[#CDE9FB]
-                       px-10 py-10 rounded-xl shadow-md hover:scale-105
-                       transition flex items-center gap-4"
+          className="w-64 h-36 bg-gradient-to-b from-[#6AB6E9] to-[#CDE9FB]
+                     rounded-xl shadow-md hover:scale-105 transition
+                     flex items-center justify-center gap-3"
         >
-          <span className="text-3xl">＋</span>
-          <span>Create Gamorax</span>
+          <span className="text-3xl font-bold">＋</span>
+          <span className="text-lg font-medium">Create Gamorax</span>
         </Link>
+
+        {/* Optional empty state */}
+        {!game && (
+          <p className="mt-4 text-sm text-gray-500">
+            Game details not found (mock data).
+          </p>
+        )}
       </div>
     </div>
   );

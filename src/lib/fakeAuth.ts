@@ -7,15 +7,23 @@ export type LecturerUser = {
 const STORAGE_KEY = "gamorax_lecturer";
 
 export function fakeLogin(email: string, password: string) {
-  // very simple mock validation
   if (!email || !password) {
     throw new Error("Email and password required");
   }
 
+  const existing = localStorage.getItem(STORAGE_KEY);
+
+  // If user already exists (from register), keep their data
+  if (existing) {
+    return JSON.parse(existing);
+  }
+
+  // Otherwise create minimal user
   const user: LecturerUser = { email };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
   return user;
 }
+
 
 export function fakeRegister(user: LecturerUser & { password: string }) {
   if (!user.email || !user.password) {
