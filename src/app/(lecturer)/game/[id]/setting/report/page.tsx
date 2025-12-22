@@ -1,49 +1,62 @@
 "use client";
 
-import Navbar from "../../../../../../components/Navbar";
-
 export default function ReportPage() {
+  // MOCK DATA (later from backend)
+  const session = {
+    maxTime: 600, // total allowed time (seconds)
+    startedAt: "10:00",
+    endedAt: "10:15",
+    results: [
+      { studentId: "6530187", name: "Shwan Myat Nay Chi", score: 20, timeUsed: 300 },
+      { studentId: "6530181", name: "Naw Tulip", score: 20, timeUsed: 340 },
+      { studentId: "6530143", name: "Min Thuka", score: 15, timeUsed: 420 },
+    ],
+  };
+  
+  const ranked = [...session.results]
+    .map((r) => {
+      const basePoints = r.score * 100;
+      const timeBonus = Math.max(0, session.maxTime - r.timeUsed);
+      return {
+        ...r,
+        points: basePoints + timeBonus,
+      };
+    })
+    .sort((a, b) => b.points - a.points);
+
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
+    <>
+      <h3 className="font-semibold mb-4">Report</h3>
 
-      <div className="flex px-6 mt-4">
-        <div className="w-40 flex flex-col gap-6 text-lg">
-          <a>Add File</a>
-          <a>Timer</a>
-          <a className="font-bold text-blue-700">Report</a>
-        </div>
+      <p className="text-sm text-gray-600 mb-4">
+        Live session: {session.startedAt} – {session.endedAt}
+      </p>
 
-        <div className="flex-1 px-10">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="font-bold text-blue-700">
-                <th>Student ID</th>
-                <th>Name</th>
-                <th>Score</th>
-              </tr>
-            </thead>
+      <table className="w-full border">
+        <thead className="bg-blue-50">
+          <tr>
+            <th className="p-2">Rank</th>
+            <th className="p-2">Student ID</th>
+            <th className="p-2">Name</th>
+            <th className="p-2">Score</th>
+            <th className="p-2">Points</th>
+          </tr>
+        </thead>
 
-            <tbody>
-              <tr>
-                <td>6530187</td>
-                <td>Shwan Myat Nay Chi</td>
-                <td>20/20</td>
-              </tr>
-              <tr>
-                <td>6530181</td>
-                <td>Naw Tulip</td>
-                <td>20/20</td>
-              </tr>
-              <tr>
-                <td>6530143</td>
-                <td>Min Thuka</td>
-                <td>15/20</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+        <tbody>
+          {ranked.map((r, i) => (
+            <tr key={r.studentId} className="border-t">
+              <td className="p-2 font-semibold">{i + 1}</td>
+              <td className="p-2">{r.studentId}</td>
+              <td className="p-2">{r.name}</td>
+              <td className="p-2">{r.score}</td>
+              <td className="p-2 font-bold text-blue-700">
+                {r.points}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
   );
 }
