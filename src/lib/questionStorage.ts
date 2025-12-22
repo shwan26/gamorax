@@ -1,12 +1,17 @@
+export type Answer = {
+  text: string;
+  correct: boolean;
+  image?: string;
+};
+
 export type Question = {
   id: string;
   text: string;
   image?: string;
-  answers: { text: string; correct: boolean }[];
+  answers: Answer[];
   timeMode: "default" | "specific";
   time: number;
 };
-
 
 const STORAGE_KEY = "gamorax_questions";
 
