@@ -1,26 +1,17 @@
 "use client";
 
-import Navbar from "@/src/components/LecturerNavbar";
-import GameSubNavbar from "@/src/components/GameSubNavbar";
-
 export default function AddFileSetting() {
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
+    <>
+      <h3 className="font-semibold mb-4">Add File</h3>
 
-      <div className="flex px-6 mt-4">
-        {/* LEFT MENU */}
-        <div className="w-40 flex flex-col gap-6 text-lg">
-          <a className="font-bold text-blue-700">Add File</a>
-          <a>Timer</a>
-          <a>Report</a>
-        </div>
+      <button className="border px-4 py-2 rounded-md">
+        + Upload File
+      </button>
 
-        {/* Content */}
-        <div className="flex-1 px-10">
-          <button className="border px-4 py-2 rounded-md">+ Upload File</button>
-        </div>
-      </div>
-    </div>
+      <p className="text-sm text-gray-500 mt-3">
+        Files will be stored in cloud storage (AWS S3).
+      </p>
+    </>
   );
 }

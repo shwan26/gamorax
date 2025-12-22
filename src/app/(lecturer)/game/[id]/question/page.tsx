@@ -20,6 +20,37 @@ export default function QuestionEditor() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  function handleDrop(targetIndex: number) {
+    if (dragIndex === null || dragIndex === targetIndex) return;
+
+    setQuestions((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(dragIndex, 1);
+      updated.splice(targetIndex, 0, moved);
+      return updated;
+    });
+
+    setActiveIndex(targetIndex);
+    setDragIndex(null);
+  }
+
+  function duplicateQuestion(index: number) {
+    setQuestions((prev) => {
+      const copy = [...prev];
+      const duplicated = {
+        ...copy[index],
+        id: crypto.randomUUID(),
+      };
+
+      copy.splice(index + 1, 0, duplicated);
+      return copy;
+    });
+
+    setActiveIndex(index + 1);
+  }
 
   /* ---------- LOAD ---------- */
   useEffect(() => {
@@ -58,6 +89,30 @@ export default function QuestionEditor() {
     });
   }
 
+  function confirmDelete() {
+    if (deleteIndex === null) return;
+
+    if (questions.length === 1) {
+      alert("At least one question is required.");
+      setDeleteIndex(null);
+      return;
+    }
+
+    setQuestions((prev) => {
+      const updated = prev.filter((_, i) => i !== deleteIndex);
+
+      // Fix active index
+      if (activeIndex >= updated.length) {
+        setActiveIndex(updated.length - 1);
+      } else if (activeIndex > deleteIndex) {
+        setActiveIndex(activeIndex - 1);
+      }
+
+      return updated;
+    });
+
+    setDeleteIndex(null);
+  }
 
   function updateQuestion(data: Partial<Question>) {
     setQuestions((prev) => {
@@ -92,16 +147,47 @@ export default function QuestionEditor() {
           <div className="flex flex-col gap-4">
 
           {questions.map((_, i) => (
-            <button
+            <div
               key={i}
+              draggable
+              onDragStart={() => setDragIndex(i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop(i)}
+              className={`relative rounded-md py-6 font-bold cursor-pointer text-center
+                ${
+                  i === activeIndex ? "bg-[#6AB6E9]" : "bg-[#A5D4F3]"
+                }`}
               onClick={() => setActiveIndex(i)}
-              className={`rounded-md py-6 font-bold ${
-                i === activeIndex ? "bg-[#6AB6E9]" : "bg-[#A5D4F3]"
-              }`}
             >
               {i + 1}
-            </button>
+
+              {/* DELETE */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteIndex(i);
+                }}
+                className="absolute top-1 right-1 text-xs bg-red-500 text-white
+                          rounded-full w-5 h-5 flex items-center justify-center"
+              >
+                ✕
+              </button>
+
+              {/* DUPLICATE */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  duplicateQuestion(i);
+                }}
+                className="absolute bottom-1 right-1 text-xs bg-blue-500 text-white
+                          rounded-full w-5 h-5 flex items-center justify-center"
+                title="Duplicate"
+              >
+                ⧉
+              </button>
+            </div>
           ))}
+
           <button
             onClick={addQuestion}
             className="bg-[#A5D4F3] rounded-md py-6 text-xl"
@@ -110,6 +196,8 @@ export default function QuestionEditor() {
           </button>
           </div>
         </div>
+
+        <div className="w-px bg-gray-300 mx-2" />
 
         {/* EDITOR */}
         <div className="flex-1 px-6 overflow-y-auto">
@@ -212,6 +300,33 @@ export default function QuestionEditor() {
 
         </div>
       </div>
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteIndex !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-md p-6 w-80 text-center shadow-lg">
+            <h3 className="font-semibold mb-2">Delete Question?</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              This action cannot be undone.
+            </p>
+
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setDeleteIndex(null)}
+                className="px-4 py-2 border rounded-md"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-500 text-white rounded-md"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
