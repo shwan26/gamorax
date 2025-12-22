@@ -6,13 +6,13 @@ import Navbar from "@/src/components/LecturerNavbar";
 import { saveGame } from "@/src/lib/gameStorage";
 
 export default function CreateGamePage() {
-
   const router = useRouter();
   const [form, setForm] = useState({
     courseCode: "",
     courseName: "",
     section: "",
     semester: "",
+    quizNumber: "",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -24,7 +24,8 @@ export default function CreateGamePage() {
       !form.courseCode ||
       !form.courseName ||
       !form.section ||
-      !form.semester
+      !form.semester ||
+      !form.quizNumber
     ) {
       alert("Please fill in all fields.");
       return;
@@ -32,12 +33,19 @@ export default function CreateGamePage() {
 
     saveGame({
       id: crypto.randomUUID(),
-      ...form,
+      courseCode: form.courseCode,
+      courseName: form.courseName,
+      section: form.section,
+      semester: form.semester,
+      quizNumber: form.quizNumber,
+      timer: {
+        mode: "automatic",
+        defaultTime: 60,
+      },
     });
-    
+
     router.push("/dashboard");
   }
-    
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
@@ -47,6 +55,20 @@ export default function CreateGamePage() {
         <h2 className="text-2xl font-bold mb-8">Create new game</h2>
 
         <div className="w-full max-w-lg space-y-5">
+          {/* Quiz Number */}
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              Quiz Number / Title
+            </label>
+            <input
+              name="quizNumber"
+              onChange={handleChange}
+              placeholder="Eg. Gam 1"
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          {/* Course Info */}
           {[
             { label: "Course Code", name: "courseCode", placeholder: "CSX3001" },
             {
@@ -71,7 +93,8 @@ export default function CreateGamePage() {
           <button
             onClick={handleCreate}
             className="w-full bg-[#3B8ED6] hover:bg-[#2F79B8] text-white py-2 rounded-md font-semibold shadow-md"
-          >  Create
+          >
+            Create
           </button>
         </div>
       </div>

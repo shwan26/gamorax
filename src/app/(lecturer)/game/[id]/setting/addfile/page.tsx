@@ -1,6 +1,7 @@
 "use client";
 
-import Navbar from "../../../../../../components/Navbar";
+import Navbar from "@/src/components/LecturerNavbar";
+import GameSubNavbar from "@/src/components/GameSubNavbar";
 
 export default function AddFileSetting() {
   return (

@@ -4,7 +4,15 @@ export type Game = {
   courseName: string;
   section: string;
   semester: string;
+  quizNumber: string;
+  timer: GameTimer;
 };
+
+export type GameTimer = {
+  mode: "automatic" | "manual";
+  defaultTime: number;
+};
+
 
 const STORAGE_KEY = "gamorax_games";
 
@@ -23,4 +31,15 @@ export function saveGame(game: Game) {
 export function getGameById(id: string): Game | null {
   const games = getGames();
   return games.find((game) => game.id === id) || null;
+}
+
+export function updateGameTimer(
+  gameId: string,
+  timer: GameTimer
+) {
+  const games = getGames().map((g) =>
+    g.id === gameId ? { ...g, timer } : g
+  );
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
 }

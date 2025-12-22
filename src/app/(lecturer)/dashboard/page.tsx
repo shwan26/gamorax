@@ -45,13 +45,16 @@ export default function LecturerDashboard() {
           {games.map((game) => (
             <Link
               key={game.id}
-              href={`/game/${game.id}`}
+              href={`/game/${game.id}/question`}
               className="w-64 h-36 bg-gradient-to-b from-[#6AB6E9] to-[#CDE9FB]
                          rounded-xl shadow-md hover:scale-105 transition
                          flex flex-col items-center justify-center text-center"
             >
-              <p className="font-semibold">{game.courseCode} ({game.section})</p>
-              <p className="text-sm">{game.semester}</p>
+              <p className="font-semibold">{game.quizNumber}</p>
+              <p className="text-sm">
+                {game.courseCode} ({game.section}) {game.semester}
+              </p>
+
             </Link>
           ))}
         </div>

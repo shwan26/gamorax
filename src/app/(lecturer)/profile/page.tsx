@@ -45,10 +45,6 @@ export default function LecturerProfile() {
           {firstName?.charAt(0) || "L"}
         </div>
 
-        {/* <button className="text-blue-600 text-sm mb-6 hover:underline">
-          Change Avatar (mock)
-        </button> */}
-
         {/* Profile Form */}
         <div className="w-full max-w-sm space-y-4">
           <div>
