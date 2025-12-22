@@ -4,6 +4,9 @@ import Link from "next/link";
 import Navbar from "../../../components/Navbar";
 import { useState } from "react";
 import GradientButton from "@/src/components/GradientButton";
+import { fakeLogin } from "@/src/lib/fakeAuth";
+import { useRouter } from "next/navigation";
+
 
 export default function LecturerLogin() {
   const [form, setForm] = useState({ email: "", password: "" });
@@ -12,9 +15,17 @@ export default function LecturerLogin() {
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
+  const router = useRouter();
+
   async function handleLogin() {
-    console.log("Login clicked", form);
+    try {
+      fakeLogin(form.email, form.password);
+      router.push("/dashboard");
+    } catch (err: any) {
+      alert(err.message);
+    }
   }
+
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
@@ -58,10 +69,10 @@ export default function LecturerLogin() {
 
           {/* Links */}
           <div className="flex justify-between mt-1 text-xs md:text-sm text-gray-600">
-            <Link href="/lecturer/forgot-password" className="hover:underline">
+            <Link href="/forgot-password" className="hover:underline">
               Forgot Password
             </Link>
-            <Link href="/lecturer/register" className="hover:underline">
+            <Link href="/register" className="hover:underline">
               Create Account
             </Link>
           </div>
