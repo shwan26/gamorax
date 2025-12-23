@@ -16,9 +16,11 @@ export type Question = {
 const STORAGE_KEY = "gamorax_questions";
 
 export function getQuestions(gameId: string): Question[] {
+  if (typeof window === "undefined") return []; // ✅ prevents SSR crash
   const data = localStorage.getItem(`${STORAGE_KEY}_${gameId}`);
   return data ? JSON.parse(data) : [];
 }
+
 
 export function saveQuestions(gameId: string, questions: Question[]) {
   localStorage.setItem(

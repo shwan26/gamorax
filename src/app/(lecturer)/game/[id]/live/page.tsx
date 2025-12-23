@@ -61,7 +61,14 @@ export default function LivePage() {
   if (!id || !game || !session) return null;
 
   const pin = session.pin;
-  const joinUrl = `http://localhost:3000/join/${pin}`;
+
+  // Use NEXT_PUBLIC_BASE_URL (set on Vercel) or fallback to window.location.origin
+  const baseUrl =
+    (process.env.NEXT_PUBLIC_BASE_URL as string | undefined) ??
+    (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+  const normalizedBase = baseUrl.replace(/\/+$/, "");
+  const joinUrl = `${normalizedBase}/join/${pin}`;
+
   const hasStudents = students.length > 0;
 
   function handleStart() {
