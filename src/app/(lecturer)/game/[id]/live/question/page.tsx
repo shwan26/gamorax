@@ -193,6 +193,27 @@ export default function TeacherLiveFlowPage() {
     setStatus("answer");
   }
 
+  const [ranked, setRanked] = useState<any[]>([]);
+
+  useEffect(() => {
+    const onLb = (p: any) => {
+      if (Array.isArray(p?.leaderboard)) setRanked(p.leaderboard);
+    };
+
+    const onFinal = (p: any) => {
+      if (Array.isArray(p?.leaderboard)) setRanked(p.leaderboard);
+      setStatus("final");
+    };
+
+    socket.on("leaderboard:update", onLb);
+    socket.on("final_results", onFinal);
+
+    return () => {
+      socket.off("leaderboard:update", onLb);
+      socket.off("final_results", onFinal);
+    };
+  }, []);
+
 
   function next() {
     if (!pin) return;
@@ -320,7 +341,7 @@ export default function TeacherLiveFlowPage() {
           </>
         )}
 
-        {status === "final" && <FinalBoard ranked={[]} total={questions.length} />}
+        {status === "final" && <FinalBoard ranked={ranked} total={questions.length} />}
       </div>
     </div>
   );
