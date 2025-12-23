@@ -34,16 +34,16 @@ export default function AddFileSetting() {
       <label className="block border-2 border-dashed rounded-md p-6 text-center cursor-pointer hover:bg-blue-50 transition">
         <input
           type="file"
-          accept=".xlsx,.csv"
+          accept=".xlsx"
           hidden
           onChange={handleFileUpload}
         />
 
         <p className="font-medium text-blue-700">
-          + Upload Excel / CSV File
+          + Upload Excel File
         </p>
         <p className="text-xs text-gray-500 mt-1">
-          Supported formats: .xlsx, .csv
+          Supported formats: .xlsx
         </p>
       </label>
 

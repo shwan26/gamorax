@@ -5,7 +5,9 @@ import { getGameById, updateGame, deleteGame } from "@/src/lib/gameStorage";
 import { useState } from "react";
 
 export default function GeneralSettingPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+  const id = (params?.id ?? "").toString();
+
   const router = useRouter();
   const game = getGameById(id);
 

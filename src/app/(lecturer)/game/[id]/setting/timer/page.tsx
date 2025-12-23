@@ -12,7 +12,9 @@ import {
 } from "@/src/lib/questionStorage";
 
 export default function TimerSettingPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+const id = (params?.id ?? "").toString();
+
   const game = getGameById(id);
 
   if (!game) return null;

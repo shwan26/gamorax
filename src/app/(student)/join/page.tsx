@@ -10,7 +10,7 @@ export default function StudentJoin() {
 
   const handleJoin = () => {
     if (!code) return;
-    window.location.href = `/student/name?pin=${code}`;
+    window.location.href = `/join/${code}`;
   };
 
   return (

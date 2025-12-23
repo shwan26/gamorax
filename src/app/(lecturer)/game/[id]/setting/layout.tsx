@@ -12,8 +12,10 @@ export default function SettingLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { id } = useParams<{ id: string }>();
-  const pathname = usePathname();
+  const params = useParams<{ id?: string }>();
+  const id = (params?.id ?? "").toString();
+
+  const pathname = usePathname() ?? "";
 
   const [game, setGame] = useState<Game | null>(null);
 
