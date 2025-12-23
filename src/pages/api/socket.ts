@@ -12,32 +12,24 @@ type LiveStudent = {
 };
 
 type QuestionPayloadIn = {
-  // from lecturer
   questionIndex: number; // 0-based
   number: number; // 1-based
   total: number;
   text: string;
   answers: string[];
-
-  // optional (OK if missing)
-  correctIndex?: number; // 0-3
-
-  // ✅ TIMER (lecturer sends)
-  startAt?: number; // ms timestamp
-  durationSec?: number; // seconds
+  correctIndex?: number; // 0-3 (optional but recommended)
+  startAt?: number;
+  durationSec?: number;
 };
 
 type QuestionPayloadOut = {
-  // to students (NO correctIndex)
   questionIndex: number;
   number: number;
   total: number;
   text: string;
   answers: string[];
-
-  // ✅ TIMER (students receive)
-  startAt: number; // ms timestamp
-  durationSec: number; // seconds
+  startAt?: number;
+  durationSec?: number;
 };
 
 type QuizFinishedPayload = {
@@ -51,18 +43,21 @@ type QuizFinishedPayload = {
   }>;
 };
 
+type AnswerRecord = { answerIndex: number; timeUsed: number };
+
+type Score = { correct: number; totalTime: number };
+
 type Room = {
   students: Map<string, LiveStudent>;
-  current?: QuestionPayloadOut; // broadcasted question (no correctIndex)
-  // answers[questionIndex][studentId] = answerIndex
-  answers: Map<number, Map<string, number>>;
-  // correctByQuestion[questionIndex] = correctIndex
+  current?: QuestionPayloadOut;
+  answers: Map<number, Map<string, AnswerRecord>>; // answers[qIndex][studentId]
   correctByQuestion: Map<number, number>;
+  scoredQuestions: Set<number>; // prevents double scoring
+  scores: Map<string, Score>;
 };
 
 type ResWithSocket = NextApiResponse & { socket: any & { server: any } };
 
-// ---- in-memory rooms (module scope) ----
 const rooms = new Map<string, Room>();
 
 function getRoom(pin: string): Room {
@@ -72,6 +67,8 @@ function getRoom(pin: string): Room {
       current: undefined,
       answers: new Map(),
       correctByQuestion: new Map(),
+      scoredQuestions: new Set(),
+      scores: new Map(),
     });
   }
   return rooms.get(pin)!;
@@ -82,30 +79,37 @@ function safeInt(n: any, fallback: number) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-function safeStartAt(n: any) {
-  const x = Number(n);
-  return Number.isFinite(x) && x > 0 ? x : Date.now();
-}
-
-function safeDurationSec(n: any) {
-  const x = Number(n);
-  if (!Number.isFinite(x) || x <= 0) return 20;
-  // clamp to avoid insane values
-  return Math.min(60 * 60, Math.max(1, Math.round(x)));
-}
-
-function countsForRoom(
-  room: Room,
-  questionIndex: number
-): { counts: number[]; totalAnswers: number } {
+function countsForRoom(room: Room, questionIndex: number) {
   const map = room.answers.get(questionIndex);
   const counts = [0, 0, 0, 0];
   if (!map) return { counts, totalAnswers: 0 };
 
-  for (const ans of map.values()) {
+  for (const rec of map.values()) {
+    const ans = rec.answerIndex;
     if (ans >= 0 && ans <= 3) counts[ans] += 1;
   }
   return { counts, totalAnswers: map.size };
+}
+
+function makeLeaderboard(room: Room) {
+  const list = Array.from(room.students.values()).map((st) => {
+    const sc = room.scores.get(st.studentId) ?? { correct: 0, totalTime: 0 };
+    return {
+      studentId: st.studentId,
+      name: st.name,
+      avatarSrc: st.avatarSrc,
+      correct: sc.correct,
+      totalTime: sc.totalTime,
+    };
+  });
+
+  list.sort((a, b) => {
+    if (b.correct !== a.correct) return b.correct - a.correct;
+    if (a.totalTime !== b.totalTime) return a.totalTime - b.totalTime; // faster wins tie
+    return String(a.studentId).localeCompare(String(b.studentId));
+  });
+
+  return list.map((s, idx) => ({ ...s, rank: idx + 1 }));
 }
 
 export default function handler(_req: NextApiRequest, res: ResWithSocket) {
@@ -121,31 +125,37 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
       // JOIN
       socket.on("join", ({ pin, student }: { pin: string; student?: LiveStudent }) => {
         if (!pin) return;
-
         socket.join(pin);
+
         const room = getRoom(pin);
 
-        // add/update student (if provided)
         if (student?.studentId) {
           room.students.set(student.studentId, student);
+
+          // ensure score exists
+          if (!room.scores.has(student.studentId)) {
+            room.scores.set(student.studentId, { correct: 0, totalTime: 0 });
+          }
+
           io.to(pin).emit("students:update", Array.from(room.students.values()));
         }
 
-        // ✅ sync current question for late joiners (includes timer)
+        // late join sync
         if (room.current) {
           socket.emit("question:show", room.current);
 
-          // ✅ also sync current counts
           const { counts, totalAnswers } = countsForRoom(room, room.current.questionIndex);
           socket.emit("answer:count", {
             questionIndex: room.current.questionIndex,
             counts,
             totalAnswers,
           });
+
+          socket.emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
         }
       });
 
-      // LECTURER SHOW QUESTION
+      // QUESTION SHOW (lecturer)
       socket.on("question:show", ({ pin, question }: { pin: string; question: QuestionPayloadIn }) => {
         if (!pin || !question) return;
 
@@ -153,42 +163,36 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
 
         const qIndex = safeInt(question.questionIndex, 0);
 
-        // ✅ timer values (synced)
-        const startAt = safeStartAt(question.startAt);
-        const durationSec = safeDurationSec(question.durationSec);
-
         const out: QuestionPayloadOut = {
           questionIndex: qIndex,
           number: safeInt(question.number, qIndex + 1),
           total: safeInt(question.total, 1),
           text: String(question.text ?? ""),
           answers: Array.isArray(question.answers) ? question.answers : [],
-          startAt,
-          durationSec,
+          startAt: Number.isFinite(question.startAt) ? question.startAt : undefined,
+          durationSec: Number.isFinite(question.durationSec) ? question.durationSec : undefined,
         };
 
         room.current = out;
 
-        // store correctIndex if lecturer provided it (optional)
-        if (
-          Number.isFinite(question.correctIndex) &&
-          question.correctIndex! >= 0 &&
-          question.correctIndex! <= 3
-        ) {
+        // store correct index if provided
+        if (Number.isFinite(question.correctIndex) && question.correctIndex! >= 0 && question.correctIndex! <= 3) {
           room.correctByQuestion.set(qIndex, question.correctIndex!);
         }
 
-        // ✅ only reset answers if first time this questionIndex appears
-        if (!room.answers.has(qIndex)) {
-          room.answers.set(qIndex, new Map());
-        }
+        // IMPORTANT: reset answers for THIS question
+        room.answers.set(qIndex, new Map());
 
-        // broadcast to students (NO correctIndex, BUT with timer)
+        // allow scoring this question again (fresh)
+        room.scoredQuestions.delete(qIndex);
+
         io.to(pin).emit("question:show", out);
 
-        // send current counts (either reset or existing)
-        const { counts, totalAnswers } = countsForRoom(room, qIndex);
-        io.to(pin).emit("answer:count", { questionIndex: qIndex, counts, totalAnswers });
+        io.to(pin).emit("answer:count", {
+          questionIndex: qIndex,
+          counts: [0, 0, 0, 0],
+          totalAnswers: 0,
+        });
       });
 
       // STUDENT ANSWER
@@ -197,6 +201,7 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
         const studentId = String(p?.studentId ?? "");
         const questionIndex = safeInt(p?.questionIndex, -1);
         const answerIndex = safeInt(p?.answerIndex, -1);
+        const timeUsed = safeInt(p?.timeUsed, 0);
 
         if (!pin || !studentId) return;
         if (questionIndex < 0) return;
@@ -207,18 +212,16 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
 
         const map = room.answers.get(questionIndex)!;
 
-        // dedupe: 1 answer per student per question
+        // dedupe
         if (map.has(studentId)) return;
 
-        map.set(studentId, answerIndex);
+        map.set(studentId, { answerIndex, timeUsed });
 
         const { counts, totalAnswers } = countsForRoom(room, questionIndex);
-
-        // lecturer UI listens to this
         io.to(pin).emit("answer:count", { questionIndex, counts, totalAnswers });
       });
 
-      // LECTURER REVEAL
+      // REVEAL (lecturer) -> score + broadcast leaderboard
       socket.on(
         "reveal",
         ({ pin, questionIndex, correctIndex }: { pin: string; questionIndex: number; correctIndex?: number }) => {
@@ -227,26 +230,56 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
           const room = getRoom(pin);
           const qIndex = safeInt(questionIndex, room.current?.questionIndex ?? 0);
 
-          // store correctIndex if provided
+          // store correct index if provided
           if (Number.isFinite(correctIndex) && correctIndex! >= 0 && correctIndex! <= 3) {
             room.correctByQuestion.set(qIndex, correctIndex!);
           }
 
-          const stored = room.correctByQuestion.get(qIndex);
-          if (typeof stored !== "number") return;
+          const correct = room.correctByQuestion.get(qIndex);
+          if (typeof correct !== "number") return;
 
-          io.to(pin).emit("answer:reveal", { questionIndex: qIndex, correctIndex: stored });
+          // send to students so they can score UI
+          io.to(pin).emit("answer:reveal", { questionIndex: qIndex, correctIndex: correct });
+
+          // prevent double scoring
+          if (room.scoredQuestions.has(qIndex)) return;
+          room.scoredQuestions.add(qIndex);
+
+          // score everyone who answered
+          const ansMap = room.answers.get(qIndex) ?? new Map();
+          for (const [sid, rec] of ansMap.entries()) {
+            const prev = room.scores.get(sid) ?? { correct: 0, totalTime: 0 };
+            const isCorrect = rec.answerIndex === correct;
+
+            room.scores.set(sid, {
+              correct: prev.correct + (isCorrect ? 1 : 0),
+              totalTime: prev.totalTime + rec.timeUsed,
+            });
+          }
+
+          // broadcast updated leaderboard
+          io.to(pin).emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
         }
       );
 
-      // FINISH QUIZ (download)
+      // FINISH QUIZ -> final leaderboard + download payload
       socket.on("finish", ({ pin, payload }: { pin: string; payload: QuizFinishedPayload }) => {
         if (!pin || !payload) return;
+
+        const room = getRoom(pin);
+        const leaderboard = makeLeaderboard(room);
+
+        io.to(pin).emit("final_results", {
+          pin,
+          total: payload.total,
+          leaderboard,
+        });
+
+        // students download
         io.to(pin).emit("quiz:finished", payload);
         io.to(pin).emit("quiz_finished", { payload }); // optional compatibility
       });
 
-      // NEXT
       socket.on("next", ({ pin }: { pin: string }) => {
         if (!pin) return;
         io.to(pin).emit("question:next");
