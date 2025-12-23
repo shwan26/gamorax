@@ -90,12 +90,13 @@ export default function StudentQuestionPage() {
     const onReveal = () => setPhase("result");
 
     s.on("connect", () => {
-        s.emit("join", { pin, player: student });
+        s.emit("join", { pin, student });
     });
 
     s.on("game:start", onStart);
     s.on("question:next", onNext);
     s.on("answer:reveal", onReveal);
+
 
     // ✅ IMPORTANT: return a CLEANUP FUNCTION (not s.disconnect() directly)
     return () => {

@@ -32,7 +32,9 @@ function createBlankQuestion(defaultTime: number): Question {
 }
 
 export default function QuestionPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+  const id = (params?.id ?? "").toString();
+
   const game = useMemo(() => (id ? getGameById(id) : null), [id]);
 
   const [questions, setQuestions] = useState<Question[]>([]);

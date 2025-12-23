@@ -15,7 +15,9 @@ export default function FinalBoard({
   total: number;
 }) {
   const router = useRouter();
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id?: string }>();
+const id = (params?.id ?? "").toString();
+
 
   const podium = [ranked[1], ranked[0], ranked[2]].filter(Boolean);
 

@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
 export default function GameSubNavbar({ title }: { title: string }) {
-  const { id } = useParams<{ id: string }>();
-  const pathname = usePathname();
+  const params = useParams<{ id?: string }>();
+const id = (params?.id ?? "").toString();
+
+  const pathname = usePathname() ?? "";
 
   const isQuestion = pathname.startsWith(`/game/${id}/question`);
   const isSetting = pathname.startsWith(`/game/${id}/setting`);

@@ -19,8 +19,8 @@ const AVATARS = ["/icons/student.png", "/icons/lecturer.png"] as const;
 
 export default function JoinLiveByPinPage() {
   const router = useRouter();
-  const { pin: rawPin } = useParams<{ pin: string }>();
-  const pin = (rawPin || "").trim();
+  const params = useParams<{ pin?: string }>();
+  const pin = (params?.pin ?? "").trim();
 
   const [live, setLive] = useState<LiveSession | null>(null);
   const [game, setGame] = useState<Game | null>(null);
