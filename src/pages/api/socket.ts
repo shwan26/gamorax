@@ -1,3 +1,4 @@
+// src/pages/api/socket.ts
 import type { NextApiRequest } from "next";
 import type { NextApiResponse } from "next";
 import { Server as IOServer } from "socket.io";
@@ -10,106 +11,213 @@ type LiveStudent = {
   avatarSrc?: string;
 };
 
-type QuestionPayload = {
+type QuestionPayloadIn = {
+  // from lecturer
+  questionIndex: number; // 0-based
   number: number; // 1-based
+  total: number;
+  text: string;
+  answers: string[];
+  // optional (OK if missing)
+  correctIndex?: number; // 0-3
+};
+
+type QuestionPayloadOut = {
+  // to students (NO correctIndex)
+  questionIndex: number;
+  number: number;
   total: number;
   text: string;
   answers: string[];
 };
 
+type QuizFinishedPayload = {
+  total: number;
+  qa: Array<{
+    number: number;
+    question: string;
+    answers: string[];
+    correctChoice: "A" | "B" | "C" | "D";
+    correctAnswerText: string;
+  }>;
+};
+
 type Room = {
-  students: LiveStudent[];
-  startedAt?: number;
-  currentQuestion?: QuestionPayload;
+  students: Map<string, LiveStudent>;
+  current?: QuestionPayloadOut; // broadcasted question (no correctIndex)
+  // answers[questionIndex][studentId] = answerIndex
+  answers: Map<number, Map<string, number>>;
+  // correctByQuestion[questionIndex] = correctIndex
+  correctByQuestion: Map<number, number>;
 };
 
-type ResWithSocket = NextApiResponse & {
-  socket: any & { server: any };
-};
+type ResWithSocket = NextApiResponse & { socket: any & { server: any } };
 
-function getRooms(server: any): Map<string, Room> {
-  if (!server.__gamoraxRooms) server.__gamoraxRooms = new Map<string, Room>();
-  return server.__gamoraxRooms;
-}
+// ---- in-memory rooms (module scope) ----
+const rooms = new Map<string, Room>();
 
-function getRoom(rooms: Map<string, Room>, pin: string): Room {
-  const prev = rooms.get(pin);
-  if (prev) return prev;
-  const next: Room = { students: [] };
-  rooms.set(pin, next);
-  return next;
-}
-
-function upsertStudent(list: LiveStudent[], st: LiveStudent): LiveStudent[] {
-  const idx = list.findIndex((x) => x.studentId === st.studentId);
-  if (idx === -1) return [...list, st];
-  const copy = [...list];
-  copy[idx] = { ...copy[idx], ...st };
-  return copy;
-}
-
-export default function handler(req: NextApiRequest, res: ResWithSocket) {
-  const server = res.socket?.server;
-  if (!server) {
-    res.status(500).end("No socket server");
-    return;
+function getRoom(pin: string): Room {
+  if (!rooms.has(pin)) {
+    rooms.set(pin, {
+      students: new Map(),
+      current: undefined,
+      answers: new Map(),
+      correctByQuestion: new Map(),
+    });
   }
+  return rooms.get(pin)!;
+}
 
-  if (!server.io) {
-    const io = new IOServer(server, {
+function safeInt(n: any, fallback: number) {
+  const x = Number(n);
+  return Number.isFinite(x) ? x : fallback;
+}
+
+function countsForRoom(room: Room, questionIndex: number): { counts: number[]; totalAnswers: number } {
+  const map = room.answers.get(questionIndex);
+  const counts = [0, 0, 0, 0];
+  if (!map) return { counts, totalAnswers: 0 };
+
+  for (const ans of map.values()) {
+    if (ans >= 0 && ans <= 3) counts[ans] += 1;
+  }
+  return { counts, totalAnswers: map.size };
+}
+
+export default function handler(_req: NextApiRequest, res: ResWithSocket) {
+  if (!res.socket.server.io) {
+    const io = new IOServer(res.socket.server, {
       path: "/api/socket",
       cors: { origin: "*" },
     });
 
-    server.io = io;
-
-    // ✅ capture rooms ONCE, using server (not res)
-    const rooms = getRooms(server);
+    res.socket.server.io = io;
 
     io.on("connection", (socket) => {
+      // JOIN
       socket.on("join", ({ pin, student }: { pin: string; student?: LiveStudent }) => {
         if (!pin) return;
+
         socket.join(pin);
+        const room = getRoom(pin);
 
-        const room = getRoom(rooms, pin);
-
+        // add/update student (if provided)
         if (student?.studentId) {
-          room.students = upsertStudent(room.students, student);
-          io.to(pin).emit("students:update", room.students);
+          room.students.set(student.studentId, student);
+          io.to(pin).emit("students:update", Array.from(room.students.values()));
         }
 
-        // late joiners sync
-        if (room.startedAt) socket.emit("game:start", { startAt: room.startedAt });
-        if (room.currentQuestion) socket.emit("question:show", room.currentQuestion);
+        // ✅ sync current question for late joiners
+        if (room.current) {
+          socket.emit("question:show", room.current);
+
+          // ✅ also sync current counts (important if lecturer refresh)
+          const { counts, totalAnswers } = countsForRoom(room, room.current.questionIndex);
+          socket.emit("answer:count", {
+            questionIndex: room.current.questionIndex,
+            counts,
+            totalAnswers,
+          });
+        }
       });
 
-      socket.on("start", ({ pin }: { pin: string }) => {
-        if (!pin) return;
-        const room = getRoom(rooms, pin);
-        room.startedAt = Date.now();
-        io.to(pin).emit("game:start", { startAt: room.startedAt });
+      // LECTURER SHOW QUESTION
+      socket.on("question:show", ({ pin, question }: { pin: string; question: QuestionPayloadIn }) => {
+        if (!pin || !question) return;
+
+        const room = getRoom(pin);
+
+        const qIndex = safeInt(question.questionIndex, 0);
+        const out: QuestionPayloadOut = {
+          questionIndex: qIndex,
+          number: safeInt(question.number, qIndex + 1),
+          total: safeInt(question.total, 1),
+          text: String(question.text ?? ""),
+          answers: Array.isArray(question.answers) ? question.answers : [],
+        };
+
+        room.current = out;
+
+        // store correctIndex if lecturer provided it (optional)
+        if (Number.isFinite(question.correctIndex) && question.correctIndex! >= 0 && question.correctIndex! <= 3) {
+          room.correctByQuestion.set(qIndex, question.correctIndex!);
+        }
+
+        // ✅ only reset answers if this is a "new" questionIndex
+        // (prevents wiping counts if lecturer re-emits same question)
+        if (!room.answers.has(qIndex)) {
+          room.answers.set(qIndex, new Map());
+        } else {
+          // if lecturer intentionally wants reset, they should call a "reset" event (not implemented)
+          // keeping existing answers is safer.
+        }
+
+        // broadcast to students (NO correctIndex)
+        io.to(pin).emit("question:show", out);
+
+        // send current counts (either reset or existing)
+        const { counts, totalAnswers } = countsForRoom(room, qIndex);
+        io.to(pin).emit("answer:count", { questionIndex: qIndex, counts, totalAnswers });
       });
 
+      // STUDENT ANSWER
+      socket.on("answer", (p: { pin: string; studentId: string; questionIndex: number; answerIndex: number; timeUsed: number }) => {
+        const pin = String(p?.pin ?? "");
+        const studentId = String(p?.studentId ?? "");
+        const questionIndex = safeInt(p?.questionIndex, -1);
+        const answerIndex = safeInt(p?.answerIndex, -1);
+
+        if (!pin || !studentId) return;
+        if (questionIndex < 0) return;
+        if (answerIndex < 0 || answerIndex > 3) return;
+
+        const room = getRoom(pin);
+        if (!room.answers.has(questionIndex)) room.answers.set(questionIndex, new Map());
+
+        const map = room.answers.get(questionIndex)!;
+
+        // dedupe: 1 answer per student per question
+        if (map.has(studentId)) return;
+
+        map.set(studentId, answerIndex);
+
+        const { counts, totalAnswers } = countsForRoom(room, questionIndex);
+
+        // ✅ lecturer UI listens to this
+        io.to(pin).emit("answer:count", { questionIndex, counts, totalAnswers });
+      });
+
+      // LECTURER REVEAL
+      // ✅ FIX: accept correctIndex from lecturer (recommended), fallback to stored map
       socket.on(
-        "question:show",
-        ({ pin, question }: { pin: string; question: QuestionPayload }) => {
+        "reveal",
+        ({ pin, questionIndex, correctIndex }: { pin: string; questionIndex: number; correctIndex?: number }) => {
           if (!pin) return;
-          const room = getRoom(rooms, pin);
-          room.currentQuestion = question;
-          io.to(pin).emit("question:show", question);
+
+          const room = getRoom(pin);
+          const qIndex = safeInt(questionIndex, room.current?.questionIndex ?? 0);
+
+          // store correctIndex if provided
+          if (Number.isFinite(correctIndex) && correctIndex! >= 0 && correctIndex! <= 3) {
+            room.correctByQuestion.set(qIndex, correctIndex!);
+          }
+
+          const stored = room.correctByQuestion.get(qIndex);
+          if (typeof stored !== "number") return;
+
+          // students score using this payload
+          io.to(pin).emit("answer:reveal", { questionIndex: qIndex, correctIndex: stored });
         }
       );
 
-      socket.on("answer", ({ pin, questionIndex, answerIndex, timeUsed }) => {
-        if (!pin) return;
-        io.to(pin).emit("answer:received", { questionIndex, answerIndex, timeUsed });
+      // FINISH QUIZ (download)
+      socket.on("finish", ({ pin, payload }: { pin: string; payload: QuizFinishedPayload }) => {
+        if (!pin || !payload) return;
+        io.to(pin).emit("quiz:finished", payload);
+        io.to(pin).emit("quiz_finished", { payload }); // optional compatibility
       });
 
-      socket.on("reveal", ({ pin }: { pin: string }) => {
-        if (!pin) return;
-        io.to(pin).emit("answer:reveal");
-      });
-
+      // NEXT
       socket.on("next", ({ pin }: { pin: string }) => {
         if (!pin) return;
         io.to(pin).emit("question:next");
