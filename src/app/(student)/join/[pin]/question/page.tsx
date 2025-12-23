@@ -16,14 +16,18 @@ const caesar = localFont({
 });
 
 type QuestionShowPayload = {
-  // lecturer should send these
-  questionIndex?: number; // 0-based (preferred)
-  number?: number; // 1-based (fallback)
+  questionIndex?: number; // 0-based
+  number?: number; // 1-based
   total?: number;
   text?: string;
   answers?: string[];
-  // optional but recommended (so student can score even if reveal sends no payload)
-  correctIndex?: number; // 0-3
+
+  // ✅ timer sync (recommended)
+  startAt?: number; // ms timestamp
+  durationSec?: number; // seconds
+
+  // optional (only if lecturer includes it)
+  correctIndex?: number;
 };
 
 type QAItem = {
@@ -61,6 +65,9 @@ export default function StudentQuestionPage() {
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const selectedIndexRef = useRef<number | null>(null);
+  useEffect(() => {
+    selectedIndexRef.current = selectedIndex;
+  }, [selectedIndex]);
 
   const answeredQIndexRef = useRef<number | null>(null);
 
@@ -72,15 +79,15 @@ export default function StudentQuestionPage() {
   const [scoredCount, setScoredCount] = useState(0);
   const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
 
-  const questionStartAtRef = useRef<number | null>(null);
-
   const [downloadPayload, setDownloadPayload] = useState<QuizFinishedPayload | null>(
     null
   );
 
-  useEffect(() => {
-    selectedIndexRef.current = selectedIndex;
-  }, [selectedIndex]);
+  // ✅ timer state (ONE bar)
+  const [startAt, setStartAt] = useState<number | null>(null); // ms
+  const [durationSec, setDurationSec] = useState<number>(20);
+  const [now, setNow] = useState<number>(() => Date.now());
+  const questionStartAtRef = useRef<number | null>(null); // used for timeUsed
 
   // Load student
   useEffect(() => {
@@ -104,7 +111,6 @@ export default function StudentQuestionPage() {
       return;
     }
 
-    // Optional: title only works if same browser has liveStorage
     const live = getLiveByPin(pin);
     if (live?.gameId) setGame(getGameById(live.gameId));
   }, [pin, router]);
@@ -115,17 +121,22 @@ export default function StudentQuestionPage() {
     return pin ? `Quiz Session - ${pin}` : "Quiz Session";
   }, [game, pin]);
 
+  // Timer tick (only while answering)
+  useEffect(() => {
+    if (phase !== "question") return;
+    if (!startAt) return;
+
+    const t = window.setInterval(() => setNow(Date.now()), 100);
+    return () => window.clearInterval(t);
+  }, [phase, startAt]);
+
   // Socket listeners (shared socket)
   useEffect(() => {
     if (!pin || !student) return;
 
-    // ensure /api/socket is compiled once (optional but helps in dev)
     fetch("/api/socket").catch(() => {});
 
-    const join = () => {
-      socket.emit("join", { pin, student });
-    };
-
+    const join = () => socket.emit("join", { pin, student });
     if (socket.connected) join();
     else socket.once("connect", join);
 
@@ -140,33 +151,33 @@ export default function StudentQuestionPage() {
 
       currentQIndexRef.current = qIndex;
 
-      // store correctIndex if lecturer included it (recommended)
-      if (typeof q?.correctIndex === "number") {
-        correctIndexRef.current = q.correctIndex;
-      }
+      // (optional) store correctIndex if included
+      if (typeof q?.correctIndex === "number") correctIndexRef.current = q.correctIndex;
+
+      // ✅ timer sync from lecturer (fallback to local)
+      const sAt = typeof q?.startAt === "number" ? q.startAt : Date.now();
+      const dur = Number.isFinite(Number(q?.durationSec)) ? Math.max(1, Number(q.durationSec)) : 20;
+
+      setStartAt(sAt);
+      setDurationSec(dur);
+      setNow(Date.now());
+      questionStartAtRef.current = sAt;
 
       // reset per-question state
-      setQuestion({
-        questionIndex: qIndex,
-        number,
-        total,
-        text,
-        answers,
-      });
-
+      setQuestion({ questionIndex: qIndex, number, total, text, answers });
       setPhase("question");
       setSelectedIndex(null);
       selectedIndexRef.current = null;
-
       answeredQIndexRef.current = null;
       setLastWasCorrect(null);
-
-      questionStartAtRef.current = Date.now();
     };
 
-    // lecturer reveal: sometimes payload is empty in your server → handle both
     const onReveal = (p?: { questionIndex?: number; correctIndex?: number }) => {
       setPhase("result");
+
+      // ✅ stop timer bar updates
+      setStartAt(null);
+      questionStartAtRef.current = null;
 
       const qIdx =
         typeof p?.questionIndex === "number" ? p.questionIndex : currentQIndexRef.current;
@@ -174,16 +185,13 @@ export default function StudentQuestionPage() {
       const correct =
         typeof p?.correctIndex === "number" ? p.correctIndex : correctIndexRef.current;
 
-      // count revealed/scored questions
       setScoredCount((prev) => Math.max(prev, qIdx + 1));
 
-      // if we still don't know correct, we can't evaluate correctness
       if (typeof correct !== "number") {
         setLastWasCorrect(null);
         return;
       }
 
-      // prevent double score
       if (qIdx <= lastScoredQIndexRef.current) return;
 
       const picked = selectedIndexRef.current;
@@ -203,11 +211,12 @@ export default function StudentQuestionPage() {
       selectedIndexRef.current = null;
       answeredQIndexRef.current = null;
       setLastWasCorrect(null);
+
+      // ✅ stop timer
+      setStartAt(null);
       questionStartAtRef.current = null;
-      // don't clear question; we can keep it or clear it
     };
 
-    // support a few payload shapes
     const onFinished = (data: any) => {
       const payload: QuizFinishedPayload | null =
         data?.payload && typeof data.payload === "object"
@@ -218,6 +227,10 @@ export default function StudentQuestionPage() {
 
       if (!payload) return;
 
+      // ✅ stop timer
+      setStartAt(null);
+      questionStartAtRef.current = null;
+
       setDownloadPayload(payload);
       setPhase("final");
     };
@@ -225,8 +238,6 @@ export default function StudentQuestionPage() {
     socket.on("question:show", onQuestionShow);
     socket.on("answer:reveal", onReveal);
     socket.on("question:next", onNext);
-
-    // support both names
     socket.on("quiz:finished", onFinished);
     socket.on("quiz_finished", onFinished);
 
@@ -237,7 +248,6 @@ export default function StudentQuestionPage() {
       socket.off("quiz:finished", onFinished);
       socket.off("quiz_finished", onFinished);
       socket.off("connect", join);
-      // ✅ do NOT disconnect shared socket
     };
   }, [pin, student]);
 
@@ -245,8 +255,13 @@ export default function StudentQuestionPage() {
     if (!student || !question) return;
     if (phase !== "question") return;
 
-    // hard lock
     if (selectedIndexRef.current !== null) return;
+
+    // block if timer is already ended locally (optional safety)
+    if (startAt) {
+      const elapsed = Date.now() - startAt;
+      if (elapsed >= durationSec * 1000) return;
+    }
 
     setSelectedIndex(answerIndex);
     selectedIndexRef.current = answerIndex;
@@ -267,6 +282,12 @@ export default function StudentQuestionPage() {
   };
 
   const disableButtons = phase !== "question" || selectedIndex !== null;
+
+  // ✅ timer UI values (dark blue shrinks)
+  const elapsed = startAt ? Math.max(0, now - startAt) : 0;
+  const limit = durationSec * 1000;
+  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
+  const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
 
   const downloadQA = () => {
     if (!downloadPayload) return;
@@ -310,7 +331,6 @@ export default function StudentQuestionPage() {
         <p className="text-sm md:text-base font-semibold text-center">{titleText}</p>
       </div>
 
-      {/* WAITING */}
       {phase === "waiting" && student && (
         <div className="flex flex-col items-center px-4 pt-14">
           <div className="text-center space-y-6 mb-10">
@@ -335,12 +355,27 @@ export default function StudentQuestionPage() {
         </div>
       )}
 
-      {/* QUESTION */}
       {phase === "question" && question && (
         <div className="px-4 pt-10 flex flex-col items-center">
           <p className="text-sm md:text-base font-medium text-center mb-2">
             Question {question.number} of {question.total}
           </p>
+
+          {/* ✅ ONE timer line (dark blue shrinking) */}
+          <div className="w-full max-w-3xl mb-4">
+            <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+              <div
+                className="h-full transition-[width] duration-100"
+                style={{
+                  width: `${pctRemaining}%`,
+                  backgroundColor: "#034B6B", // dark blue
+                }}
+              />
+            </div>
+            <div className="mt-1 text-xs text-gray-600 text-center">
+              {remainingSec}s
+            </div>
+          </div>
 
           <p className="text-sm md:text-base text-gray-700 text-center mb-8 max-w-3xl">
             {question.text}
@@ -376,7 +411,6 @@ export default function StudentQuestionPage() {
         </div>
       )}
 
-      {/* RESULT */}
       {phase === "result" && (
         <div className="px-4 pt-10 flex flex-col items-center">
           <p className="text-lg font-semibold">Result</p>
@@ -394,7 +428,6 @@ export default function StudentQuestionPage() {
         </div>
       )}
 
-      {/* FINAL */}
       {phase === "final" && student && (
         <div className="px-4 pt-10 flex flex-col items-center">
           <p className="text-lg font-semibold">Final Score</p>

@@ -50,7 +50,12 @@ export default function TeacherLiveFlowPage() {
   const pin = searchParams?.get("pin") ?? "";
 
   const game = useMemo(() => (id ? getGameById(id) : null), [id]);
-  const questions = useMemo(() => (id ? getQuestions(id) : []), [id]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+
+  useEffect(() => {
+    if (!id) return;
+    setQuestions(getQuestions(id));
+  }, [id]);
 
   const [status, setStatus] = useState<"question" | "answer" | "final">("question");
   const [qIndex, setQIndex] = useState(0);
@@ -232,11 +237,16 @@ export default function TeacherLiveFlowPage() {
     );
   }
 
-  // ✅ timer bar values (0..100)
+  // ✅ timer bar values (FULL -> EMPTY)
   const elapsed = startAt ? Math.max(0, now - startAt) : 0;
   const limit = durationSec * 1000;
-  const pct = limit > 0 ? Math.min(100, Math.max(0, (elapsed / limit) * 100)) : 0;
-  const remainingSec = Math.max(0, Math.ceil((limit - elapsed) / 1000));
+
+  const pctRemaining =
+    startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
+
+  const remainingSec =
+    startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
+
 
   return (
     <div className="min-h-screen bg-white">
@@ -249,26 +259,43 @@ export default function TeacherLiveFlowPage() {
         <p className="text-sm text-gray-600 mt-1">PIN: {pin || "(missing)"}</p>
       </div>
 
+      
+
       <div className="px-10 mt-10">
         {status === "question" && (
-          <>
-            <QuestionView q={q} index={qIndex} total={questions.length} startAt={startAt} />
-
-            <div className="mt-6 text-sm text-gray-600">
-              Live counts: A {counts[0]} | B {counts[1]} | C {counts[2]} | D {counts[3]}{" "}
-              <span className="ml-2">(Total: {totalAnswers})</span>
+        <>
+          {startAt && (
+            <div className="w-full max-w-3xl mt-4">
+              <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+                <div
+                  className="h-full transition-[width] duration-100"
+                  style={{ width: `${pctRemaining}%`, backgroundColor: "#034B6B" }}
+                />
+              </div>
+              <div className="mt-1 text-xs text-gray-600 text-center">{remainingSec}s</div>
             </div>
+          )}
 
-            <div className="flex justify-end mt-10">
-              <button
-                onClick={() => showAnswer(false)}
-                className="bg-[#3B8ED6] text-white px-10 py-3 rounded-full"
-              >
-                Show Answer
-              </button>
-            </div>
-          </>
-        )}
+          <QuestionView q={q} index={qIndex} total={questions.length} startAt={null} />
+
+          
+
+          <div className="mt-6 text-sm text-gray-600">
+            Live counts: A {counts[0]} | B {counts[1]} | C {counts[2]} | D {counts[3]}
+            <span className="ml-2">(Total: {totalAnswers})</span>
+          </div>
+
+          <div className="flex justify-end mt-10">
+            <button
+              onClick={() => showAnswer(false)}
+              className="bg-[#3B8ED6] text-white px-10 py-3 rounded-full"
+            >
+              Show Answer
+            </button>
+          </div>
+        </>
+      )}
+
 
         {status === "answer" && (
           <>
