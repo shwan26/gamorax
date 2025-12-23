@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
 import { getGameById } from "@/src/lib/gameStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
 import { socket } from "@/src/lib/socket";
+import { getCurrentLivePin } from "@/src/lib/liveStorage"; // ✅ add this
 
 import QuestionView from "@/src/components/live/QuestionView";
 import AnswerReveal from "@/src/components/live/AnswerReveal";
@@ -14,43 +15,43 @@ import FinalBoard from "@/src/components/live/FinalBoard";
 export default function TeacherLiveFlowPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const game = useMemo(() => id && getGameById(id), [id]);
-  const questions = useMemo(() => id ? getQuestions(id) : [], [id]);
+  // ✅ pin from URL, fallback to localStorage (same browser)
+  const pin = searchParams.get("pin") || getCurrentLivePin(id) || "";
+
+  const game = useMemo(() => (id ? getGameById(id) : null), [id]);
+  const questions = useMemo(() => (id ? getQuestions(id) : []), [id]);
 
   const [status, setStatus] = useState<"question" | "answer" | "final">("question");
   const [qIndex, setQIndex] = useState(0);
-  const [startAt, setStartAt] = useState<number | null>(null);
-  const [answers, setAnswers] = useState<any[]>([]);
-  const [scores, setScores] = useState<any[]>([]);
 
   const q = questions[qIndex];
 
+  // ✅ Ensure socket server is ready + start game when entering this page
   useEffect(() => {
-    socket.emit("start", { gameId: id });
-
-    socket.on("timer:start", ({ startAt }) => setStartAt(startAt));
-    socket.on("answer:count", (data) => setAnswers(data));
-    socket.on("final:score", (data) => setScores(data));
-
-    return () => {
-      socket.off();
-    };
-  }, [id]);
+    if (!pin) return;
+    fetch("/api/socket").catch(() => {});
+    socket.emit("start", { pin }); // ✅ this triggers "game:start" to students
+  }, [pin]);
 
   function showAnswer() {
-    socket.emit("reveal", { index: qIndex });
+    if (!pin) return;
+    socket.emit("reveal", { pin }); // ✅ server expects { pin }
     setStatus("answer");
   }
 
   function next() {
+    if (!pin) return;
+
     if (qIndex + 1 === questions.length) {
       setStatus("final");
-    } else {
-      setQIndex(qIndex + 1);
-      setStatus("question");
-      socket.emit("next");
+      return;
     }
+
+    setQIndex((prev) => prev + 1);
+    setStatus("question");
+    socket.emit("next", { pin }); // ✅ server expects { pin }
   }
 
   if (!game || !q) return null;
@@ -68,13 +69,7 @@ export default function TeacherLiveFlowPage() {
       <div className="px-10 mt-10">
         {status === "question" && (
           <>
-            <QuestionView
-              q={q}
-              index={qIndex}
-              total={questions.length}
-              startAt={startAt}
-            />
-
+            <QuestionView q={q} index={qIndex} total={questions.length} startAt={null} />
             <div className="flex justify-end mt-10">
               <button
                 onClick={showAnswer}
@@ -88,7 +83,7 @@ export default function TeacherLiveFlowPage() {
 
         {status === "answer" && (
           <>
-            <AnswerReveal q={q} counts={answers} />
+            <AnswerReveal q={q} counts={[]} />
             <div className="flex justify-end mt-10">
               <button
                 onClick={next}
@@ -100,9 +95,7 @@ export default function TeacherLiveFlowPage() {
           </>
         )}
 
-        {status === "final" && (
-          <FinalBoard ranked={scores} total={questions.length} />
-        )}
+        {status === "final" && <FinalBoard ranked={[]} total={questions.length} />}
       </div>
     </div>
   );

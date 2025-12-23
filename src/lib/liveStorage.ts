@@ -1,6 +1,7 @@
-export type LivePlayer = {
+export type LiveStudent = {
   studentId: string;
   name: string;
+  avatarSrc?: string;
 };
 
 export type LiveAnswer = {
@@ -26,7 +27,7 @@ export type LiveSession = {
   status: LiveStatus;
   questionIndex: number;
 
-  players: LivePlayer[];
+  students: LiveStudent[];
   answersByQuestion: Record<number, LiveAnswer[]>;
   scores: Record<string, LiveScore>;
 
@@ -36,15 +37,41 @@ export type LiveSession = {
 
 const STORAGE_KEY = "gamorax_live_sessions";
 
+function normalizeSession(s: any): LiveSession {
+  return {
+    id: String(s?.id ?? crypto.randomUUID()),
+    gameId: String(s?.gameId ?? ""),
+    pin: String(s?.pin ?? ""),
+    isActive: typeof s?.isActive === "boolean" ? s.isActive : true,
+
+    status: (s?.status as LiveStatus) ?? "lobby",
+    questionIndex: Number.isFinite(s?.questionIndex) ? s.questionIndex : 0,
+
+    students: Array.isArray(s?.students) ? s.students : [],
+    answersByQuestion:
+      s?.answersByQuestion && typeof s.answersByQuestion === "object"
+        ? s.answersByQuestion
+        : {},
+    scores: s?.scores && typeof s.scores === "object" ? s.scores : {},
+
+    startedAt: s?.startedAt,
+    endedAt: s?.endedAt,
+  };
+}
+
+
 function getAll(): LiveSession[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+  const raw = data ? JSON.parse(data) : [];
+  return Array.isArray(raw) ? raw.map(normalizeSession) : [];
 }
 
 function saveAll(sessions: LiveSession[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
 }
+
+
 
 /* ---------- CURRENT SESSION PER GAME ---------- */
 export function setCurrentLivePin(gameId: string, pin: string) {
@@ -66,7 +93,7 @@ export function createLiveSession(gameId: string): LiveSession {
     isActive: true,
     status: "lobby",
     questionIndex: 0,
-    players: [],
+    students: [],
     answersByQuestion: {},
     scores: {},
     startedAt: new Date().toISOString(),
@@ -91,30 +118,36 @@ export function getCurrentLiveSession(gameId: string): LiveSession | null {
 }
 
 function updateSession(pin: string, updater: (s: LiveSession) => LiveSession) {
-  const sessions = getAll();
+  const sessions = getAll(); // already normalized
   const idx = sessions.findIndex((s) => s.pin === pin);
   if (idx === -1) return;
 
-  sessions[idx] = updater(sessions[idx]);
+  const current = normalizeSession(sessions[idx]);
+  sessions[idx] = normalizeSession(updater(current));
   saveAll(sessions);
 }
 
 /* ---------- JOIN ---------- */
-export function joinLiveSession(pin: string, player: LivePlayer) {
+export function joinLiveSession(pin: string, student: LiveStudent) {
   updateSession(pin, (s) => {
-    if (s.players.some((p) => p.studentId === player.studentId)) return s;
+    const students = Array.isArray(s.students) ? s.students : [];
+
+    if (students.some((p) => p.studentId === student.studentId)) {
+      return { ...s, students };
+    }
 
     return {
       ...s,
-      players: [...s.players, player],
+      students: [...students, student],
       scores: {
         ...s.scores,
-        [player.studentId]:
-          s.scores[player.studentId] || { correct: 0, points: 0, totalTime: 0 },
+        [student.studentId]:
+          s.scores?.[student.studentId] || { correct: 0, points: 0, totalTime: 0 },
       },
     };
   });
 }
+
 
 /* ---------- START / PHASE ---------- */
 export function startLive(pin: string) {
