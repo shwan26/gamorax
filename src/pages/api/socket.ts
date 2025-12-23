@@ -18,8 +18,13 @@ type QuestionPayloadIn = {
   total: number;
   text: string;
   answers: string[];
+
   // optional (OK if missing)
   correctIndex?: number; // 0-3
+
+  // ✅ TIMER (lecturer sends)
+  startAt?: number; // ms timestamp
+  durationSec?: number; // seconds
 };
 
 type QuestionPayloadOut = {
@@ -29,6 +34,10 @@ type QuestionPayloadOut = {
   total: number;
   text: string;
   answers: string[];
+
+  // ✅ TIMER (students receive)
+  startAt: number; // ms timestamp
+  durationSec: number; // seconds
 };
 
 type QuizFinishedPayload = {
@@ -73,7 +82,22 @@ function safeInt(n: any, fallback: number) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-function countsForRoom(room: Room, questionIndex: number): { counts: number[]; totalAnswers: number } {
+function safeStartAt(n: any) {
+  const x = Number(n);
+  return Number.isFinite(x) && x > 0 ? x : Date.now();
+}
+
+function safeDurationSec(n: any) {
+  const x = Number(n);
+  if (!Number.isFinite(x) || x <= 0) return 20;
+  // clamp to avoid insane values
+  return Math.min(60 * 60, Math.max(1, Math.round(x)));
+}
+
+function countsForRoom(
+  room: Room,
+  questionIndex: number
+): { counts: number[]; totalAnswers: number } {
   const map = room.answers.get(questionIndex);
   const counts = [0, 0, 0, 0];
   if (!map) return { counts, totalAnswers: 0 };
@@ -107,11 +131,11 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
           io.to(pin).emit("students:update", Array.from(room.students.values()));
         }
 
-        // ✅ sync current question for late joiners
+        // ✅ sync current question for late joiners (includes timer)
         if (room.current) {
           socket.emit("question:show", room.current);
 
-          // ✅ also sync current counts (important if lecturer refresh)
+          // ✅ also sync current counts
           const { counts, totalAnswers } = countsForRoom(room, room.current.questionIndex);
           socket.emit("answer:count", {
             questionIndex: room.current.questionIndex,
@@ -128,31 +152,38 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
         const room = getRoom(pin);
 
         const qIndex = safeInt(question.questionIndex, 0);
+
+        // ✅ timer values (synced)
+        const startAt = safeStartAt(question.startAt);
+        const durationSec = safeDurationSec(question.durationSec);
+
         const out: QuestionPayloadOut = {
           questionIndex: qIndex,
           number: safeInt(question.number, qIndex + 1),
           total: safeInt(question.total, 1),
           text: String(question.text ?? ""),
           answers: Array.isArray(question.answers) ? question.answers : [],
+          startAt,
+          durationSec,
         };
 
         room.current = out;
 
         // store correctIndex if lecturer provided it (optional)
-        if (Number.isFinite(question.correctIndex) && question.correctIndex! >= 0 && question.correctIndex! <= 3) {
+        if (
+          Number.isFinite(question.correctIndex) &&
+          question.correctIndex! >= 0 &&
+          question.correctIndex! <= 3
+        ) {
           room.correctByQuestion.set(qIndex, question.correctIndex!);
         }
 
-        // ✅ only reset answers if this is a "new" questionIndex
-        // (prevents wiping counts if lecturer re-emits same question)
+        // ✅ only reset answers if first time this questionIndex appears
         if (!room.answers.has(qIndex)) {
           room.answers.set(qIndex, new Map());
-        } else {
-          // if lecturer intentionally wants reset, they should call a "reset" event (not implemented)
-          // keeping existing answers is safer.
         }
 
-        // broadcast to students (NO correctIndex)
+        // broadcast to students (NO correctIndex, BUT with timer)
         io.to(pin).emit("question:show", out);
 
         // send current counts (either reset or existing)
@@ -183,12 +214,11 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
 
         const { counts, totalAnswers } = countsForRoom(room, questionIndex);
 
-        // ✅ lecturer UI listens to this
+        // lecturer UI listens to this
         io.to(pin).emit("answer:count", { questionIndex, counts, totalAnswers });
       });
 
       // LECTURER REVEAL
-      // ✅ FIX: accept correctIndex from lecturer (recommended), fallback to stored map
       socket.on(
         "reveal",
         ({ pin, questionIndex, correctIndex }: { pin: string; questionIndex: number; correctIndex?: number }) => {
@@ -205,7 +235,6 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
           const stored = room.correctByQuestion.get(qIndex);
           if (typeof stored !== "number") return;
 
-          // students score using this payload
           io.to(pin).emit("answer:reveal", { questionIndex: qIndex, correctIndex: stored });
         }
       );
