@@ -4,49 +4,47 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 
 export default function GameSubNavbar({ title }: { title: string }) {
-  const params = useParams<{ id?: string }>();
-const id = (params?.id ?? "").toString();
+  const params = useParams<{ courseId?: string; gameId?: string }>();
+  const courseId = (params?.courseId ?? "").toString();
+  const gameId = (params?.gameId ?? "").toString();
 
   const pathname = usePathname() ?? "";
+  const base = `/course/${courseId}/game/${gameId}`;
 
-  const isQuestion = pathname.startsWith(`/game/${id}/question`);
-  const isSetting = pathname.startsWith(`/game/${id}/setting`);
-  const isLive = pathname.startsWith(`/game/${id}/live`);
+  const isQuestion = pathname.startsWith(`${base}/question`);
+  const isSetting = pathname.startsWith(`${base}/setting`);
+  const isLive = pathname.startsWith(`${base}/live`);
 
   return (
     <div className="px-6 mt-3">
       <div className="flex items-center justify-between">
-        {/* TITLE (acts as Gam) */}
+        <Link href={`/course/${courseId}`} className="text-sm">
+          &larr; Back to Course
+        </Link>
+
         <Link
-          href={`/game/${id}/question`}
+          href={`${base}/question`}
           className={`font-medium text-sm ${
-            isQuestion
-              ? "text-[#034B6B]"
-              : "text-gray-600 hover:underline"
+            isQuestion ? "text-[#034B6B]" : "text-gray-600 hover:underline"
           }`}
         >
           {title}
         </Link>
 
-        {/* TABS */}
         <div className="flex gap-4">
           <Link
-            href={`/game/${id}/setting/general`}
+            href={`${base}/setting/general`}
             className={`px-6 py-2 rounded-md font-medium transition ${
-              isSetting
-                ? "bg-[#034B6B] text-white"
-                : "border bg-white"
+              isSetting ? "bg-[#034B6B] text-white" : "border bg-white"
             }`}
           >
             Setting
           </Link>
 
           <Link
-            href={`/game/${id}/live`}
+            href={`${base}/live`}
             className={`px-6 py-2 rounded-md font-medium transition ${
-              isLive
-                ? "bg-[#034B6B] text-white"
-                : "border bg-white"
+              isLive ? "bg-[#034B6B] text-white" : "border bg-white"
             }`}
           >
             Live

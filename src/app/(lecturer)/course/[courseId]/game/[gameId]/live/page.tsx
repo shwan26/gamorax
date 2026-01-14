@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
 import { getGameById } from "@/src/lib/gameStorage";
+import { getCourseById } from "@/src/lib/courseStorage";
 import { createLiveSession, type LiveSession } from "@/src/lib/liveStorage";
 import QRCode from "react-qr-code";
 import { socket } from "@/src/lib/socket";
@@ -16,24 +17,26 @@ type LiveStudent = {
 };
 
 export default function LivePage() {
-  const params = useParams<{ id?: string }>();
+  const params = useParams<{ courseId?: string; gameId?: string }>();
   const router = useRouter();
-  
-  const id = (params?.id ?? "").toString();
 
-  const game = useMemo(() => (id ? getGameById(id) : null), [id]);
+  const courseId = (params?.courseId ?? "").toString();
+  const gameId = (params?.gameId ?? "").toString();
+
+  const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
+  const course = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
+
+  const valid = !!game && !!course && game.courseId === courseId;
 
   const [session, setSession] = useState<LiveSession | null>(null);
-
-  // ✅ IMPORTANT: lecturer must display students from SOCKET, not localStorage
   const [students, setStudents] = useState<LiveStudent[]>([]);
 
   // create session once
   useEffect(() => {
-    if (!id) return;
-    const s = createLiveSession(id);
+    if (!valid) return;
+    const s = createLiveSession(gameId);
     setSession(s);
-  }, [id]);
+  }, [valid, gameId]);
 
   // connect + join room + receive students:update
   useEffect(() => {
@@ -42,27 +45,23 @@ export default function LivePage() {
     fetch("/api/socket").catch(() => {});
     const pin = session.pin;
 
-    // join as lecturer (student optional)
     socket.emit("join", { pin });
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
       setStudents(Array.isArray(list) ? list : []);
     };
 
-    // if students joined before lecturer opened page, they will be pushed after join
     socket.on("students:update", onStudentsUpdate);
 
     return () => {
       socket.off("students:update", onStudentsUpdate);
-      // don't disconnect global socket
     };
   }, [session?.pin]);
 
-  if (!id || !game || !session) return null;
+  if (!valid || !game || !course || !session) return null;
 
   const pin = session.pin;
 
-  // Use NEXT_PUBLIC_BASE_URL (set on Vercel) or fallback to window.location.origin
   const baseUrl =
     (process.env.NEXT_PUBLIC_BASE_URL as string | undefined) ??
     (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
@@ -75,17 +74,18 @@ export default function LivePage() {
     if (!hasStudents) return;
 
     fetch("/api/socket").catch(() => {});
-    socket.emit("start", { pin }); // ✅ triggers "game:start" to students
+    socket.emit("start", { pin });
 
-    // ✅ pass pin to question page
-    router.push(`/game/${id}/live/question?pin=${encodeURIComponent(pin)}`);
+    router.push(
+      `/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(pin)}`
+    );
   }
 
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
       <GameSubNavbar
-        title={`${game.quizNumber} — ${game.courseCode} (${game.section}) ${game.semester}`}
+        title={`${game.quizNumber} — ${course.courseCode} (${course.section}) ${course.semester}`}
       />
 
       <div className="flex px-10 py-10 gap-20">
@@ -118,7 +118,11 @@ export default function LivePage() {
           onClick={handleStart}
           disabled={!hasStudents}
           className={`px-10 py-3 rounded-full text-lg transition
-            ${hasStudents ? "bg-[#3B8ED6] text-white hover:bg-[#327bbd]" : "bg-gray-300 text-gray-500 cursor-not-allowed"}`}
+            ${
+              hasStudents
+                ? "bg-[#3B8ED6] text-white hover:bg-[#327bbd]"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
         >
           Start
         </button>
