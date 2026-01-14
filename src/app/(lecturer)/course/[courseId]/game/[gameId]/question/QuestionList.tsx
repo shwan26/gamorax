@@ -27,9 +27,9 @@ export default function QuestionList({
   return (
     <div className="w-32 px-6 overflow-y-auto">
       <div className="flex flex-col gap-4">
-        {questions.map((_, i) => (
+        {questions.map((q, i) => (
           <div
-            key={questions[i].id}
+            key={q.id}
             draggable
             onDragStart={() => setDragIndex(i)}
             onDragOver={(e) => e.preventDefault()}

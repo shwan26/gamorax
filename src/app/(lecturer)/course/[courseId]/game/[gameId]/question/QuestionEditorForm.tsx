@@ -68,39 +68,22 @@ export default function QuestionEditorForm({
       </div>
 
       {/* TIMER */}
-      <div className="mt-6 text-sm flex items-center gap-4">
-        <span className="font-medium">Timer:</span>
+      <div className="mt-6 text-sm flex items-center gap-3">
+        <span className="font-medium">Timer (seconds):</span>
 
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            checked={question.timeMode === "default"}
-            onChange={() =>
-              onUpdate({
-                timeMode: "default",
-                time: gameDefaultTime,
-              })
-            }
-          />
-          Default ({gameDefaultTime}s)
-        </label>
-
-        <label className="flex items-center gap-2">
-          <input
-            type="radio"
-            checked={question.timeMode === "specific"}
-            onChange={() => onUpdate({ timeMode: "specific" })}
-          />
-          Specific
-          <input
-            type="number"
-            disabled={question.timeMode === "default"}
-            value={question.time}
-            onChange={(e) => onUpdate({ time: Number(e.target.value) })}
-            className="border rounded-md w-20 px-2 py-1"
-          />
-          sec
-        </label>
+        <input
+          type="number"
+          min={1}
+          value={question.time ?? gameDefaultTime}
+          onChange={(e) => {
+            const value = Number(e.target.value);
+            onUpdate({
+              timeMode: "specific",              // ✅ ensure edits apply
+              time: Number.isFinite(value) ? value : gameDefaultTime,
+            });
+          }}
+          className="border rounded-md w-24 px-2 py-1"
+        />
       </div>
     </div>
   );

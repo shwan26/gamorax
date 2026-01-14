@@ -33,6 +33,8 @@ export type LiveSession = {
 
   startedAt?: string;
   endedAt?: string;
+
+  lastQuestionAt?: string; // save data with last question timestamp
 };
 
 const STORAGE_KEY = "gamorax_live_sessions";
@@ -56,6 +58,8 @@ function normalizeSession(s: any): LiveSession {
 
     startedAt: s?.startedAt,
     endedAt: s?.endedAt,
+
+    lastQuestionAt: s?.lastQuestionAt, // ✅ save with last question timestamp
   };
 }
 
@@ -184,6 +188,11 @@ export function submitAnswer(
   });
 }
 
+export function setLastQuestionAt(pin: string, iso = new Date().toISOString()) {
+  updateSession(pin, (s) => ({ ...s, lastQuestionAt: iso }));
+}
+
+
 /* ---------- REVEAL (CALC POINTS) ---------- */
 export function revealAndScoreQuestion(params: {
   pin: string;
@@ -246,4 +255,48 @@ export function nextOrFinal(params: {
       questionIndex: nextIndex,
     };
   });
+}
+
+/* ---------- REPORT STORAGE ---------- */
+export type LiveReportRow = {
+  rank: number;
+  studentId: string;
+  name: string;
+  score: number;     // correct answers count
+  points: number;
+};
+
+export type LiveReport = {
+  id: string;
+  gameId: string;
+  pin: string;
+  totalQuestions: number;
+  startedAt?: string;           // ISO
+  lastQuestionAt: string;       // ISO (timestamp of last live question)
+  savedAt: string;              // ISO (when report saved)
+  rows: LiveReportRow[];
+};
+
+const REPORT_KEY = "gamorax_live_reports";
+
+function getAllReports(): LiveReport[] {
+  if (typeof window === "undefined") return [];
+  const data = localStorage.getItem(REPORT_KEY);
+  const raw = data ? JSON.parse(data) : [];
+  return Array.isArray(raw) ? raw : [];
+}
+
+// store ONLY latest report per game (simple)
+export function saveLiveReport(report: LiveReport) {
+  const all = getAllReports().filter((r) => r.gameId !== report.gameId);
+  all.push(report);
+  localStorage.setItem(REPORT_KEY, JSON.stringify(all));
+}
+
+export function getLatestLiveReportByGame(gameId: string): LiveReport | null {
+  const all = getAllReports().filter((r) => r.gameId === gameId);
+  if (all.length === 0) return null;
+  // latest by savedAt
+  all.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+  return all[0] ?? null;
 }

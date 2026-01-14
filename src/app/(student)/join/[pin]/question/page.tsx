@@ -7,26 +7,23 @@ import localFont from "next/font/local";
 
 import Navbar from "@/src/components/Navbar";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
+import { getCourseById, type Course } from "@/src/lib/courseStorage";
 import { getLiveByPin } from "@/src/lib/liveStorage";
 import type { LiveStudent } from "@/src/lib/liveStorage";
 import { socket } from "@/src/lib/socket";
 
 const caesar = localFont({
-  src: "../../../../../../public/fonts/CaesarDressing-Regular.ttf",
+  src: "../../../../../../public/fonts/CaesarDressing-Regular.ttf", 
 });
 
 type QuestionShowPayload = {
-  questionIndex?: number; // 0-based
-  number?: number; // 1-based
+  questionIndex?: number;
+  number?: number;
   total?: number;
   text?: string;
   answers?: string[];
-
-  // ✅ timer sync (recommended)
-  startAt?: number; // ms timestamp
-  durationSec?: number; // seconds
-
-  // optional (only if lecturer includes it)
+  startAt?: number;
+  durationSec?: number;
   correctIndex?: number;
 };
 
@@ -49,6 +46,7 @@ export default function StudentQuestionPage() {
   const pin = (params?.pin ?? "").toString();
 
   const [game, setGame] = useState<Game | null>(null);
+  const [course, setCourse] = useState<Course | null>(null);
   const [student, setStudent] = useState<LiveStudent | null>(null);
 
   const [phase, setPhase] = useState<"waiting" | "question" | "result" | "final">(
@@ -56,8 +54,8 @@ export default function StudentQuestionPage() {
   );
 
   const [question, setQuestion] = useState<{
-    questionIndex: number; // 0-based
-    number: number; // 1-based
+    questionIndex: number;
+    number: number;
     total: number;
     text: string;
     answers: string[];
@@ -70,7 +68,6 @@ export default function StudentQuestionPage() {
   }, [selectedIndex]);
 
   const answeredQIndexRef = useRef<number | null>(null);
-
   const currentQIndexRef = useRef<number>(0);
   const correctIndexRef = useRef<number | null>(null);
   const lastScoredQIndexRef = useRef<number>(-1);
@@ -83,13 +80,13 @@ export default function StudentQuestionPage() {
     null
   );
 
-  // ✅ timer state (ONE bar)
-  const [startAt, setStartAt] = useState<number | null>(null); // ms
+  // timer state
+  const [startAt, setStartAt] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number>(20);
   const [now, setNow] = useState<number>(() => Date.now());
-  const questionStartAtRef = useRef<number | null>(null); // used for timeUsed
+  const questionStartAtRef = useRef<number | null>(null);
 
-  // Load student
+  // Load student + live + game + course
   useEffect(() => {
     if (!pin) return;
 
@@ -112,16 +109,28 @@ export default function StudentQuestionPage() {
     }
 
     const live = getLiveByPin(pin);
-    if (live?.gameId) setGame(getGameById(live.gameId));
+    if (live?.gameId) {
+      const g = getGameById(live.gameId);
+      setGame(g);
+
+      if (g?.courseId) {
+        const c = getCourseById(g.courseId);
+        setCourse(c);
+      } else {
+        setCourse(null);
+      }
+    }
   }, [pin, router]);
 
   const titleText = useMemo(() => {
-    if (game)
-      return `${game.quizNumber} - ${game.courseCode} (${game.section}) ${game.semester}`;
+    if (game && course) {
+      return `${game.quizNumber} - ${course.courseCode} (${course.section}) ${course.semester}`;
+    }
+    if (game) return `${game.quizNumber}`;
     return pin ? `Quiz Session - ${pin}` : "Quiz Session";
-  }, [game, pin]);
+  }, [game, course, pin]);
 
-  // Timer tick (only while answering)
+  // Timer tick
   useEffect(() => {
     if (phase !== "question") return;
     if (!startAt) return;
@@ -130,7 +139,7 @@ export default function StudentQuestionPage() {
     return () => window.clearInterval(t);
   }, [phase, startAt]);
 
-  // Socket listeners (shared socket)
+  // Socket listeners
   useEffect(() => {
     if (!pin || !student) return;
 
@@ -151,31 +160,31 @@ export default function StudentQuestionPage() {
 
       currentQIndexRef.current = qIndex;
 
-      // (optional) store correctIndex if included
       if (typeof q?.correctIndex === "number") correctIndexRef.current = q.correctIndex;
 
-      // ✅ timer sync from lecturer (fallback to local)
       const sAt = typeof q?.startAt === "number" ? q.startAt : Date.now();
-      const dur = Number.isFinite(Number(q?.durationSec)) ? Math.max(1, Number(q.durationSec)) : 20;
+      const dur = Number.isFinite(Number(q?.durationSec))
+        ? Math.max(1, Number(q.durationSec))
+        : 20;
 
       setStartAt(sAt);
       setDurationSec(dur);
       setNow(Date.now());
       questionStartAtRef.current = sAt;
 
-      // reset per-question state
       setQuestion({ questionIndex: qIndex, number, total, text, answers });
       setPhase("question");
+
       setSelectedIndex(null);
       selectedIndexRef.current = null;
       answeredQIndexRef.current = null;
+
       setLastWasCorrect(null);
     };
 
     const onReveal = (p?: { questionIndex?: number; correctIndex?: number }) => {
       setPhase("result");
 
-      // ✅ stop timer bar updates
       setStartAt(null);
       questionStartAtRef.current = null;
 
@@ -212,7 +221,6 @@ export default function StudentQuestionPage() {
       answeredQIndexRef.current = null;
       setLastWasCorrect(null);
 
-      // ✅ stop timer
       setStartAt(null);
       questionStartAtRef.current = null;
     };
@@ -227,7 +235,6 @@ export default function StudentQuestionPage() {
 
       if (!payload) return;
 
-      // ✅ stop timer
       setStartAt(null);
       questionStartAtRef.current = null;
 
@@ -255,9 +262,10 @@ export default function StudentQuestionPage() {
     if (!student || !question) return;
     if (phase !== "question") return;
 
+    // one answer only
     if (selectedIndexRef.current !== null) return;
 
-    // block if timer is already ended locally (optional safety)
+    // optional: block if time is already over locally
     if (startAt) {
       const elapsed = Date.now() - startAt;
       if (elapsed >= durationSec * 1000) return;
@@ -283,10 +291,11 @@ export default function StudentQuestionPage() {
 
   const disableButtons = phase !== "question" || selectedIndex !== null;
 
-  // ✅ timer UI values (dark blue shrinks)
+  // timer UI values
   const elapsed = startAt ? Math.max(0, now - startAt) : 0;
   const limit = durationSec * 1000;
-  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
+  const pctRemaining =
+    startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
   const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
 
   const downloadQA = () => {
@@ -361,20 +370,17 @@ export default function StudentQuestionPage() {
             Question {question.number} of {question.total}
           </p>
 
-          {/* ✅ ONE timer line (dark blue shrinking) */}
           <div className="w-full max-w-3xl mb-4">
             <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
               <div
                 className="h-full transition-[width] duration-100"
                 style={{
                   width: `${pctRemaining}%`,
-                  backgroundColor: "#034B6B", // dark blue
+                  backgroundColor: "#034B6B",
                 }}
               />
             </div>
-            <div className="mt-1 text-xs text-gray-600 text-center">
-              {remainingSec}s
-            </div>
+            <div className="mt-1 text-xs text-gray-600 text-center">{remainingSec}s</div>
           </div>
 
           <p className="text-sm md:text-base text-gray-700 text-center mb-8 max-w-3xl">
@@ -402,7 +408,11 @@ export default function StudentQuestionPage() {
                 }`}
                 type="button"
               >
-                <span className={`${caesar.className} text-4xl md:text-5xl ${idx === 3 ? "text-black" : "text-white"}`}>
+                <span
+                  className={`${caesar.className} text-4xl md:text-5xl ${
+                    idx === 3 ? "text-black" : "text-white"
+                  }`}
+                >
                   {label}
                 </span>
               </button>
@@ -415,8 +425,12 @@ export default function StudentQuestionPage() {
         <div className="px-4 pt-10 flex flex-col items-center">
           <p className="text-lg font-semibold">Result</p>
 
-          {lastWasCorrect === true && <p className="mt-2 text-green-600 font-semibold">Correct!</p>}
-          {lastWasCorrect === false && <p className="mt-2 text-red-600 font-semibold">Incorrect</p>}
+          {lastWasCorrect === true && (
+            <p className="mt-2 text-green-600 font-semibold">Correct!</p>
+          )}
+          {lastWasCorrect === false && (
+            <p className="mt-2 text-red-600 font-semibold">Incorrect</p>
+          )}
           {lastWasCorrect === null && <p className="mt-2 text-gray-600">Waiting…</p>}
 
           <p className="text-sm text-gray-600 mt-4">Your score:</p>

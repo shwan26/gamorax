@@ -1,79 +1,55 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { getLatestLiveReportByGame, type LiveReportRow } from "@/src/lib/liveStorage";
+import { getQuestions } from "@/src/lib/questionStorage";
 
 type SortKey = "rank" | "studentId" | "name" | "score" | "points";
 type SortDir = "asc" | "desc";
 
-type ResultRow = {
-  studentId: string;
-  name: string;
-  score: number;
-  timeUsed: number;
-  points: number;
-  rank: number;
-};
+function fmt(iso?: string) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
 
 export default function ReportPage() {
-  /* MOCK DATA (later from backend) */
-  const session = {
-    maxTime: 600,
-    startedAt: "10:00",
-    endedAt: "10:15",
-    totalQuestions: 20,
-    results: [
-      { studentId: "6530187", name: "Shwan Myat Nay Chi", score: 20, timeUsed: 300 },
-      { studentId: "6530181", name: "Naw Tulip", score: 20, timeUsed: 340 },
-      { studentId: "6530143", name: "Min Thuka", score: 15, timeUsed: 420 },
-    ],
-  };
+  const params = useParams<{ courseId?: string; gameId?: string }>();
+  const gameId = (params?.gameId ?? "").toString();
+
+  const report = useMemo(
+    () => (gameId ? getLatestLiveReportByGame(gameId) : null),
+    [gameId]
+  );
+
+  const totalQuestions = useMemo(
+    () => (gameId ? getQuestions(gameId).length : 0),
+    [gameId]
+  );
 
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  /* ---------- CALCULATE POINTS + RANK ---------- */
-  const rankedRows: ResultRow[] = useMemo(() => {
-    const withPoints = session.results.map((r) => {
-      const base = r.score * 100;
-      const timeBonus = Math.max(0, session.maxTime - r.timeUsed);
-      return { ...r, points: base + timeBonus };
-    });
-
-    const sortedByPoints = [...withPoints].sort(
-      (a, b) => b.points - a.points
-    );
-
-    return sortedByPoints.map((r, i) => ({
-      ...r,
-      rank: i + 1,
-    }));
-  }, [session.results, session.maxTime]);
-
-  /* ---------- DISPLAY SORT (RANK FIXED) ---------- */
   const displayRows = useMemo(() => {
-    const rows = [...rankedRows];
-    rows.sort((a, b) => {
+    const rows = [...(report?.rows ?? [])];
+
+    rows.sort((a: any, b: any) => {
       const va = a[sortKey];
       const vb = b[sortKey];
 
       if (typeof va === "string" && typeof vb === "string") {
-        return sortDir === "asc"
-          ? va.localeCompare(vb)
-          : vb.localeCompare(va);
+        return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
       }
-
-      return sortDir === "asc"
-        ? Number(va) - Number(vb)
-        : Number(vb) - Number(va);
+      return sortDir === "asc" ? Number(va) - Number(vb) : Number(vb) - Number(va);
     });
 
     return rows;
-  }, [rankedRows, sortKey, sortDir]);
+  }, [report, sortKey, sortDir]);
 
   function onSort(key: SortKey) {
-    if (key === sortKey) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
       setSortKey(key);
       setSortDir("asc");
     }
@@ -91,27 +67,20 @@ export default function ReportPage() {
     return null;
   }
 
-  /* ---------- DOWNLOAD CSV ---------- */
   function downloadCSV() {
-    const header = [
-      "Rank",
-      "Student ID",
-      "Name",
-      "Score",
-      "Points",
-    ];
+    if (!report) return;
 
-    const rows = rankedRows.map((r) => [
+    const header = ["Rank", "Student ID", "Name", "Score", "Points"];
+
+    const rows = report.rows.map((r) => [
       r.rank,
       r.studentId,
       r.name,
-      `${r.score}/${session.totalQuestions}`,
+      `${r.score}/${report.totalQuestions}`,
       r.points,
     ]);
 
-    const csv =
-      [header, ...rows].map((r) => r.join(",")).join("\n");
-
+    const csv = [header, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
 
@@ -122,13 +91,7 @@ export default function ReportPage() {
     URL.revokeObjectURL(url);
   }
 
-  const Th = ({
-    label,
-    sort,
-  }: {
-    label: string;
-    sort: SortKey;
-  }) => (
+  const Th = ({ label, sort }: { label: string; sort: SortKey }) => (
     <th
       onClick={() => onSort(sort)}
       className="p-2 cursor-pointer select-none hover:bg-blue-100"
@@ -137,6 +100,9 @@ export default function ReportPage() {
       <span className="text-xs">{sortIcon(sort)}</span>
     </th>
   );
+
+  if (!gameId) return <div className="p-6">Missing game id.</div>;
+  if (!report) return <div className="p-6">No report found yet.</div>;
 
   return (
     <>
@@ -150,9 +116,11 @@ export default function ReportPage() {
         </button>
       </div>
 
-      <p className="text-sm text-gray-600 mb-4">
-        Live session: {session.startedAt} – {session.endedAt}
-      </p>
+      <div className="text-sm text-gray-600 mb-4 space-y-1">
+        <div>Saved at: {fmt(report.savedAt)}</div>
+        <div>Last question time: {fmt(report.lastQuestionAt)}</div>
+        <div>Total questions: {report.totalQuestions || totalQuestions}</div>
+      </div>
 
       <table className="w-full border">
         <thead className="bg-blue-50">
@@ -174,11 +142,9 @@ export default function ReportPage() {
               <td className="p-2">{r.studentId}</td>
               <td className="p-2">{r.name}</td>
               <td className="p-2">
-                {r.score}/{session.totalQuestions}
+                {r.score}/{report.totalQuestions || totalQuestions}
               </td>
-              <td className="p-2 font-semibold text-blue-700">
-                {r.points}
-              </td>
+              <td className="p-2 font-semibold text-blue-700">{r.points}</td>
             </tr>
           ))}
         </tbody>

@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
+
+import { getCourseById } from "@/src/lib/courseStorage";
 import { getGameById } from "@/src/lib/gameStorage";
 import { Question, getQuestions, saveQuestions } from "@/src/lib/questionStorage";
 
@@ -32,10 +35,15 @@ function createBlankQuestion(defaultTime: number): Question {
 }
 
 export default function QuestionPage() {
-  const params = useParams<{ id?: string }>();
-  const id = (params?.id ?? "").toString();
+  const params = useParams<{ courseId?: string; gameId?: string }>();
 
-  const game = useMemo(() => (id ? getGameById(id) : null), [id]);
+  const courseId = (params?.courseId ?? "").toString();
+  const gameId = (params?.gameId ?? "").toString();
+
+  const course = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
+  const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
+
+  const valid = !!course && !!game && game.courseId === courseId;
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -47,9 +55,9 @@ export default function QuestionPage() {
 
   // Load
   useEffect(() => {
-    if (!id || !game) return;
+    if (!valid || !game) return;
 
-    const stored = getQuestions(id);
+    const stored = getQuestions(gameId);
     if (stored.length > 0) {
       setQuestions(stored);
       setActiveIndex(0);
@@ -58,24 +66,21 @@ export default function QuestionPage() {
       setQuestions([first]);
       setActiveIndex(0);
     }
-  }, [id, game]);
+  }, [valid, gameId, game]);
 
   // Auto-save
   useEffect(() => {
-    if (!id) return;
+    if (!valid) return;
     if (questions.length === 0) return;
-    saveQuestions(id, questions);
-  }, [id, questions]);
+    saveQuestions(gameId, questions);
+  }, [valid, gameId, questions]);
 
   const activeQuestion = questions[activeIndex];
 
   function addQuestion() {
     if (!game) return;
-    setQuestions((prev) => {
-      const next = [...prev, createBlankQuestion(game.timer.defaultTime)];
-      return next;
-    });
-    setActiveIndex(questions.length); // next index
+    setQuestions((prev) => [...prev, createBlankQuestion(game.timer.defaultTime)]);
+    setActiveIndex(questions.length);
   }
 
   function duplicateQuestion(index: number) {
@@ -84,7 +89,7 @@ export default function QuestionPage() {
       const duplicated: Question = {
         ...copy[index],
         id: crypto.randomUUID(),
-        answers: copy[index].answers.map((a) => ({ ...a })), // deep copy
+        answers: copy[index].answers.map((a) => ({ ...a })),
       };
       copy.splice(index + 1, 0, duplicated);
       return copy;
@@ -137,28 +142,23 @@ export default function QuestionPage() {
     });
 
     setActiveIndex((curr) => {
-      // if current is the dragged item, it becomes targetIndex
       if (curr === dragIndex) return targetIndex;
-
-      // if dragged moved from before to after current, current shifts left
       if (dragIndex < curr && targetIndex >= curr) return curr - 1;
-
-      // if dragged moved from after to before current, current shifts right
       if (dragIndex > curr && targetIndex <= curr) return curr + 1;
-
       return curr;
     });
 
     setDragIndex(null);
   }
 
-  if (!id || !game || !activeQuestion) return null;
+  if (!valid || !course || !game || !activeQuestion) return null;
 
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
+
       <GameSubNavbar
-        title={`${game.quizNumber} — ${game.courseCode} (${game.section}) ${game.semester}`}
+        title={`${game.quizNumber} — ${course.courseCode} (${course.section}) ${course.semester}`}
       />
 
       <div className="flex mt-6 h-[calc(100vh-160px)]">
@@ -182,7 +182,7 @@ export default function QuestionPage() {
         <div className="flex-1 px-6 overflow-y-auto">
           <QuestionEditorForm
             question={activeQuestion}
-            gameDefaultTime={game.timer.defaultTime}
+            gameDefaultTime={game.timer.defaultTime} // always 60 now
             onUpdate={updateActiveQuestion}
           />
         </div>
