@@ -1,3 +1,5 @@
+import { Course } from "./courseStorage";
+
 export type GameTimer = {
   mode: "automatic" | "manual";
   defaultTime: number;
@@ -8,6 +10,10 @@ export type Game = {
   courseId: string;
   quizNumber: string;
   timer: GameTimer;
+
+  // ✅ new flags
+  shuffleQuestions: boolean;
+  shuffleAnswers: boolean;
 };
 
 const STORAGE_KEY = "gamorax_games";
@@ -25,14 +31,6 @@ type LegacyGame = {
 
 const COURSE_KEY = "gamorax_courses";
 
-type Course = {
-  id: string;
-  courseCode: string;
-  courseName: string;
-  section: string;
-  semester: string;
-};
-
 function getAllGamesRaw(): any[] {
   if (typeof window === "undefined") return [];
   const data = localStorage.getItem(STORAGE_KEY);
@@ -43,10 +41,21 @@ function saveAllGames(games: Game[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(games));
 }
 
+// ✅ normalize new fields even if old items exist
+function normalizeGame(g: any): Game {
+  return {
+    id: String(g?.id ?? crypto.randomUUID()),
+    courseId: String(g?.courseId ?? ""),
+    quizNumber: String(g?.quizNumber ?? ""),
+    timer: g?.timer ?? { mode: "automatic", defaultTime: 60 },
+    shuffleQuestions: !!g?.shuffleQuestions,
+    shuffleAnswers: !!g?.shuffleAnswers,
+  };
+}
+
 /**
  * One-time migration:
- * If localStorage contains legacy games (with courseCode, etc),
- * create courses and convert games to { courseId, quizNumber, timer }.
+ * legacy games -> create courses -> new games
  */
 function migrateLegacyIfNeeded() {
   if (typeof window === "undefined") return;
@@ -54,24 +63,21 @@ function migrateLegacyIfNeeded() {
   const raw = getAllGamesRaw();
   if (raw.length === 0) return;
 
-  // If already new format, do nothing
   const alreadyNew = raw.every((g) => typeof g?.courseId === "string");
   if (alreadyNew) return;
 
-  // If looks like legacy, migrate
   const looksLegacy = raw.some((g) => typeof g?.courseCode === "string");
   if (!looksLegacy) return;
 
   const legacyGames = raw as LegacyGame[];
 
-  // Load existing courses (if any)
   const coursesData = localStorage.getItem(COURSE_KEY);
   const courses: Course[] = coursesData ? JSON.parse(coursesData) : [];
 
   const courseKey = (c: Pick<Course, "courseCode" | "courseName" | "section" | "semester">) =>
     `${c.courseCode}||${c.courseName}||${c.section}||${c.semester}`;
 
-  const map = new Map<string, string>(); // courseKey -> courseId
+  const map = new Map<string, string>();
   for (const c of courses) map.set(courseKey(c), c.id);
 
   const newGames: Game[] = legacyGames.map((lg) => {
@@ -94,7 +100,11 @@ function migrateLegacyIfNeeded() {
       id: lg.id,
       courseId,
       quizNumber: lg.quizNumber,
-      timer: lg.timer,
+      timer: lg.timer ?? { mode: "automatic", defaultTime: 60 },
+
+      // ✅ defaults
+      shuffleQuestions: false,
+      shuffleAnswers: false,
     };
   });
 
@@ -108,7 +118,7 @@ function migrateLegacyIfNeeded() {
 
 export function getGames(): Game[] {
   migrateLegacyIfNeeded();
-  return getAllGamesRaw() as Game[];
+  return getAllGamesRaw().map(normalizeGame);
 }
 
 export function getGamesByCourseId(courseId: string): Game[] {
@@ -135,7 +145,7 @@ export function saveGame(game: Game) {
 
 export function updateGame(
   id: string,
-  data: Partial<Omit<Game, "id" | "courseId" | "timer">>
+  data: Partial<Pick<Game, "quizNumber" | "shuffleQuestions" | "shuffleAnswers">>
 ) {
   const games = getGames();
   const index = games.findIndex((g) => g.id === id);

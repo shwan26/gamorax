@@ -19,6 +19,12 @@ export default function QuestionEditorForm({
     reader.readAsDataURL(file);
   }
 
+  function handleDeleteQuestionImage() {
+    // Setting to null makes it explicit that we're deleting it.
+    // Your storage update should remove/clear the field accordingly.
+    onUpdate({ image: null });
+  }
+
   return (
     <div className="pb-12">
       {/* QUESTION TEXT */}
@@ -29,16 +35,33 @@ export default function QuestionEditorForm({
         className="w-full border rounded-md p-3 text-center text-lg mb-4"
       />
 
-      {/* QUESTION IMAGE */}
+      {/* QUESTION IMAGE + DELETE BUTTON */}
       {question.image && (
-        <img src={question.image} className="mx-auto mb-4 max-h-60 rounded-md" />
+        <div className="relative mx-auto mb-4 w-fit">
+          <img
+            src={question.image}
+            className="max-h-60 rounded-md"
+            alt="Question"
+          />
+
+          <button
+            type="button"
+            onClick={handleDeleteQuestionImage}
+            className="absolute top-2 right-2 rounded-full bg-black/70 text-white w-8 h-8 flex items-center justify-center hover:bg-black"
+            aria-label="Delete question image"
+            title="Delete image"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       <label className="block border rounded-md p-3 text-center text-gray-500 cursor-pointer mb-6">
-        + Add Question Image (optional)
+        {question.image ? "Change Question Image" : "+ Add Question Image (optional)"}
         <input
           type="file"
           hidden
+          accept="image/*"
           onChange={(e) => handleQuestionImage(e.target.files?.[0])}
         />
       </label>
@@ -78,7 +101,7 @@ export default function QuestionEditorForm({
           onChange={(e) => {
             const value = Number(e.target.value);
             onUpdate({
-              timeMode: "specific",              // ✅ ensure edits apply
+              timeMode: "specific",
               time: Number.isFinite(value) ? value : gameDefaultTime,
             });
           }}

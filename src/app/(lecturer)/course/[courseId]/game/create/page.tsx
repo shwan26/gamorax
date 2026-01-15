@@ -26,8 +26,11 @@ export default function CreateGamePage() {
       id,
       courseId,
       quizNumber,
-      timer: { mode: "automatic", defaultTime: 60 }, // always 60 seconds
+      timer: { mode: "automatic", defaultTime: 60 },
+      shuffleQuestions: false,
+      shuffleAnswers: false,
     });
+
 
     router.push(`/course/${courseId}/game/${id}/question`);
   }

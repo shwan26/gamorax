@@ -449,7 +449,7 @@ export default function StudentQuestionPage() {
           <p className={`${caesar.className} text-6xl mt-4`}>
             {score}/{finalDenom}
           </p>
-
+{/* 
           <button
             onClick={downloadQA}
             disabled={!downloadPayload}
@@ -459,9 +459,11 @@ export default function StudentQuestionPage() {
             type="button"
           >
             Download questions and answers!
-          </button>
+          </button> */}
         </div>
       )}
     </div>
+
+    
   );
 }

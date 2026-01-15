@@ -5,12 +5,8 @@ import { useParams } from "next/navigation";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import {
-  getLatestLiveReportByGame,
-  getLiveByPin,
-  type LiveSession,
-} from "@/src/lib/liveStorage";
-import { getQuestions, type Question } from "@/src/lib/questionStorage";
+import { getLatestLiveReportByGame } from "@/src/lib/liveStorage";
+import { getQuestions } from "@/src/lib/questionStorage";
 
 type SortKey = "rank" | "studentId" | "name" | "score" | "points";
 type SortDir = "asc" | "desc";
@@ -19,8 +15,8 @@ type Row = {
   rank: number;
   studentId: string;
   name: string;
-  score: number; // correct count
-  points: number;
+  score: number; // correct count (from live)
+  points: number; // points (from live)
 };
 
 function fmt(iso?: string) {
@@ -29,14 +25,10 @@ function fmt(iso?: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
-function correctIndexOf(q: Question): number {
-  const idx = q.answers.findIndex((a) => a.correct);
-  return idx >= 0 ? idx : 0;
-}
-
-function safeMaxTime(q: Question, fallback = 60) {
-  const t = Number(q?.time);
-  return Number.isFinite(t) && t > 0 ? Math.round(t) : fallback;
+function escapeCsv(v: any) {
+  const s = String(v ?? "");
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
 }
 
 export default function ReportPage() {
@@ -49,6 +41,7 @@ export default function ReportPage() {
   );
 
   const game = useMemo<Game | null>(() => (gameId ? getGameById(gameId) : null), [gameId]);
+
   const course = useMemo<Course | null>(() => {
     if (!game?.courseId) return null;
     return getCourseById(game.courseId);
@@ -56,77 +49,24 @@ export default function ReportPage() {
 
   const questions = useMemo(() => (gameId ? getQuestions(gameId) : []), [gameId]);
 
-  // attempt to get live session to compute time-based points
-  const session = useMemo<LiveSession | null>(() => {
-    if (!report?.pin) return null;
-    return getLiveByPin(report.pin); // NOTE: requires session still stored as active
-  }, [report?.pin]);
-
   const finishIso = report?.lastQuestionAt || report?.savedAt || "";
 
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  /**
-   * ✅ Recompute points from timeUsed:
-   * per correct question: (maxTime - timeUsed) * 10
-   */
-  const computedRows: Row[] = useMemo(() => {
+  // ✅ Use SAVED report as truth (these values must be written at finish time)
+  // Re-rank defensively by points/score in case old rank was wrong.
+  const rankedRows: Row[] = useMemo(() => {
     if (!report) return [];
 
-    // If we don't have session answers, fallback to stored rows
-    if (!session?.answersByQuestion || questions.length === 0) {
-      const fallback = (report.rows ?? []).map((r) => ({
-        rank: r.rank,
-        studentId: r.studentId,
-        name: r.name,
-        score: r.score,
-        points: r.points,
-      }));
+    const rows: Row[] = (report.rows ?? []).map((r) => ({
+      rank: 0,
+      studentId: String(r.studentId ?? ""),
+      name: String(r.name ?? ""),
+      score: Number(r.score ?? 0),
+      points: Number(r.points ?? 0),
+    }));
 
-      // keep stable ranking by points desc if needed
-      return [...fallback].sort((a, b) => b.points - a.points).map((r, i) => ({ ...r, rank: i + 1 }));
-    }
-
-    const qMaxTimes = questions.map((q) => safeMaxTime(q, 60));
-    const qCorrect = questions.map((q) => correctIndexOf(q));
-
-    const baseStudents = report.rows ?? [];
-
-    const rows: Row[] = baseStudents.map((s) => {
-      let score = 0;
-      let points = 0;
-
-      for (let qi = 0; qi < questions.length; qi++) {
-        const answers = session.answersByQuestion?.[qi] ?? [];
-        const a = answers.find((x) => x.studentId === s.studentId);
-
-        if (!a) continue;
-
-        const maxT = qMaxTimes[qi] ?? 60;
-        const correctIdx = qCorrect[qi] ?? 0;
-
-        const used = Math.max(0, Math.round(Number(a.timeUsed ?? 0)));
-        const isCorrect = Number(a.answerIndex) === correctIdx;
-
-        if (!isCorrect) continue;
-
-        score += 1;
-
-        const timeLeft = Math.max(0, maxT - used);
-        points += timeLeft * 10;
-      }
-
-      return {
-        rank: 0, // assigned after sorting
-        studentId: s.studentId,
-        name: s.name,
-        score,
-        points,
-      };
-    });
-
-    // Rank by points desc, then score desc, then studentId asc
     rows.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
       if (b.score !== a.score) return b.score - a.score;
@@ -134,11 +74,10 @@ export default function ReportPage() {
     });
 
     return rows.map((r, i) => ({ ...r, rank: i + 1 }));
-  }, [report, session, questions]);
+  }, [report]);
 
   const displayRows = useMemo(() => {
-    const rows = [...computedRows];
-
+    const rows = [...rankedRows];
     rows.sort((a: any, b: any) => {
       const va = a[sortKey];
       const vb = b[sortKey];
@@ -148,9 +87,8 @@ export default function ReportPage() {
       }
       return sortDir === "asc" ? Number(va) - Number(vb) : Number(vb) - Number(va);
     });
-
     return rows;
-  }, [computedRows, sortKey, sortDir]);
+  }, [rankedRows, sortKey, sortDir]);
 
   function onSort(key: SortKey) {
     if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -180,28 +118,28 @@ export default function ReportPage() {
     const section = course?.section ?? "";
     const semester = course?.semester ?? "";
     const quizTitle = game?.quizNumber ?? "";
+    const totalQ = questions.length || report.totalQuestions || 0;
 
     const meta: string[][] = [
       ["Report Type", "Quiz Report"],
       ["Finished At", finishIso ? fmt(finishIso) : "-"],
-      ["PIN", report.pin],
       ["Course Code", courseCode],
       ["Course Name", courseName],
       ["Section", section],
       ["Semester", semester],
       ["Quiz Title", quizTitle],
-      ["Total Questions", String(questions.length || report.totalQuestions || 0)],
-      ["Point Rule", "per correct question: (maxTime - timeUsed) * 10"],
+      ["Total Questions", String(totalQ)],
+      ["Point Rule", "server/live-calculated (see /api/socket)"],
       ["", ""],
     ];
 
     const header = ["Rank", "Student ID", "Name", "Score", "Points"];
 
-    const rows = computedRows.map((r) => [
+    const rows = rankedRows.map((r) => [
       String(r.rank),
       r.studentId,
       r.name,
-      `${r.score}/${questions.length || report.totalQuestions || 0}`,
+      `${r.score}/${totalQ}`,
       String(r.points),
     ]);
 
@@ -222,18 +160,8 @@ export default function ReportPage() {
     URL.revokeObjectURL(url);
   }
 
-  function escapeCsv(v: any) {
-    const s = String(v ?? "");
-    // quote if contains comma/newline/quote
-    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  }
-
   const Th = ({ label, sort }: { label: string; sort: SortKey }) => (
-    <th
-      onClick={() => onSort(sort)}
-      className="p-2 cursor-pointer select-none hover:bg-blue-100"
-    >
+    <th onClick={() => onSort(sort)} className="p-2 cursor-pointer select-none hover:bg-blue-100">
       {label}
       <span className="text-xs">{sortIcon(sort)}</span>
     </th>
@@ -241,6 +169,8 @@ export default function ReportPage() {
 
   if (!gameId) return <div className="p-6">Missing game id.</div>;
   if (!report) return <div className="p-6">No report found yet.</div>;
+
+  const totalQ = questions.length || report.totalQuestions || 0;
 
   return (
     <>
@@ -263,13 +193,7 @@ export default function ReportPage() {
             : "-"}
         </div>
         <div>Quiz: {game?.quizNumber ?? "-"}</div>
-        <div>Total questions: {questions.length || report.totalQuestions || 0}</div>
-
-        {!session && (
-          <div className="text-xs text-amber-700 mt-2">
-            Note: Live session not found, showing stored points instead of time-based recompute.
-          </div>
-        )}
+        <div>Total questions: {totalQ}</div>
       </div>
 
       <table className="w-full border">
@@ -292,7 +216,7 @@ export default function ReportPage() {
               <td className="p-2">{r.studentId}</td>
               <td className="p-2">{r.name}</td>
               <td className="p-2">
-                {r.score}/{questions.length || report.totalQuestions || 0}
+                {r.score}/{totalQ}
               </td>
               <td className="p-2 font-semibold text-blue-700">{r.points}</td>
             </tr>

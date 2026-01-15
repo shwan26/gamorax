@@ -3,17 +3,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import { getGameById } from "@/src/lib/gameStorage";
+import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById } from "@/src/lib/courseStorage";
 import { getQuestions, type Question } from "@/src/lib/questionStorage";
 import { socket } from "@/src/lib/socket";
 
-import { setLastQuestionAt, saveLiveReport, type LiveReportRow } from "@/src/lib/liveStorage";
+import {
+  setLastQuestionAt,
+  saveLiveReport,
+  getLiveByPin,
+  getCurrentLivePin,
+  type LiveReportRow,
+} from "@/src/lib/liveStorage";
+
 import QuestionView from "@/src/components/live/QuestionView";
 import AnswerReveal from "@/src/components/live/AnswerReveal";
 import FinalBoard from "@/src/components/live/FinalBoard";
 
-// ✅ your Question type: answers: { text, correct }[]
+/* -------------------------------- helpers -------------------------------- */
+
 function toCorrectIndex(q: Question | any): number | null {
   if (!q) return null;
 
@@ -42,51 +50,154 @@ function getDurationSec(q: Question | any): number {
   return 20;
 }
 
+function shuffleArray<T>(arr: T[]) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+type GameWithShuffle = Game & {
+  shuffleQuestions?: boolean;
+  shuffleAnswers?: boolean;
+};
+
+/* ------------------------------ page component ----------------------------- */
+
 export default function TeacherLiveFlowPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
   const searchParams = useSearchParams();
-  const pin = searchParams?.get("pin") ?? "";
 
-  const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
-  const course = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
+  // ✅ pin from URL OR fallback from localStorage
+  const pin = useMemo(() => {
+    const fromQuery = (searchParams?.get("pin") ?? "").trim();
+    if (fromQuery) return fromQuery;
+
+    if (!gameId) return "";
+    return (getCurrentLivePin(gameId) ?? "").trim();
+  }, [searchParams, gameId]);
+
+  const game = useMemo(() => {
+    const g = gameId ? getGameById(gameId) : null;
+    return (g as GameWithShuffle | null) ?? null;
+  }, [gameId]);
+
+  const course = useMemo(
+    () => (courseId ? getCourseById(courseId) : null),
+    [courseId]
+  );
 
   const valid = !!game && !!course && game.courseId === courseId;
 
+  const shuffleQuestions = Boolean(game?.shuffleQuestions);
+  const shuffleAnswers = Boolean(game?.shuffleAnswers);
+
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [liveOrder, setLiveOrder] = useState<number[]>([]);
 
   useEffect(() => {
     if (!valid) return;
     setQuestions(getQuestions(gameId));
   }, [valid, gameId]);
 
+  // ✅ stable LIVE question order (saved per pin + game)
+  useEffect(() => {
+    if (!pin || !gameId) return;
+    if (!questions.length) return;
+
+    const key = `gamorax_live_qorder_${pin}_${gameId}`;
+    const saved = sessionStorage.getItem(key);
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === questions.length) {
+          setLiveOrder(parsed);
+          return;
+        }
+      } catch {}
+    }
+
+    const base = [...Array(questions.length)].map((_, i) => i);
+    const next = shuffleQuestions ? shuffleArray(base) : base;
+
+    sessionStorage.setItem(key, JSON.stringify(next));
+    setLiveOrder(next);
+  }, [pin, gameId, questions.length, shuffleQuestions]);
+
   const [status, setStatus] = useState<"question" | "answer" | "final">("question");
-  const [qIndex, setQIndex] = useState(0);
+  const [qIndex, setQIndex] = useState(0); // LIVE index (0..n-1)
 
-  const q = questions[qIndex];
+  // base question index
+  const baseIndex = liveOrder[qIndex] ?? qIndex;
+  const baseQ = questions[baseIndex];
 
-  // live counts
+  // ✅ stable answer order per LIVE question index
+  const getOrCreateAnswerOrder = (liveQIndex: number) => {
+    if (!pin || !gameId) return [0, 1, 2, 3];
+
+    const key = `gamorax_live_aorder_${pin}_${gameId}_${liveQIndex}`;
+    const saved = sessionStorage.getItem(key);
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length === 4) return parsed as number[];
+      } catch {}
+    }
+
+    const base = [0, 1, 2, 3];
+    const order = shuffleAnswers ? shuffleArray(base) : base;
+
+    sessionStorage.setItem(key, JSON.stringify(order));
+    return order;
+  };
+
+  const answerOrder = useMemo(() => {
+    if (!baseQ) return [0, 1, 2, 3];
+    return getOrCreateAnswerOrder(qIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin, gameId, qIndex, shuffleAnswers, baseQ?.id]);
+
+  // ✅ display question (answers already in shuffled display order)
+  const q = useMemo(() => {
+    if (!baseQ) return null;
+
+    const orderedAnswers = answerOrder.map((i) => baseQ.answers?.[i]).filter(Boolean);
+    const originalCorrect = toCorrectIndex(baseQ);
+    const correctInDisplay =
+      typeof originalCorrect === "number" ? answerOrder.indexOf(originalCorrect) : -1;
+
+    const displayAnswers = orderedAnswers.map((a: any, idx: number) => ({
+      ...a,
+      correct: idx === correctInDisplay,
+    }));
+
+    return { ...baseQ, answers: displayAnswers };
+  }, [baseQ, answerOrder]);
+
+  // live counts (A/B/C/D in DISPLAY order)
   const [counts, setCounts] = useState<[number, number, number, number]>([0, 0, 0, 0]);
   const [totalAnswers, setTotalAnswers] = useState(0);
 
-  // ✅ timer state
+  // timer
   const [startAt, setStartAt] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number>(20);
   const [now, setNow] = useState<number>(() => Date.now());
 
-  // ✅ prevent multiple auto-reveals
   const autoRevealedRef = useRef(false);
 
-  // join room once (so lecturer can receive answer:count)
+  // ✅ join room
   useEffect(() => {
     if (!pin) return;
     fetch("/api/socket").catch(() => {});
     socket.emit("join", { pin });
-    return () => {
-      // do not disconnect shared socket
-    };
+    return () => {};
   }, [pin]);
 
   // listen answer counts
@@ -105,22 +216,25 @@ export default function TeacherLiveFlowPage() {
     };
 
     socket.on("answer:count", onCount);
+
     return () => {
-      socket.off("answer:count", onCount);
+      socket.off("answer:count", onCount); // ✅ returns socket, but inside block => cleanup returns void
     };
   }, [qIndex]);
 
-  // ✅ broadcast question whenever status === "question"
+
+  // ✅ broadcast question
   useEffect(() => {
     if (!pin || !q || status !== "question") return;
 
     fetch("/api/socket").catch(() => {});
 
-    const correctIndex = toCorrectIndex(q);
-    const answersText = Array.isArray(q.answers) ? q.answers.map((a) => a.text) : [];
-    const dur = getDurationSec(q);
+    // ✅ last question timestamp (when shown)
+    setLastQuestionAt(pin);
 
+    const dur = getDurationSec(q);
     const sAt = Date.now();
+
     setStartAt(sAt);
     setDurationSec(dur);
     setNow(Date.now());
@@ -128,6 +242,9 @@ export default function TeacherLiveFlowPage() {
 
     setCounts([0, 0, 0, 0]);
     setTotalAnswers(0);
+
+    const correctIndex = toCorrectIndex(q) ?? 0;
+    const answersText = q.answers.map((a) => a.text);
 
     socket.emit("question:show", {
       pin,
@@ -137,14 +254,14 @@ export default function TeacherLiveFlowPage() {
         total: questions.length,
         text: q.text ?? "",
         answers: answersText,
-        ...(typeof correctIndex === "number" ? { correctIndex } : {}),
+        ...(correctIndex >= 0 ? { correctIndex } : {}),
         startAt: sAt,
         durationSec: dur,
       },
     });
   }, [pin, q, qIndex, questions.length, status]);
 
-  // ✅ timer tick loop
+  // timer tick
   useEffect(() => {
     if (status !== "question") return;
     if (!startAt) return;
@@ -153,7 +270,7 @@ export default function TeacherLiveFlowPage() {
     return () => window.clearInterval(t);
   }, [status, startAt]);
 
-  // ✅ auto reveal when time is up
+  // auto reveal
   useEffect(() => {
     if (status !== "question") return;
     if (!q || !startAt) return;
@@ -171,11 +288,10 @@ export default function TeacherLiveFlowPage() {
   function showAnswer(isAuto = false) {
     if (!pin || !q) return;
 
-    const correctIndex = toCorrectIndex(q);
-    if (correctIndex === null) {
+    const correctIndex = q.answers.findIndex((a: any) => a?.correct === true);
+    if (correctIndex < 0) {
       console.error("Cannot detect correct answer for question:", q);
       if (!isAuto) alert("Correct answer not found. Check question format.");
-      setLastQuestionAt(pin);
       return;
     }
 
@@ -188,20 +304,18 @@ export default function TeacherLiveFlowPage() {
 
   const [ranked, setRanked] = useState<any[]>([]);
 
+  // leaderboard + final -> save report
   useEffect(() => {
     const onLb = (p: any) => {
       if (Array.isArray(p?.leaderboard)) setRanked(p.leaderboard);
     };
 
     const onFinal = (p: any) => {
-      // p.leaderboard expected: [{ studentId, name, correct, points, totalTime? }]
       const lb = Array.isArray(p?.leaderboard) ? p.leaderboard : [];
-
       if (lb.length > 0) setRanked(lb);
       setStatus("final");
 
-      // build rows
-      const rows: LiveReportRow[] = lb
+      const rows: LiveReportRow[] = [...lb]
         .sort((a: any, b: any) => Number(b.points ?? 0) - Number(a.points ?? 0))
         .map((r: any, idx: number) => ({
           rank: idx + 1,
@@ -211,19 +325,16 @@ export default function TeacherLiveFlowPage() {
           points: Number(r.points ?? 0),
         }));
 
-      // fallback timestamps
       const nowIso = new Date().toISOString();
-
-      // IMPORTANT: lastQuestionAt is saved during reveal, but if missing, use now
-      const lastQ = nowIso;
+      const live = pin ? getLiveByPin(pin) : null;
 
       saveLiveReport({
         id: crypto.randomUUID(),
         gameId,
-        pin,
+        pin: pin || "(missing)",
         totalQuestions: questions.length,
-        startedAt: undefined,       // if you want, you can store from session later
-        lastQuestionAt: lastQ,
+        startedAt: live?.startedAt,
+        lastQuestionAt: live?.lastQuestionAt ?? nowIso,
         savedAt: nowIso,
         rows,
       });
@@ -236,7 +347,7 @@ export default function TeacherLiveFlowPage() {
       socket.off("leaderboard:update", onLb);
       socket.off("final_results", onFinal);
     };
-  }, []);
+  }, [pin, gameId, questions.length]);
 
   function next() {
     if (!pin) return;
@@ -246,16 +357,28 @@ export default function TeacherLiveFlowPage() {
     autoRevealedRef.current = false;
 
     if (qIndex + 1 >= questions.length) {
-      const qa = questions.map((qq: any, idx: number) => {
-        const answers = Array.isArray(qq.answers) ? qq.answers.map((a: any) => a.text) : [];
-        const ci = toCorrectIndex(qq);
-        const correctChoice = (["A", "B", "C", "D"] as const)[ci ?? 0] ?? "A";
+      // QA in LIVE order + answer order per live question
+      const qa = [...Array(questions.length)].map((_, liveIdx) => {
+        const bIdx = liveOrder[liveIdx] ?? liveIdx;
+        const qq = questions[bIdx];
+
+        const order = getOrCreateAnswerOrder(liveIdx);
+        const answers = Array.isArray(qq?.answers)
+          ? order.map((i) => qq.answers[i]?.text ?? "")
+          : [];
+
+        const originalCorrect = toCorrectIndex(qq);
+        const correctIdxDisplay =
+          typeof originalCorrect === "number" ? order.indexOf(originalCorrect) : 0;
+
+        const correctChoice = (["A", "B", "C", "D"] as const)[correctIdxDisplay] ?? "A";
+
         return {
-          number: idx + 1,
-          question: qq.text ?? "",
+          number: liveIdx + 1,
+          question: qq?.text ?? "",
           answers,
           correctChoice,
-          correctAnswerText: typeof ci === "number" ? answers[ci] ?? "" : "",
+          correctAnswerText: answers[correctIdxDisplay] ?? "",
         };
       });
 
@@ -269,7 +392,22 @@ export default function TeacherLiveFlowPage() {
     socket.emit("next", { pin });
   }
 
+  // guards
   if (!valid || !game || !course) return null;
+
+  if (!pin) {
+    return (
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <div className="p-10">
+          <p className="font-semibold">PIN is missing.</p>
+          <p className="text-sm text-gray-600 mt-2">
+            Open Live page first (it creates a session), then click Start.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!q) {
     return (
@@ -280,14 +418,15 @@ export default function TeacherLiveFlowPage() {
     );
   }
 
+  // timer UI (FULL -> EMPTY)
   const elapsed = startAt ? Math.max(0, now - startAt) : 0;
   const limit = durationSec * 1000;
+  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
+  const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
 
-  const pctRemaining =
-    startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
-
-  const remainingSec =
-    startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
+  // ✅ props for your AnswerReveal (matches your TS error)
+  const correctIndex = toCorrectIndex(q) ?? 0;
+  const answersText = q.answers.map((a) => a.text);
 
   return (
     <div className="min-h-screen bg-white">
@@ -297,41 +436,48 @@ export default function TeacherLiveFlowPage() {
         <h2 className="font-semibold">
           {game.quizNumber} – {course.courseCode} ({course.section}) {course.semester}
         </h2>
-        <p className="text-sm text-gray-600 mt-1">PIN: {pin || "(missing)"}</p>
+        <p className="text-sm text-gray-600 mt-1">PIN: {pin}</p>
       </div>
 
       <div className="px-10 mt-10">
         {status === "question" && (
           <>
+            {/* ✅ Centered timer (same width as QuestionView) */}
             {startAt && (
-              <div className="w-full max-w-3xl mt-4">
-                <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
-                  <div
-                    className="h-full transition-[width] duration-100"
-                    style={{ width: `${pctRemaining}%`, backgroundColor: "#034B6B" }}
-                  />
+              <div className="w-full flex justify-center mt-4 mb-4">
+                <div className="w-full max-w-5xl">
+                  <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+                    <div
+                      className="h-full transition-[width] duration-100"
+                      style={{ width: `${pctRemaining}%`, backgroundColor: "#034B6B" }}
+                    />
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 text-center">
+                    {remainingSec}s
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-gray-600 text-center">{remainingSec}s</div>
               </div>
             )}
 
             <QuestionView q={q} index={qIndex} total={questions.length} startAt={null} />
 
-            <div className="mt-6 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-gray-600 text-center">
               Live counts: A {counts[0]} | B {counts[1]} | C {counts[2]} | D {counts[3]}
               <span className="ml-2">(Total: {totalAnswers})</span>
             </div>
 
-            <div className="flex justify-end mt-10">
+            {/* ✅ Button closer (no huge gap) */}
+            <div className="flex justify-end mt-6">
               <button
                 onClick={() => showAnswer(false)}
-                className="bg-[#3B8ED6] text-white px-10 py-3 rounded-full"
+                className="bg-[#3B8ED6] text-white px-8 py-3 rounded-full"
               >
                 Show Answer
               </button>
             </div>
           </>
         )}
+
 
         {status === "answer" && (
           <>
@@ -342,7 +488,12 @@ export default function TeacherLiveFlowPage() {
               <div className="text-lg font-semibold">{q.text}</div>
             </div>
 
-            <AnswerReveal q={q} counts={counts} />
+            {/* ✅ FIX: match your AnswerReveal props */}
+            <AnswerReveal
+              counts={counts}
+              correctIndex={correctIndex}
+              answersText={answersText}
+            />
 
             <div className="flex justify-end mt-10">
               <button
@@ -355,7 +506,14 @@ export default function TeacherLiveFlowPage() {
           </>
         )}
 
-        {status === "final" && <FinalBoard ranked={ranked} total={questions.length} />}
+        {status === "final" && (
+          <FinalBoard
+            ranked={ranked}
+            total={questions.length}
+            reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
+          />
+        )}
+
       </div>
     </div>
   );

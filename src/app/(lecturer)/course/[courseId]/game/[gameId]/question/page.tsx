@@ -29,7 +29,7 @@ function createBlankQuestion(defaultTime: number): Question {
     text: "",
     image: undefined,
     answers: emptyAnswers(),
-    timeMode: "default",
+    timeMode: "specific",
     time: defaultTime,
   };
 }

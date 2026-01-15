@@ -58,7 +58,10 @@ export default function CoursePage() {
       courseId: original.courseId,
       quizNumber: `${original.quizNumber} (Copy)`,
       timer: { ...original.timer },
+      shuffleQuestions: original.shuffleQuestions,
+      shuffleAnswers: original.shuffleAnswers,
     });
+
 
     // copy questions
     duplicateQuestions(gameId, newId);
