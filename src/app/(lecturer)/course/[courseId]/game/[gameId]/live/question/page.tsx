@@ -434,7 +434,7 @@ export default function TeacherLiveFlowPage() {
 
       <div className="px-10 mt-6">
         <h2 className="font-semibold">
-          {game.quizNumber} – {course.courseCode} ({course.section}) {course.semester}
+          {game.quizNumber} – {course.courseCode} • {course.section ? `Section ${course.section}` : ""}• {course.semester? course.semester : ""}
         </h2>
         <p className="text-sm text-gray-600 mt-1">PIN: {pin}</p>
       </div>
