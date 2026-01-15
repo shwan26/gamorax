@@ -442,35 +442,42 @@ export default function TeacherLiveFlowPage() {
       <div className="px-10 mt-10">
         {status === "question" && (
           <>
+            {/* ✅ Centered timer (same width as QuestionView) */}
             {startAt && (
-              <div className="w-full max-w-3xl mt-4">
-                <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
-                  <div
-                    className="h-full transition-[width] duration-100"
-                    style={{ width: `${pctRemaining}%`, backgroundColor: "#034B6B" }}
-                  />
+              <div className="w-full flex justify-center mt-4 mb-4">
+                <div className="w-full max-w-5xl">
+                  <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
+                    <div
+                      className="h-full transition-[width] duration-100"
+                      style={{ width: `${pctRemaining}%`, backgroundColor: "#034B6B" }}
+                    />
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 text-center">
+                    {remainingSec}s
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-gray-600 text-center">{remainingSec}s</div>
               </div>
             )}
 
             <QuestionView q={q} index={qIndex} total={questions.length} startAt={null} />
 
-            <div className="mt-6 text-sm text-gray-600">
+            <div className="mt-4 text-sm text-gray-600 text-center">
               Live counts: A {counts[0]} | B {counts[1]} | C {counts[2]} | D {counts[3]}
               <span className="ml-2">(Total: {totalAnswers})</span>
             </div>
 
-            <div className="flex justify-end mt-10">
+            {/* ✅ Button closer (no huge gap) */}
+            <div className="flex justify-end mt-6">
               <button
                 onClick={() => showAnswer(false)}
-                className="bg-[#3B8ED6] text-white px-10 py-3 rounded-full"
+                className="bg-[#3B8ED6] text-white px-8 py-3 rounded-full"
               >
                 Show Answer
               </button>
             </div>
           </>
         )}
+
 
         {status === "answer" && (
           <>
@@ -499,7 +506,14 @@ export default function TeacherLiveFlowPage() {
           </>
         )}
 
-        {status === "final" && <FinalBoard ranked={ranked} total={questions.length} />}
+        {status === "final" && (
+          <FinalBoard
+            ranked={ranked}
+            total={questions.length}
+            reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
+          />
+        )}
+
       </div>
     </div>
   );
