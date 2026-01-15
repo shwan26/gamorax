@@ -52,7 +52,7 @@ export default function SettingLayout({
     <div className="min-h-screen bg-white">
       <Navbar />
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode} (${course.section}) ${course.semester}`}
+        title={`${game.quizNumber} — ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester? course.semester : ""}`}
       />
 
       <div className="flex px-6 mt-4 min-h-[calc(100vh-140px)]">

@@ -106,7 +106,7 @@ export default function LecturerDashboard() {
               <p className="font-semibold text-lg">{course.courseCode}</p>
               <p className="text-sm">{course.courseName}</p>
               <p className="text-sm">
-                Section {course.section} • {course.semester}
+                {course.section ? `Section ${course.section}` : ""} {course.semester? course.semester : ""}
               </p>
             </Link>
           ))}

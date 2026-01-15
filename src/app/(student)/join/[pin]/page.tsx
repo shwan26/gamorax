@@ -127,7 +127,7 @@ export default function JoinLiveByPinPage() {
 
   const titleText = useMemo(() => {
     if (game && course) {
-      return `${game.quizNumber} - ${course.courseCode} (${course.section}) ${course.semester}`;
+      return `${game.quizNumber} - ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester? course.semester : ""}`;
     }
     if (game) return `${game.quizNumber}`;
     return pin ? `Quiz Session - ${pin}` : "Quiz Session";

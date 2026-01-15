@@ -85,7 +85,7 @@ export default function LivePage() {
     <div className="min-h-screen bg-white">
       <Navbar />
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode} (${course.section}) ${course.semester}`}
+        title={`${game.quizNumber} — ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester ? course.semester : ""}`}
       />
 
       <div className="flex px-10 py-10 gap-20">

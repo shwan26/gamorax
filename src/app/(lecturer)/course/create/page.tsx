@@ -19,8 +19,8 @@ export default function CreateCoursePage() {
   };
 
   function handleCreate() {
-    if (!form.courseCode || !form.courseName || !form.section || !form.semester) {
-      alert("Please fill in all fields.");
+    if (!form.courseCode.trim() || !form.courseName.trim()) {
+      alert("Please fill in Course Code and Course Name.");
       return;
     }
 
@@ -28,10 +28,10 @@ export default function CreateCoursePage() {
 
     saveCourse({
       id,
-      courseCode: form.courseCode,
-      courseName: form.courseName,
-      section: form.section,
-      semester: form.semester,
+      courseCode: form.courseCode.trim(),
+      courseName: form.courseName.trim(),
+      section: form.section.trim() || undefined,   // ✅ optional
+      semester: form.semester.trim() || undefined, // ✅ optional
     });
 
     router.push(`/course/${id}`);
@@ -45,23 +45,57 @@ export default function CreateCoursePage() {
         <h2 className="text-2xl font-bold mb-8">Create new course</h2>
 
         <div className="w-full max-w-lg space-y-5">
-          {[
-            { label: "Course Code", name: "courseCode", placeholder: "CSX3001" },
-            { label: "Course Name", name: "courseName", placeholder: "Fundamentals of Programming" },
-            { label: "Section", name: "section", placeholder: "541" },
-            { label: "Semester", name: "semester", placeholder: "2/2025" },
-          ].map(({ label, name, placeholder }) => (
-            <div key={name}>
-              <label className="block mb-1 text-sm font-medium">{label}</label>
-              <input
-                name={name}
-                value={(form as any)[name]}
-                onChange={handleChange}
-                placeholder={`Eg. ${placeholder}`}
-                className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
-              />
-            </div>
-          ))}
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              Course Code <span className="text-red-600">*</span>
+            </label>
+            <input
+              name="courseCode"
+              value={form.courseCode}
+              onChange={handleChange}
+              placeholder="Eg. CSX3001"
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              Course Name <span className="text-red-600">*</span>
+            </label>
+            <input
+              name="courseName"
+              value={form.courseName}
+              onChange={handleChange}
+              placeholder="Eg. Fundamentals of Programming"
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              Section <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              name="section"
+              value={form.section}
+              onChange={handleChange}
+              placeholder="Eg. 541"
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="block mb-1 text-sm font-medium">
+              Semester <span className="text-gray-400">(optional)</span>
+            </label>
+            <input
+              name="semester"
+              value={form.semester}
+              onChange={handleChange}
+              placeholder="Eg. 2/2025"
+              className="w-full border rounded-md p-2 shadow-sm focus:ring-2 focus:ring-blue-400"
+            />
+          </div>
 
           <button
             onClick={handleCreate}
@@ -69,6 +103,10 @@ export default function CreateCoursePage() {
           >
             Create Course
           </button>
+
+          <p className="text-xs text-gray-500 text-center">
+            <span className="text-red-600">*</span> required fields
+          </p>
         </div>
       </div>
     </div>

@@ -31,6 +31,66 @@ function escapeCsv(v: any) {
   return s;
 }
 
+function formatSemester(input?: string) {
+  if (!input) return "";
+
+  if (/^\d{1,2}\/\d{4}$/.test(input.trim())) return input.trim();
+
+  const s = input.trim();
+  const parts = s.split(/[-/ ]+/).filter(Boolean);
+
+  if (parts.length >= 2) {
+    const [a, b] = parts;
+    const year = /^\d{4}$/.test(b) ? b : /^\d{4}$/.test(a) ? a : "";
+    const monthPart = year === b ? a : b;
+
+    const monthMap: Record<string, number> = {
+      jan: 1, january: 1,
+      feb: 2, february: 2,
+      mar: 3, march: 3,
+      apr: 4, april: 4,
+      may: 5,
+      jun: 6, june: 6,
+      jul: 7, july: 7,
+      aug: 8, august: 8,
+      sep: 9, sept: 9, september: 9,
+      oct: 10, october: 10,
+      nov: 11, november: 11,
+      dec: 12, december: 12,
+    };
+
+    const m =
+      /^\d{1,2}$/.test(monthPart)
+        ? Number(monthPart)
+        : monthMap[monthPart.toLowerCase()] ?? NaN;
+
+    if (year && Number.isFinite(m) && m >= 1 && m <= 12) {
+      return `${m}/${year}`;
+    }
+  }
+
+  return input; // fallback
+}
+
+function buildCourseLine(course?: Course | null) {
+  if (!course) return "-";
+
+  const parts: string[] = [];
+
+  if (course.courseCode) parts.push(course.courseCode);
+  if (course.courseName) parts.push(course.courseName);
+
+  const section = (course.section ?? "").toString().trim();
+  if (section) parts.push(`Sec ${section}`);
+
+  const sem = formatSemester(course.semester);
+  if (sem) parts.push(sem);
+
+  return parts.length ? parts.join(" • ") : "-";
+}
+
+
+
 export default function ReportPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
@@ -112,34 +172,38 @@ export default function ReportPage() {
 
   function downloadCSV() {
     if (!report) return;
-
-    const courseCode = course?.courseCode ?? "";
-    const courseName = course?.courseName ?? "";
-    const section = course?.section ?? "";
-    const semester = course?.semester ?? "";
     const quizTitle = game?.quizNumber ?? "";
     const totalQ = questions.length || report.totalQuestions || 0;
 
     const meta: string[][] = [
       ["Report Type", "Quiz Report"],
       ["Finished At", finishIso ? fmt(finishIso) : "-"],
-      ["Course Code", courseCode],
-      ["Course Name", courseName],
-      ["Section", section],
-      ["Semester", semester],
-      ["Quiz Title", quizTitle],
-      ["Total Questions", String(totalQ)],
-      ["Point Rule", "server/live-calculated (see /api/socket)"],
-      ["", ""],
     ];
 
-    const header = ["Rank", "Student ID", "Name", "Score", "Points"];
+    if (course?.courseCode) meta.push(["Course Code", course.courseCode]);
+    if (course?.courseName) meta.push(["Course Name", course.courseName]);
+
+    const section = (course?.section ?? "").toString().trim();
+    if (section) meta.push(["Section", section]);
+
+    const sem = formatSemester(course?.semester);
+    if (sem) meta.push(["Semester", `'${String(sem)}`]);
+
+    meta.push(
+      ["Quiz Title", quizTitle],
+      ["Total Questions", String(totalQ)],
+      ["Point Rule", "points += correct answers * 10 * time bonus"],
+      ["", ""]
+    );
+
+
+    const header = ["Rank", "Student ID", "Name", `Score (${totalQ})`, "Points"];
 
     const rows = rankedRows.map((r) => [
       String(r.rank),
       r.studentId,
       r.name,
-      `${r.score}/${totalQ}`,
+      r.score.toString(),
       String(r.points),
     ]);
 
@@ -186,12 +250,7 @@ export default function ReportPage() {
 
       <div className="text-sm text-gray-600 mb-4 space-y-1">
         <div>Finished at: {finishIso ? fmt(finishIso) : "-"}</div>
-        <div>
-          Course:{" "}
-          {course
-            ? `${course.courseCode} • ${course.courseName} • Sec ${course.section} • ${course.semester}`
-            : "-"}
-        </div>
+        <div>Course: {buildCourseLine(course)}</div>
         <div>Quiz: {game?.quizNumber ?? "-"}</div>
         <div>Total questions: {totalQ}</div>
       </div>
@@ -202,7 +261,7 @@ export default function ReportPage() {
             <Th label="Rank" sort="rank" />
             <Th label="Student ID" sort="studentId" />
             <Th label="Name" sort="name" />
-            <Th label="Score" sort="score" />
+            <Th label={`Score(${totalQ})`} sort="score" />
             <Th label="Points" sort="points" />
           </tr>
         </thead>
@@ -215,9 +274,7 @@ export default function ReportPage() {
               </td>
               <td className="p-2">{r.studentId}</td>
               <td className="p-2">{r.name}</td>
-              <td className="p-2">
-                {r.score}/{totalQ}
-              </td>
+              <td className="p-2">{r.score}</td>
               <td className="p-2 font-semibold text-blue-700">{r.points}</td>
             </tr>
           ))}
