@@ -45,7 +45,7 @@ type QuizFinishedPayload = {
 
 type AnswerRecord = { answerIndex: number; timeUsed: number };
 
-type Score = { correct: number; totalTime: number };
+type Score = { correct: number; totalTime: number; points: number };
 
 type Room = {
   students: Map<string, LiveStudent>;
@@ -54,6 +54,8 @@ type Room = {
   correctByQuestion: Map<number, number>;
   scoredQuestions: Set<number>; // prevents double scoring
   scores: Map<string, Score>;
+  durationByQuestion: Map<number, number>;
+
 };
 
 type ResWithSocket = NextApiResponse & { socket: any & { server: any } };
@@ -69,6 +71,7 @@ function getRoom(pin: string): Room {
       correctByQuestion: new Map(),
       scoredQuestions: new Set(),
       scores: new Map(),
+      durationByQuestion: new Map(),
     });
   }
   return rooms.get(pin)!;
@@ -93,19 +96,15 @@ function countsForRoom(room: Room, questionIndex: number) {
 
 function makeLeaderboard(room: Room) {
   const list = Array.from(room.students.values()).map((st) => {
-    const sc = room.scores.get(st.studentId) ?? { correct: 0, totalTime: 0 };
-    return {
-      studentId: st.studentId,
-      name: st.name,
-      avatarSrc: st.avatarSrc,
-      correct: sc.correct,
-      totalTime: sc.totalTime,
-    };
-  });
+    const sc = room.scores.get(st.studentId) ?? { correct: 0, totalTime: 0, points: 0 };
+    return { ...st, correct: sc.correct, totalTime: sc.totalTime, points: sc.points };
 
+  });
   list.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
     if (b.correct !== a.correct) return b.correct - a.correct;
-    if (a.totalTime !== b.totalTime) return a.totalTime - b.totalTime; // faster wins tie
+    if (a.totalTime !== b.totalTime) return a.totalTime - b.totalTime;
+
     return String(a.studentId).localeCompare(String(b.studentId));
   });
 
@@ -134,9 +133,8 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
 
           // ensure score exists
           if (!room.scores.has(student.studentId)) {
-            room.scores.set(student.studentId, { correct: 0, totalTime: 0 });
+            room.scores.set(student.studentId, { correct: 0, totalTime: 0, points: 0 });
           }
-
           io.to(pin).emit("students:update", Array.from(room.students.values()));
         }
 
@@ -174,6 +172,9 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
         };
 
         room.current = out;
+        const dur = Number.isFinite(question.durationSec) ? Number(question.durationSec) : 60;
+        room.durationByQuestion.set(qIndex, dur);
+
 
         // store correct index if provided
         if (Number.isFinite(question.correctIndex) && question.correctIndex! >= 0 && question.correctIndex! <= 3) {
@@ -247,15 +248,26 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
 
           // score everyone who answered
           const ansMap = room.answers.get(qIndex) ?? new Map();
+          const maxTime = room.durationByQuestion.get(qIndex) ?? 60;
+
           for (const [sid, rec] of ansMap.entries()) {
-            const prev = room.scores.get(sid) ?? { correct: 0, totalTime: 0 };
+            const prev = room.scores.get(sid) ?? { correct: 0, totalTime: 0, points: 0 };
             const isCorrect = rec.answerIndex === correct;
+
+            let addPoints = 0;
+            if (isCorrect) {
+              const timeUsed = Math.max(0, Math.round(rec.timeUsed));
+              const timeLeft = Math.max(0, Math.round(maxTime - timeUsed));
+              addPoints = timeLeft * 10; // ✅ rule you want
+            }
 
             room.scores.set(sid, {
               correct: prev.correct + (isCorrect ? 1 : 0),
               totalTime: prev.totalTime + rec.timeUsed,
+              points: prev.points + addPoints,
             });
           }
+
 
           // broadcast updated leaderboard
           io.to(pin).emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
