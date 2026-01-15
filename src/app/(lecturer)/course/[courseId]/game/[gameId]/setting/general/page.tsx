@@ -13,19 +13,28 @@ export default function GeneralSettingPage() {
 
   const [game, setGame] = useState<Game | null>(null);
   const [quizNumber, setQuizNumber] = useState("");
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
+  const [shuffleAnswers, setShuffleAnswers] = useState(false);
 
   useEffect(() => {
     if (!gameId) return;
     const g = getGameById(gameId);
     setGame(g);
+
     setQuizNumber(g?.quizNumber ?? "");
+    setShuffleQuestions(!!g?.shuffleQuestions);
+    setShuffleAnswers(!!g?.shuffleAnswers);
   }, [gameId]);
 
   if (!gameId) return <div className="p-6">Missing game id in URL.</div>;
   if (!game) return <div className="p-6">Game not found.</div>;
 
   function handleSave() {
-    updateGame(gameId, { quizNumber });
+    updateGame(gameId, {
+      quizNumber,
+      shuffleQuestions,
+      shuffleAnswers,
+    });
     alert("General settings updated");
   }
 
@@ -39,7 +48,7 @@ export default function GeneralSettingPage() {
     <>
       <h3 className="font-semibold mb-6">General</h3>
 
-      <div className="mb-4">
+      <div className="mb-6">
         <label className="block text-sm font-medium mb-1">Quiz Number / Title</label>
         <input
           value={quizNumber}
@@ -47,6 +56,33 @@ export default function GeneralSettingPage() {
           className="border rounded-md px-3 py-2 w-full"
           placeholder="Eg. Game 1"
         />
+      </div>
+
+      {/* ✅ Shuffle Options */}
+      <div className="mb-6 space-y-3">
+        <p className="text-sm font-medium">Shuffle in Live Mode</p>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={shuffleQuestions}
+            onChange={(e) => setShuffleQuestions(e.target.checked)}
+          />
+          Shuffle Questions
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={shuffleAnswers}
+            onChange={(e) => setShuffleAnswers(e.target.checked)}
+          />
+          Shuffle Answers (A/B/C/D order)
+        </label>
+
+        <p className="text-xs text-gray-500">
+          These shuffles apply only during Live sessions. Your editor order stays the same.
+        </p>
       </div>
 
       <button onClick={handleSave} className="bg-[#6AB6E9] px-6 py-2 rounded-md">

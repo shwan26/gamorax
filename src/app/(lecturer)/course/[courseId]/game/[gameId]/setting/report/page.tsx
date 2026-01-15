@@ -30,8 +30,7 @@ function fmt(iso?: string) {
 }
 
 function correctIndexOf(q: Question): number {
-  const idx = q.answers.findIndex((a) => a.correct);
-  return idx >= 0 ? idx : 0;
+  return Math.max(0, q.answers.findIndex((a) => a.correct));
 }
 
 function safeMaxTime(q: Question, fallback = 60) {
