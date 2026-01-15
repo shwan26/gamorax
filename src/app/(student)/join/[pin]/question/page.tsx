@@ -124,7 +124,7 @@ export default function StudentQuestionPage() {
 
   const titleText = useMemo(() => {
     if (game && course) {
-      return `${game.quizNumber} - ${course.courseCode} • ${course.section ? `Section ${course.section}` : ""} • ${course.semester? course.semester : ""}`;
+      return `${game.quizNumber} - ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester? course.semester : ""}`;
     }
     if (game) return `${game.quizNumber}`;
     return pin ? `Quiz Session - ${pin}` : "Quiz Session";
@@ -449,17 +449,6 @@ export default function StudentQuestionPage() {
           <p className={`${caesar.className} text-6xl mt-4`}>
             {score}/{finalDenom}
           </p>
-{/* 
-          <button
-            onClick={downloadQA}
-            disabled={!downloadPayload}
-            className="mt-6 px-5 py-2 rounded-md text-xs font-semibold text-white shadow-sm
-                       bg-gradient-to-r from-[#0593D1] to-[#034B6B]
-                       hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-60"
-            type="button"
-          >
-            Download questions and answers!
-          </button> */}
         </div>
       )}
     </div>

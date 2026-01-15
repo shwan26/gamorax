@@ -158,7 +158,7 @@ export default function QuestionPage() {
       <Navbar />
 
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode} • ${course.section ? `Section ${course.section}` : ""}• ${course.semester? course.semester : ""}`}
+        title={`${game.quizNumber} — ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester? course.semester : ""}`}
       />
 
       <div className="flex mt-6 h-[calc(100vh-160px)]">

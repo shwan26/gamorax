@@ -169,11 +169,6 @@ export default function FinalBoard({
               <div className="text-xs opacity-90">Score</div>
               <div className="text-lg font-extrabold">{scoreLabel(r, total)}</div>
             </div>
-
-            <div className={`${textColor} text-right`}>
-              <div className="text-xs opacity-90">Time</div>
-              <div className="text-sm font-semibold">{fmtTime(t)}</div>
-            </div>
           </div>
         </div>
       </div>
@@ -259,11 +254,6 @@ export default function FinalBoard({
                     <div className="font-extrabold text-[#034B6B]">
                       {c}/{Math.max(1, total)}
                     </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="text-xs text-gray-500">Time</div>
-                    <div className="font-semibold">{fmtTime(t)}</div>
                   </div>
 
                   {pts !== null && (

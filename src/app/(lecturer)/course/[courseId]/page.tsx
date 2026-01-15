@@ -79,7 +79,7 @@ export default function CoursePage() {
           <div>
             <h2 className="text-2xl font-bold">{course.courseCode}</h2>
             <p className="text-sm text-gray-700">
-              {course.courseName} • {course.section ? `Section ${course.section}` : ""}• {course.semester? course.semester : ""}
+              {course.courseName} {course.section ? `Section ${course.section}` : ""} {course.semester? course.semester : ""}
             </p>
           </div>
 
