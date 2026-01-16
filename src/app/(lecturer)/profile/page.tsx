@@ -3,10 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import {
-  getCurrentLecturer,
-  fakeLogout,
-} from "@/src/lib/fakeAuth";
+import { getCurrentLecturer, fakeLogout } from "@/src/lib/fakeAuth";
 import GradientButton from "@/src/components/GradientButton";
 
 export default function LecturerProfile() {
@@ -33,6 +30,22 @@ export default function LecturerProfile() {
     router.push("/login");
   }
 
+  function handleDeleteAccount() {
+    const ok = confirm(
+      "Delete your lecturer account?\n\nThis will remove your account from this browser (mock)."
+    );
+    if (!ok) return;
+
+    // remove account record (mock storage)
+    localStorage.removeItem("gamorax_lecturer");
+
+    // logout state
+    fakeLogout();
+
+    // go to register (or login)
+    router.push("/register");
+  }
+
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
       <Navbar />
@@ -48,9 +61,7 @@ export default function LecturerProfile() {
         {/* Profile Form */}
         <div className="w-full max-w-sm space-y-4">
           <div>
-            <label className="block mb-1 text-sm font-medium">
-              First Name
-            </label>
+            <label className="block mb-1 text-sm font-medium">First Name</label>
             <input
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
@@ -59,9 +70,7 @@ export default function LecturerProfile() {
           </div>
 
           <div>
-            <label className="block mb-1 text-sm font-medium">
-              Last Name
-            </label>
+            <label className="block mb-1 text-sm font-medium">Last Name</label>
             <input
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
@@ -69,15 +78,23 @@ export default function LecturerProfile() {
             />
           </div>
 
-          <GradientButton onClick={handleSave}>
-            Save Changes
-          </GradientButton>
+          <GradientButton onClick={handleSave}>Save Changes</GradientButton>
 
           <button
             onClick={handleLogout}
             className="w-full text-red-600 text-sm mt-2 hover:underline"
+            type="button"
           >
             Logout
+          </button>
+
+          {/* ✅ Delete Account */}
+          <button
+            onClick={handleDeleteAccount}
+            className="w-full border border-red-200 bg-red-50 text-red-700 py-2 rounded-md text-sm font-semibold hover:bg-red-100"
+            type="button"
+          >
+            Delete Account
           </button>
         </div>
       </div>

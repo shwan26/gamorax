@@ -88,8 +88,8 @@ export default function LecturerRegister() {
           </div>
 
           {/* Register Button */}
-          <GradientButton onClick={handleRegister} type="submit">
-            Login
+          <GradientButton onClick={handleRegister} type="button">
+            Register
           </GradientButton>
 
           {/* Link to Login */}
