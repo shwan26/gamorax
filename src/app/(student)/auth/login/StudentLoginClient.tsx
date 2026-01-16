@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/Navbar";
 import { loginStudent } from "@/src/lib/studentAuthStorage";
+import Link from "next/link";
 
 function getNextFromUrl(): string {
   if (typeof window === "undefined") return "/me/reports";
@@ -63,7 +64,18 @@ export default function StudentLoginClient() {
         >
           Login
         </button>
+
+        <div className="flex justify-between mt-1 text-xs md:text-sm text-gray-600">
+            <Link href="/auth/forgot-password" className="hover:underline">
+              Forgot Password
+            </Link>
+            <Link href="/auth/register" className="hover:underline">
+              Create Account
+            </Link>
+          </div>
       </div>
+
+      
     </div>
   );
 }
