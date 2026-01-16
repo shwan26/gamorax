@@ -221,3 +221,21 @@ export function addPointsToStudent(emailIn: string, pointsToAdd: number) {
   list[idx] = { ...list[idx], points: (list[idx].points ?? 0) + add };
   saveAllStudents(list);
 }
+
+// ✅ Delete current student account permanently (localStorage)
+export function deleteCurrentStudent() {
+  if (typeof window === "undefined") return;
+
+  const me = getCurrentStudent();
+  if (!me) return;
+
+  // remove from students list
+  const raw = localStorage.getItem(STUDENTS_KEY);
+  const list = raw ? (JSON.parse(raw) as StudentAccount[]) : [];
+  const next = Array.isArray(list) ? list.filter((s) => s.id !== me.id) : [];
+
+  localStorage.setItem(STUDENTS_KEY, JSON.stringify(next));
+
+  // logout
+  localStorage.removeItem(CURRENT_EMAIL_KEY);
+}

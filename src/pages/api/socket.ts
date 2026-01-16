@@ -277,7 +277,6 @@ export default function handler(_req: NextApiRequest, res: ResWithSocket) {
         });
 
         io.to(pin).emit("quiz:finished", payload);
-        io.to(pin).emit("quiz_finished", { payload });
       });
 
       socket.on("next", ({ pin }: { pin: string }) => {

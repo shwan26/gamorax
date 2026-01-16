@@ -1,3 +1,4 @@
+// src/app/(student)/join/[pin]/question/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -35,7 +36,7 @@ type QuestionShowPayload = {
 type AnswerRevealPayload = {
   questionIndex?: number;
   correctIndex?: number;
-  maxTime?: number; // ✅ sent by server
+  maxTime?: number; // from server
 };
 
 type QuizFinishedPayload = {
@@ -52,7 +53,6 @@ export default function StudentQuestionPage() {
   const [student, setStudent] = useState<LiveStudent | null>(null);
 
   const [phase, setPhase] = useState<"waiting" | "question" | "result" | "final">("waiting");
-
   const [question, setQuestion] = useState<{
     questionIndex: number;
     number: number;
@@ -61,23 +61,19 @@ export default function StudentQuestionPage() {
     answers: string[];
   } | null>(null);
 
-  // ----- stable refs -----
+  // stable refs
   const selectedIndexRef = useRef<number | null>(null);
   const answeredQIndexRef = useRef<number | null>(null);
   const currentQIndexRef = useRef<number>(0);
   const correctIndexRef = useRef<number | null>(null);
   const lastScoredQIndexRef = useRef<number>(-1);
 
-  // per-question student answer/time
   const myByQRef = useRef<Record<number, { answerIndex: number; timeUsed: number }>>({});
-  // per-question correct index (from reveal)
   const correctByQRef = useRef<Record<number, number>>({});
-  // per-question maxTime
   const maxTimeByQRef = useRef<Record<number, number>>({});
 
-  // ----- UI state -----
+  // UI state
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-
   const [correctCount, setCorrectCount] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
   const [scoredCount, setScoredCount] = useState(0);
@@ -91,6 +87,8 @@ export default function StudentQuestionPage() {
   // timer
   const [startAt, setStartAt] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number>(20);
+  const durationSecRef = useRef<number>(20);
+
   const [now, setNow] = useState<number>(0);
   const questionStartAtRef = useRef<number | null>(null);
 
@@ -99,7 +97,7 @@ export default function StudentQuestionPage() {
     setNow(Date.now());
   }, []);
 
-  // ✅ load student
+  // load student
   useEffect(() => {
     if (!mounted) return;
     if (!pin) return;
@@ -126,11 +124,12 @@ export default function StudentQuestionPage() {
   useEffect(() => {
     if (phase !== "question") return;
     if (!startAt) return;
+
     const t = window.setInterval(() => setNow(Date.now()), 100);
     return () => window.clearInterval(t);
   }, [phase, startAt]);
 
-  // (optional) local timeout switches to result screen (still waits reveal for scoring)
+  // (optional) if time ends locally, show result screen, but still score only on reveal
   useEffect(() => {
     if (phase !== "question") return;
     if (!startAt) return;
@@ -139,14 +138,13 @@ export default function StudentQuestionPage() {
     if (now - startAt >= limit) {
       setStartAt(null);
       questionStartAtRef.current = null;
-
       setPhase("result");
       setLastWasCorrect(null);
       setLastEarnedPoints(0);
     }
   }, [phase, startAt, now, durationSec]);
 
-  // socket listeners
+  // ✅ STABLE socket listeners (no durationSec/scoredCount deps)
   useEffect(() => {
     if (!mounted) return;
     if (!pin || !student) return;
@@ -170,11 +168,10 @@ export default function StudentQuestionPage() {
       if (typeof q?.correctIndex === "number") correctIndexRef.current = q.correctIndex;
 
       const sAt = typeof q?.startAt === "number" ? q.startAt : Date.now();
-      const dur = Number.isFinite(Number(q?.durationSec))
-        ? Math.max(1, Number(q.durationSec))
-        : 20;
+      const dur = Number.isFinite(Number(q?.durationSec)) ? Math.max(1, Number(q.durationSec)) : 20;
 
       maxTimeByQRef.current[qIndex] = dur;
+      durationSecRef.current = dur;
 
       setStartAt(sAt);
       setDurationSec(dur);
@@ -184,19 +181,16 @@ export default function StudentQuestionPage() {
       setQuestion({ questionIndex: qIndex, number, total, text, answers });
       setPhase("question");
 
-      // reset lock
       setSelectedIndex(null);
       selectedIndexRef.current = null;
       answeredQIndexRef.current = null;
 
-      // reset result UI
       setLastWasCorrect(null);
       setLastEarnedPoints(0);
     };
 
-    // ✅ lecturer presses "Show Answer" -> server emits answer:reveal -> we switch immediately
+    // ✅ reveal => IMMEDIATE switch + IMMEDIATE score/points
     const onReveal = (p?: AnswerRevealPayload) => {
-      // IMMEDIATE UI switch (even if time not out)
       setPhase("result");
       setStartAt(null);
       questionStartAtRef.current = null;
@@ -207,7 +201,6 @@ export default function StudentQuestionPage() {
       const correct =
         typeof p?.correctIndex === "number" ? p.correctIndex : correctIndexRef.current;
 
-      // ✅ take maxTime from server if provided (most accurate)
       if (typeof p?.maxTime === "number" && Number.isFinite(p.maxTime)) {
         maxTimeByQRef.current[qIdx] = Math.max(1, Math.round(p.maxTime));
       }
@@ -222,15 +215,13 @@ export default function StudentQuestionPage() {
 
       correctByQRef.current[qIdx] = correct;
 
-      // prevent double scoring
       if (qIdx <= lastScoredQIndexRef.current) return;
       lastScoredQIndexRef.current = qIdx;
 
-      const maxTime = maxTimeByQRef.current[qIdx] ?? durationSec ?? 0;
-      const mine = myByQRef.current[qIdx];
+      const maxTime = maxTimeByQRef.current[qIdx] ?? durationSecRef.current ?? 0;
 
-      const picked =
-        answeredQIndexRef.current === qIdx ? selectedIndexRef.current : null;
+      const mine = myByQRef.current[qIdx];
+      const picked = answeredQIndexRef.current === qIdx ? selectedIndexRef.current : null;
 
       const isCorrect = typeof picked === "number" && picked === correct;
       const timeUsed = mine?.timeUsed ?? maxTime;
@@ -329,7 +320,6 @@ export default function StudentQuestionPage() {
     socket.on("answer:reveal", onReveal);
     socket.on("question:next", onNext);
     socket.on("quiz:finished", onFinished);
-    socket.on("quiz_finished", onFinished);
 
     return () => {
       socket.off("connect", doJoin);
@@ -339,16 +329,16 @@ export default function StudentQuestionPage() {
       socket.off("quiz:finished", onFinished);
       socket.off("quiz_finished", onFinished);
     };
-  }, [mounted, pin, student, router, scoredCount, durationSec]);
+    // ✅ only mount/pin/student changes can rebind
+  }, [mounted, pin, student]);
 
   const pick = (answerIndex: number) => {
     if (!student || !question) return;
     if (phase !== "question") return;
 
-    // hard lock
     if (selectedIndexRef.current !== null) return;
 
-    // block if time over
+    // if time already over locally, block
     if (startAt) {
       const elapsed = Date.now() - startAt;
       if (elapsed >= durationSec * 1000) return;
@@ -379,8 +369,7 @@ export default function StudentQuestionPage() {
 
   const elapsed = startAt ? Math.max(0, now - startAt) : 0;
   const limit = durationSec * 1000;
-  const pctRemaining =
-    startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
+  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
   const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
 
   const finalDenom = (downloadPayload?.total ?? scoredCount) || 1;
@@ -461,9 +450,7 @@ export default function StudentQuestionPage() {
           {lastWasCorrect === false && (
             <p className="mt-2 text-red-600 font-semibold">Incorrect · +0 points</p>
           )}
-          {lastWasCorrect === null && (
-            <p className="mt-2 text-gray-600">Waiting for host reveal…</p>
-          )}
+          {lastWasCorrect === null && <p className="mt-2 text-gray-600">Waiting for host reveal…</p>}
 
           <p className="text-sm text-gray-600 mt-6">Total correct:</p>
           <p className={`${caesar.className} text-5xl mt-2`}>

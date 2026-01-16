@@ -103,23 +103,6 @@ export default function MePage() {
               </div>
             )}
           </div>
-
-          {/* Future shop teaser */}
-          <div className="bg-white border rounded-xl p-5 shadow-sm">
-            <h2 className="font-bold text-[#034B6B]">Avatar Shop (Coming Soon)</h2>
-            <p className="text-sm text-gray-700 mt-3">
-              Later you can buy:
-            </p>
-            <ul className="text-sm text-gray-700 list-disc pl-5 mt-2 space-y-1">
-              <li>Avatars</li>
-              <li>Accessories (hat, glasses, etc.)</li>
-              <li>Special effects / frames</li>
-            </ul>
-
-            <div className="mt-4 text-sm text-gray-600">
-              Earn points by answering **correct + faster** in live quizzes.
-            </div>
-          </div>
         </div>
       </div>
     </div>

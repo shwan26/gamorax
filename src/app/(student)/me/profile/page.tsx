@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import StudentNavbar from "@/src/components/StudentNavbar";
@@ -11,6 +10,9 @@ import {
   deriveStudentIdFromEmail,
 } from "@/src/lib/studentAuthStorage";
 import { botttsUrl, randomSeed } from "@/src/lib/dicebear";
+import { deleteCurrentStudent } from "@/src/lib/studentAuthStorage";
+import { deleteAttemptsByStudent } from "@/src/lib/studentReportStorage";
+import { clearLiveStudent } from "@/src/lib/liveStudentSession"; // optional
 
 export default function MeProfilePage() {
   const router = useRouter();
@@ -56,8 +58,6 @@ export default function MeProfilePage() {
       name: n,
       studentId: sid,
       avatarSeed: seed,
-      // optional: you can ignore avatarSrc forever
-      // avatarSrc: "/icons/student.png",
     });
 
     setMe(next);
@@ -69,6 +69,27 @@ export default function MeProfilePage() {
     logoutStudent();
     router.push("/auth/login");
   }
+
+  function onDeleteAccount() {
+    if (!me) return;
+
+    const ok = confirm(
+      "Delete your account?\n\nThis will remove:\n- Your account\n- All report history\n- Your points\n\nThis cannot be undone."
+    );
+    if (!ok) return;
+
+    // 1) delete reports
+    deleteAttemptsByStudent(me.email);
+
+    // 2) clear live session cached student (optional but nice)
+    try { clearLiveStudent(); } catch {}
+
+    // 3) delete account (includes logout)
+    deleteCurrentStudent();
+
+    router.push("/auth/register");
+  }
+
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
@@ -86,7 +107,7 @@ export default function MeProfilePage() {
             <div>
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full overflow-hidden border bg-white">
-                  <Image src={avatarUrl} alt="avatar" width={64} height={64} />
+                  <img src={avatarUrl} alt="avatar" className="w-16 h-16" />
                 </div>
 
                 <div className="text-sm">
@@ -173,11 +194,20 @@ export default function MeProfilePage() {
 
             <button
               onClick={onLogout}
-              className="text-red-600 font-semibold"
+              className="text-black-600 font-semibold"
               type="button"
             >
               Logout
             </button>
+
+            <button
+              onClick={onDeleteAccount}
+              className="text-red-700"
+              type="button"
+            >
+              Delete Account
+            </button>
+
           </div>
         </div>
       </div>

@@ -79,3 +79,18 @@ export function deleteAttempt(id: string) {
   const all = getAll().filter((a) => a.id !== id);
   saveAll(all);
 }
+
+// ✅ Delete ALL attempts for one student email
+export function deleteAttemptsByStudent(studentEmail: string) {
+  if (typeof window === "undefined") return;
+
+  const email = String(studentEmail ?? "").trim().toLowerCase();
+  if (!email) return;
+
+  const raw = localStorage.getItem(KEY); // <-- use your actual key name
+  const list = raw ? JSON.parse(raw) : [];
+  const arr = Array.isArray(list) ? (list as StudentAttempt[]) : [];
+
+  const next = arr.filter((a) => String(a.studentEmail ?? "").toLowerCase() !== email);
+  localStorage.setItem(KEY, JSON.stringify(next));
+}

@@ -2,25 +2,34 @@
 
 import Link from "next/link";
 import Navbar from "../../../components/Navbar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import GradientButton from "@/src/components/GradientButton";
 import { fakeLogin } from "@/src/lib/fakeAuth";
 import { useRouter } from "next/navigation";
 
 
 export default function LecturerLogin() {
+  const router = useRouter();
+
+  // ✅ ADD HERE (top-level state)
+  const [next, setNext] = useState("/dashboard");
+
+  // ✅ ADD HERE (after state declarations)
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    setNext(sp.get("next") || "/dashboard");
+  }, []);
+
   const [form, setForm] = useState({ email: "", password: "" });
 
   function handleChange(e: any) {
     setForm({ ...form, [e.target.name]: e.target.value });
   }
 
-  const router = useRouter();
-
   async function handleLogin() {
     try {
       fakeLogin(form.email, form.password);
-      router.push("/dashboard");
+      router.push(next); 
     } catch (err: any) {
       alert(err.message);
     }

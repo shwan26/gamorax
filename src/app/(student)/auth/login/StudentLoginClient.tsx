@@ -1,19 +1,26 @@
-// src/app/(student)/auth/login/StudentLoginClient.tsx
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/Navbar";
 import { loginStudent } from "@/src/lib/studentAuthStorage";
 
+function getNextFromUrl(): string {
+  if (typeof window === "undefined") return "/me/reports";
+  const sp = new URLSearchParams(window.location.search);
+  return sp.get("next") || "/me/reports";
+}
+
 export default function StudentLoginClient() {
   const router = useRouter();
-  const sp = useSearchParams();
 
-  const next = useMemo(() => sp?.get("next") ?? "/me/reports", [sp]);
-
+  const [next, setNext] = useState("/me/reports");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    setNext(getNextFromUrl());
+  }, []);
 
   function onLogin() {
     if (!email.trim() || !password) {
