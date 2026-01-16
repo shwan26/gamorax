@@ -64,9 +64,8 @@ export default function StudentLoginClient() {
         >
           Login
         </button>
-      </div>
 
-      <div className="flex justify-between mt-1 text-xs md:text-sm text-gray-600">
+        <div className="flex justify-between mt-1 text-xs md:text-sm text-gray-600">
             <Link href="/auth/forgot-password" className="hover:underline">
               Forgot Password
             </Link>
@@ -74,6 +73,9 @@ export default function StudentLoginClient() {
               Create Account
             </Link>
           </div>
+      </div>
+
+      
     </div>
   );
 }
