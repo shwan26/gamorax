@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+socket-server/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -39,3 +40,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# build outputs
+dist/
+socket-server/dist/
+
+# env
+.env
+.env.local
