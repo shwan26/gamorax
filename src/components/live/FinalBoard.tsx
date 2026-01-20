@@ -49,10 +49,12 @@ export default function FinalBoard({
   ranked,
   total,
   reportHref,
+  onReportClick,
 }: {
   ranked: RankedRow[];
   total: number;
   reportHref: string; // ✅ add
+  onReportClick?: () => void; // ✅ add
 }) {
   const rows = useMemo(() => {
     const arr = Array.isArray(ranked) ? [...ranked] : [];
@@ -277,6 +279,9 @@ export default function FinalBoard({
       <div className="mt-8 flex justify-end">
         <Link
           href={reportHref}
+          onClick={() => {
+            onReportClick?.();
+          }}
           className="px-6 py-3 rounded-full font-semibold text-white shadow-md
                      bg-gradient-to-r from-[#0593D1] to-[#034B6B]
                      hover:opacity-90 active:scale-[0.98] transition"

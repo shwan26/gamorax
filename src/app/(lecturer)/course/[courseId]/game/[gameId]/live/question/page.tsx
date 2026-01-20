@@ -195,10 +195,20 @@ export default function TeacherLiveFlowPage() {
   // ✅ join room
   useEffect(() => {
     if (!pin) return;
-    fetch("/api/socket").catch(() => {});
-    socket.emit("join", { pin });
-    return () => {};
+
+    socket.connect(); // ✅ connect only on Live page
+
+    const doJoin = () => socket.emit("join", { pin });
+
+    if (socket.connected) doJoin();
+    socket.on("connect", doJoin);
+
+    return () => {
+      socket.off("connect", doJoin);
+      socket.disconnect(); // ✅ disconnect when leaving lecturer live page
+    };
   }, [pin]);
+
 
   // listen answer counts
   useEffect(() => {
@@ -227,7 +237,6 @@ export default function TeacherLiveFlowPage() {
   useEffect(() => {
     if (!pin || !q || status !== "question") return;
 
-    fetch("/api/socket").catch(() => {});
 
     // ✅ last question timestamp (when shown)
     setLastQuestionAt(pin);
@@ -511,6 +520,11 @@ export default function TeacherLiveFlowPage() {
             ranked={ranked}
             total={questions.length}
             reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
+            onReportClick={() => {
+              try {
+                socket.disconnect(); // ✅ stops Railway usage when leaving live
+              } catch {}
+            } }
           />
         )}
 

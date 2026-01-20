@@ -86,12 +86,9 @@ export default function LobbyPage() {
 
   // ✅ join socket + redirect when lecturer starts
   useEffect(() => {
-    if (!mounted) return;
-    if (!pin) return;
-    if (!ready) return;
-    if (!student) return;
+    if (!mounted || !pin || !ready || !student) return;
 
-    fetch("/api/socket").catch(() => {});
+    socket.connect(); // ✅ connect only inside join flow
 
     const doJoin = () => socket.emit("join", { pin, student });
 
@@ -104,8 +101,10 @@ export default function LobbyPage() {
     return () => {
       socket.off("connect", doJoin);
       socket.off("question:show", goQuestion);
+      // ❌ don’t disconnect here if the next live page needs the socket
     };
   }, [mounted, pin, ready, student, router]);
+
 
   // ✅ Random avatar: change avatarSeed in StudentAccount, then rebuild LiveStudent.avatarSrc
   const handleChangeAvatar = () => {
@@ -159,8 +158,11 @@ export default function LobbyPage() {
   };
 
   const handleLeave = () => {
-    sessionStorage.removeItem("gamorax_live_student");
-    router.push("/me");
+    try {
+    socket.disconnect(); // ✅ stops Railway usage when leaving live
+  } catch {}
+  sessionStorage.removeItem("gamorax_live_student");
+  router.push("/me");
   };
 
   if (!mounted) return null;
