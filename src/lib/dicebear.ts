@@ -3,8 +3,7 @@ export function botttsUrl(seed: string, size = 96) {
     seed,
     size: String(size),
     // optional nice background
-    backgroundType: "gradientLinear",
-    backgroundColor: "b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf",
+    backgroundColor: "b6e3f4",
   });
 
   // Use PNG to work smoothly with next/image
