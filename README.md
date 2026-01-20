@@ -45,7 +45,7 @@ gamorax/
 │   └── icons/
 ├── src/  #frontend website
 └── socket-server/ #backend server
-
+```
 ## Getting Started
 install dependencies:
 ```bash
