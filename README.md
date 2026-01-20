@@ -1,7 +1,57 @@
+# Gamorax 🎮⚡
+A real-time quiz game built for classroom live sessions with lobby PIN join, live questions, scoring, and downloadable reports.
+
+> Built with Next.js + Socket.IO. Designed to be simple to host, fast to join, and fun to play.
+
+---
+
+## Key Features
+### Live Game
+- ✅ Lecturer hosts a quiz → system generates a **PIN**
+- ✅ Students join via **/join/[pin]** (QR code supported)
+- ✅ Live lobby shows joined students (name + ID + avatar)
+- ✅ Lecturer starts the session → students receive questions in real time
+- ✅ Time-based scoring + leaderboard
+- ✅ End-of-game report (rank, correct count, points)
+
+### Student Identity + Avatars
+- Student auth stored locally (current version)
+- DiceBear avatar seed + avatar preview & save
+- Lobby renders avatar if `avatarSrc` exists (fallback to initials)
+
+### Reporting
+- Stores latest report per game
+- Export-friendly rows (rank, studentId, name, score, points)
+
+---
+
+## Tech Stack
+- **Frontend:** Next.js (App Router), TypeScript
+- **Backend:** Node.js (`server.js`) + Socket.IO
+- **Storage (current):** `localStorage` for courses/games/live sessions/reports
+- **UI:** QR join, modern lobby/host view
+
+---
+
+## Project Structure (high level)
+```txt
+gamorax/
+├── server.js
+├── package.json
+├── next.config.js
+├── tsconfig.json
+├── .env                
+├── public/
+│   └── icons/
+├── src/  #frontend website
+└── socket-server/ #backend server
+
 ## Getting Started
-
-First, run the development server:
-
+install dependencies:
+```bash
+npm install
+```
+run the development server:
 ```bash
 npm run dev
 # or
@@ -12,108 +62,17 @@ pnpm dev
 bun dev
 ```
 
-```
-gamorax/
-│
-├── server.js
-├── package.json
-├── next.config.js
-├── tsconfig.json
-├── .env
-│
-├── prisma/
-│   └── schema.prisma
-│
-├── public/
-│   └── icons/
-│       ├── lecturer.png
-│       ├── student.png
-│
-└── src/
-    ├── app/
-    │   ├── layout.tsx              # Root layout for entire app
-    │   ├── globals.css             # Global styles
-    │   ├── page.tsx                # Home page
-    │
-    │   ├── (lecturer)/             # ROUTE GROUP (does NOT affect URL)
-    │   │   ├── layout.tsx          # OPTIONAL: Lecturer-only layout
-    │   │   ├── lecturer/           # Visible in the URL
-    │   │   │   ├── login/
-    │   │   │   │   └── page.tsx
-    │   │   │   ├── register/
-    │   │   │   │   └── page.tsx
-    │   │   │   ├── dashboard/
-    │   │   │   │   └── page.tsx
-    │   │   │   ├── game/
-    │   │   │   │   ├── create/
-    │   │   │   │   │   └── page.tsx
-    │   │   │   │   └── [id]/
-    │   │   │   │       └── page.tsx
-    │   │   │   └── live/
-    │   │   │       └── [pin]/
-    │   │   │           └── page.tsx
-    │
-    │   ├── (student)/              # ROUTE GROUP (does NOT affect URL)
-    │   │   ├── layout.tsx          # OPTIONAL: Student-only layout
-    │   │   ├── student/            # Visible in URL
-    │   │   │   ├── join/
-    │   │   │   │   └── page.tsx
-    │   │   │   ├── name/
-    │   │   │   │   └── page.tsx
-    │   │   │   ├── quiz/
-    │   │   │   │   └── [pin]/
-    │   │   │   │       └── page.tsx
-    │   │   │   └── score/
-    │   │   │       └── page.tsx
-    │
-    │   └── api/
-    │       ├── auth/
-    │       │   └── login/route.ts
-    │       ├── game/
-    │       │   ├── create/route.ts
-    │       │   └── [id]/route.ts
-    │       └── student/
-    │           └── join/route.ts
-    │
-    ├── components/
-    │   ├── Navbar.tsx
-    │   ├── Button.tsx
-    │   ├── Input.tsx
-    │   └── Card.tsx
-    │
-    ├── lib/
-    │   ├── db.ts
-    │   ├── socket.ts
-    │   ├── auth.ts
-    │   └── utils.ts
-    │
-    ├── hooks/
-    │   ├── useSocket.ts
-    │   └── useQuizState.ts
-    │
-    └── styles/
-        └── theme.css
+.env / .env.local:
+```bash
+NEXT_PUBLIC_BASE_URL="http://localhost:3000"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+run app:
+```bash
+npm run dev
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-
+build app:
+```bash
+npm run build
+```
