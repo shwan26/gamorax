@@ -123,7 +123,6 @@ export default function LivePage() {
   function handleStart() {
     if (!hasStudents) return;
 
-    fetch("/api/socket").catch(() => {});
     socket.emit("start", { pin });
 
     router.push(`/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(pin)}`);

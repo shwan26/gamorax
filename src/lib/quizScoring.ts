@@ -10,5 +10,7 @@ export function calcPoints(params: {
   if (!params.isCorrect) return 0;
 
   const timeLeft = Math.max(0, maxTime - timeUsed);
-  return timeLeft * 10;
+
+  // base = maxTime, bonus = timeLeft
+  return (maxTime + timeLeft) * 10;
 }
