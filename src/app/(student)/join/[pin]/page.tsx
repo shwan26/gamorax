@@ -88,22 +88,29 @@ export default function LobbyPage() {
   useEffect(() => {
     if (!mounted || !pin || !ready || !student) return;
 
-    socket.connect(); // ✅ connect only inside join flow
+    socket.connect(); // ✅ connect in lobby
 
     const doJoin = () => socket.emit("join", { pin, student });
 
     if (socket.connected) doJoin();
     socket.on("connect", doJoin);
 
-    const goQuestion = () => router.push(`/join/${encodeURIComponent(pin)}/question`);
+    const goQuestion = () =>
+      router.push(`/join/${encodeURIComponent(pin)}/question`);
     socket.on("question:show", goQuestion);
+
+    const onErr = (err: any) =>
+      console.error("socket connect_error:", err?.message ?? err);
+    socket.on("connect_error", onErr);
 
     return () => {
       socket.off("connect", doJoin);
       socket.off("question:show", goQuestion);
-      // ❌ don’t disconnect here if the next live page needs the socket
+      socket.off("connect_error", onErr);
+      // ❌ don't disconnect here because question page still needs socket
     };
   }, [mounted, pin, ready, student, router]);
+
 
 
   // ✅ Random avatar: change avatarSeed in StudentAccount, then rebuild LiveStudent.avatarSrc

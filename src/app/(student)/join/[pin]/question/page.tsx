@@ -149,7 +149,7 @@ export default function StudentQuestionPage() {
     if (!mounted) return;
     if (!pin || !student) return;
 
-    fetch("/api/socket").catch(() => {});
+    socket.connect(); 
 
     const doJoin = () => socket.emit("join", { pin, student });
     if (socket.connected) doJoin();

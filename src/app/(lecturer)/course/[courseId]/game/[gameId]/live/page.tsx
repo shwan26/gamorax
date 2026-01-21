@@ -89,8 +89,6 @@ export default function LivePage() {
   // connect + join room + receive students:update
   useEffect(() => {
     if (!session?.pin) return;
-
-    fetch("/api/socket").catch(() => {});
     const pin = session.pin;
 
     socket.emit("join", { pin });
