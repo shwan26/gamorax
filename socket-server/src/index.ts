@@ -119,6 +119,7 @@ app.get("/health", (_req, res) => res.send("health ok"));
 const httpServer = createServer(app);
 
 const io = new IOServer(httpServer, {
+  path: "/socket.io",
   cors: { origin, credentials: true },
 });
 

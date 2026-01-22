@@ -114,7 +114,6 @@ function makeLeaderboard(room: Room) {
 export default function handler(_req: NextApiRequest, res: ResWithSocket) {
   if (!res.socket.server.io) {
     const io = new IOServer(res.socket.server, {
-      path: "/api/socket",
       cors: { origin: "*" },
     });
 

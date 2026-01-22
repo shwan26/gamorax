@@ -192,20 +192,22 @@ export default function TeacherLiveFlowPage() {
 
   const autoRevealedRef = useRef(false);
 
+  const s = socket;
+
   // ✅ join room
   useEffect(() => {
     if (!pin) return;
+    
+    s.connect(); // ✅ connect only on Live page
 
-    socket.connect(); // ✅ connect only on Live page
+    const doJoin = () => s.emit("join", { pin });
 
-    const doJoin = () => socket.emit("join", { pin });
-
-    if (socket.connected) doJoin();
-    socket.on("connect", doJoin);
+    if (s.connected) doJoin();
+    s.on("connect", doJoin);
 
     return () => {
-      socket.off("connect", doJoin);
-      socket.disconnect(); // ✅ disconnect when leaving lecturer live page
+      s.off("connect", doJoin);
+      s.disconnect(); // ✅ disconnect when leaving lecturer live page
     };
   }, [pin]);
 
@@ -225,10 +227,10 @@ export default function TeacherLiveFlowPage() {
       }
     };
 
-    socket.on("answer:count", onCount);
+    s.on("answer:count", onCount);
 
     return () => {
-      socket.off("answer:count", onCount); // ✅ returns socket, but inside block => cleanup returns void
+      s.off("answer:count", onCount); // ✅ returns socket, but inside block => cleanup returns void
     };
   }, [qIndex]);
 
@@ -255,7 +257,7 @@ export default function TeacherLiveFlowPage() {
     const correctIndex = toCorrectIndex(q) ?? 0;
     const answersText = q.answers.map((a) => a.text);
 
-    socket.emit("question:show", {
+    s.emit("question:show", {
       pin,
       question: {
         questionIndex: qIndex,
@@ -307,7 +309,7 @@ export default function TeacherLiveFlowPage() {
     autoRevealedRef.current = true;
     setStartAt(null);
 
-    socket.emit("reveal", { pin, questionIndex: qIndex, correctIndex });
+    s.emit("reveal", { pin, questionIndex: qIndex, correctIndex });
     setStatus("answer");
   }
 
@@ -349,12 +351,12 @@ export default function TeacherLiveFlowPage() {
       });
     };
 
-    socket.on("leaderboard:update", onLb);
-    socket.on("final_results", onFinal);
+    s.on("leaderboard:update", onLb);
+    s.on("final_results", onFinal);
 
     return () => {
-      socket.off("leaderboard:update", onLb);
-      socket.off("final_results", onFinal);
+      s.off("leaderboard:update", onLb);
+      s.off("final_results", onFinal);
     };
   }, [pin, gameId, questions.length]);
 
@@ -391,14 +393,14 @@ export default function TeacherLiveFlowPage() {
         };
       });
 
-      socket.emit("finish", { pin, payload: { total: questions.length, qa } });
+      s.emit("finish", { pin, payload: { total: questions.length, qa } });
       setStatus("final");
       return;
     }
 
     setQIndex((prev) => prev + 1);
     setStatus("question");
-    socket.emit("next", { pin });
+    s.emit("next", { pin });
   }
 
   // guards
@@ -522,7 +524,7 @@ export default function TeacherLiveFlowPage() {
             reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
             onReportClick={() => {
               try {
-                socket.disconnect(); // ✅ stops Railway usage when leaving live
+                s.disconnect(); // ✅ stops Railway usage when leaving live
               } catch {}
             } }
           />
