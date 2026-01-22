@@ -92,6 +92,8 @@ export default function StudentQuestionPage() {
   const [now, setNow] = useState<number>(0);
   const questionStartAtRef = useRef<number | null>(null);
 
+  const s = socket;
+
   useEffect(() => {
     setMounted(true);
     setNow(Date.now());
@@ -148,12 +150,12 @@ export default function StudentQuestionPage() {
   useEffect(() => {
     if (!mounted) return;
     if (!pin || !student) return;
+  
+    s.connect(); 
 
-    socket.connect(); 
-
-    const doJoin = () => socket.emit("join", { pin, student });
-    if (socket.connected) doJoin();
-    socket.on("connect", doJoin);
+    const doJoin = () => s.emit("join", { pin, student });
+    if (s.connected) doJoin();
+    s.on("connect", doJoin);
 
     const onQuestionShow = (q: QuestionShowPayload) => {
       const number = Number(q?.number ?? 1);
@@ -316,18 +318,18 @@ export default function StudentQuestionPage() {
       addPointsToStudent(me.email, computedPoints);
     };
 
-    socket.on("question:show", onQuestionShow);
-    socket.on("answer:reveal", onReveal);
-    socket.on("question:next", onNext);
-    socket.on("quiz:finished", onFinished);
+    s.on("question:show", onQuestionShow);
+    s.on("answer:reveal", onReveal);
+    s.on("question:next", onNext);
+    s.on("quiz:finished", onFinished);
 
     return () => {
-      socket.off("connect", doJoin);
-      socket.off("question:show", onQuestionShow);
-      socket.off("answer:reveal", onReveal);
-      socket.off("question:next", onNext);
-      socket.off("quiz:finished", onFinished);
-      socket.off("quiz_finished", onFinished);
+      s.off("connect", doJoin);
+      s.off("question:show", onQuestionShow);
+      s.off("answer:reveal", onReveal);
+      s.off("question:next", onNext);
+      s.off("quiz:finished", onFinished);
+      s.off("quiz_finished", onFinished);
     };
     // ✅ only mount/pin/student changes can rebind
   }, [mounted, pin, student]);
@@ -355,7 +357,7 @@ export default function StudentQuestionPage() {
 
     myByQRef.current[qIndex] = { answerIndex, timeUsed };
 
-    socket.emit("answer", {
+    s.emit("answer", {
       pin,
       studentId: student.studentId,
       questionIndex: qIndex,

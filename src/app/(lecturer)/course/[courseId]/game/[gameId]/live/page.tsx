@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
@@ -15,54 +15,6 @@ type LiveStudent = {
   name: string;
   avatarSrc?: string;
 };
-
-function getInitials(name: string) {
-  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
-  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
-}
-
-function safeAvatarSrc(src?: string) {
-  if (!src) return undefined;
-  const s = src.trim();
-  // allow common safe image sources (http/https or data URI)
-  if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("data:image/")) return s;
-  return undefined;
-}
-
-function StudentAvatar({ student }: { student: LiveStudent }) {
-  const src = safeAvatarSrc(student.avatarSrc);
-  const initials = getInitials(student.name);
-
-  return (
-    <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-gray-200 flex items-center justify-center">
-      {src ? (
-        // using <img> avoids Next/Image domain config headaches
-        <img
-          src={src}
-          alt={student.name}
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <span className="text-sm font-semibold text-gray-700">{initials}</span>
-      )}
-    </div>
-  );
-}
-
-function StudentCard({ s }: { s: LiveStudent }) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-gray-200 px-3 py-2">
-      <StudentAvatar student={s} />
-      <div className="min-w-0">
-        <div className="font-medium truncate">{s.name}</div>
-        <div className="text-xs text-gray-500 truncate">{s.studentId}</div>
-      </div>
-    </div>
-  );
-}
 
 export default function LivePage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
@@ -79,30 +31,48 @@ export default function LivePage() {
   const [session, setSession] = useState<LiveSession | null>(null);
   const [students, setStudents] = useState<LiveStudent[]>([]);
 
-  // create session once
+  // ✅ prevent double-create in dev (React strict mode)
+  const createdRef = useRef(false);
+
   useEffect(() => {
     if (!valid) return;
+    if (createdRef.current) return;
+    createdRef.current = true;
+
     const s = createLiveSession(gameId);
     setSession(s);
   }, [valid, gameId]);
 
-  // connect + join room + receive students:update
+  // ✅ connect + join room + receive students:update
   useEffect(() => {
     if (!session?.pin) return;
+    
+    const s = socket;
+
+    s.connect(); // ✅ IMPORTANT
+
     const pin = session.pin;
 
-    socket.emit("join", { pin });
+    const doJoin = () => s.emit("join", { pin });
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
-      // keep it defensive + stable
-      const next = Array.isArray(list) ? list : [];
-      setStudents(next);
+      setStudents(Array.isArray(list) ? list : []);
     };
 
-    socket.on("students:update", onStudentsUpdate);
+    const onErr = (err: any) => {
+      console.error("socket connect_error:", err?.message ?? err);
+    };
+
+    if (s.connected) doJoin();
+    s.on("connect", doJoin);
+    s.on("students:update", onStudentsUpdate);
+    s.on("connect_error", onErr);
 
     return () => {
-      socket.off("students:update", onStudentsUpdate);
+      s.off("connect", doJoin);
+      s.off("students:update", onStudentsUpdate);
+      s.off("connect_error", onErr);
+
     };
   }, [session?.pin]);
 
@@ -113,16 +83,16 @@ export default function LivePage() {
   const baseUrl =
     (process.env.NEXT_PUBLIC_BASE_URL as string | undefined) ??
     (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
-  const normalizedBase = baseUrl.replace(/\/+$/, "");
-  const joinUrl = `${normalizedBase}/join/${pin}`;
+  
+    const joinUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/join/${pin}`
+      : "";
 
   const hasStudents = students.length > 0;
 
   function handleStart() {
     if (!hasStudents) return;
-
-    socket.emit("start", { pin });
-
     router.push(`/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(pin)}`);
   }
 
@@ -138,7 +108,7 @@ export default function LivePage() {
       <div className="flex px-10 py-10 gap-20">
         <div className="space-y-6">
           <p className="text-xl font-bold">
-            JOIN AT <span className="font-mono font-normal">gamorax.vercel.app/join</span>
+            JOIN AT <span className="font-mono font-normal">{joinUrl.replace(/^https?:\/\//, "")}</span>
           </p>
 
           <QRCode value={joinUrl} size={260} />
@@ -160,7 +130,10 @@ export default function LivePage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {students.map((s) => (
-                <StudentCard key={s.studentId} s={s} />
+                <div key={s.studentId} className="rounded-xl border border-gray-200 px-3 py-2">
+                  <div className="font-medium truncate">{s.name}</div>
+                  <div className="text-xs text-gray-500 truncate">{s.studentId}</div>
+                </div>
               ))}
             </div>
           )}

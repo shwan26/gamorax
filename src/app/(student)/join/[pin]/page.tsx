@@ -38,6 +38,8 @@ export default function LobbyPage() {
   const canAutoDerive = Boolean(derivedId);
   const [useDerivedId, setUseDerivedId] = useState(true);
 
+  const s = socket;
+
   useEffect(() => setMounted(true), []);
 
   // load current student + session live student
@@ -88,25 +90,25 @@ export default function LobbyPage() {
   useEffect(() => {
     if (!mounted || !pin || !ready || !student) return;
 
-    socket.connect(); // ✅ connect in lobby
+    s.connect(); // ✅ connect in lobby
 
-    const doJoin = () => socket.emit("join", { pin, student });
+    const doJoin = () => s.emit("join", { pin, student });
 
-    if (socket.connected) doJoin();
-    socket.on("connect", doJoin);
+    if (s.connected) doJoin();
+    s.on("connect", doJoin);
 
     const goQuestion = () =>
       router.push(`/join/${encodeURIComponent(pin)}/question`);
-    socket.on("question:show", goQuestion);
+    s.on("question:show", goQuestion);
 
     const onErr = (err: any) =>
       console.error("socket connect_error:", err?.message ?? err);
-    socket.on("connect_error", onErr);
+    s.on("connect_error", onErr);
 
     return () => {
-      socket.off("connect", doJoin);
-      socket.off("question:show", goQuestion);
-      socket.off("connect_error", onErr);
+      s.off("connect", doJoin);
+      s.off("question:show", goQuestion);
+      s.off("connect_error", onErr);
       // ❌ don't disconnect here because question page still needs socket
     };
   }, [mounted, pin, ready, student, router]);
@@ -133,7 +135,7 @@ export default function LobbyPage() {
     writeLiveStudent(nextLive);
     setStudent(nextLive);
 
-    socket.emit("join", { pin, student: nextLive });
+    s.emit("join", { pin, student: nextLive });
   };
 
   // ✅ Save profile (name + studentId + keep current avatarSeed)
@@ -159,14 +161,14 @@ export default function LobbyPage() {
     writeLiveStudent(nextLive);
     setStudent(nextLive);
 
-    socket.emit("join", { pin, student: nextLive });
+    s.emit("join", { pin, student: nextLive });
 
     alert("Profile updated.");
   };
 
   const handleLeave = () => {
     try {
-    socket.disconnect(); // ✅ stops Railway usage when leaving live
+    s.disconnect(); // ✅ stops Railway usage when leaving live
   } catch {}
   sessionStorage.removeItem("gamorax_live_student");
   router.push("/me");

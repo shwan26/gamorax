@@ -5,8 +5,9 @@ import { useParams, usePathname, useRouter } from "next/navigation";
 import { createLiveSession } from "@/src/lib/liveStorage";
 
 export default function GameSubNavbar({ title }: { title: string }) {
-  const router = useRouter();
   const params = useParams<{ courseId?: string; gameId?: string }>();
+  const router = useRouter();
+
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
@@ -18,8 +19,9 @@ export default function GameSubNavbar({ title }: { title: string }) {
   const isLive = pathname.startsWith(`${base}/live`);
 
   const onClickLive = () => {
-    const pin = createLiveSession(gameId); // ✅ generate + store pin in localStorage
-    router.push(`${base}/live?pin=${encodeURIComponent(pin)}`); // ✅ go live page
+    const session = createLiveSession(gameId); // ✅ returns LiveSession
+    const pin = session.pin;                  // ✅ pin is string
+    router.push(`${base}/live?pin=${encodeURIComponent(pin)}`);
   };
 
   return (
@@ -48,7 +50,7 @@ export default function GameSubNavbar({ title }: { title: string }) {
             Setting
           </Link>
 
-          {/* ✅ Button instead of Link so you can create pin first */}
+          {/* ✅ Use button so you can create session before navigation */}
           <button
             type="button"
             onClick={onClickLive}
