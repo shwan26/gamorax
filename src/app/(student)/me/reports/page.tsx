@@ -37,8 +37,7 @@ export default function MeReportsPage() {
     if (!s) return all;
 
     return all.filter((a) => {
-      const hay = [
-        a.pin,
+       const hay = [
         a.quizTitle,
         a.courseCode,
         a.courseName,
@@ -73,8 +72,8 @@ export default function MeReportsPage() {
 
         <div className="mt-6 bg-white border rounded-xl shadow-sm overflow-hidden">
           <div className="grid grid-cols-6 px-4 py-3 text-xs font-semibold text-gray-600 bg-[#f2f7ff]">
-            <div className="col-span-2">Quiz</div>
-            <div>PIN</div>
+            <div>Course</div>
+            <div>Game</div>
             <div>Score</div>
             <div>Points</div>
             <div>Finished</div>
@@ -88,22 +87,39 @@ export default function MeReportsPage() {
             filtered.map((a) => (
               <div
                 key={a.id}
-                className="grid grid-cols-6 px-4 py-4 border-t text-sm hover:bg-[#f9fbff]"
+                className="grid grid-cols-5 px-4 py-4 border-t text-sm hover:bg-[#f9fbff]"
               >
-                <div className="col-span-2">
-                  <div className="font-semibold text-gray-900">
-                    {a.quizTitle || "Quiz"}
+                {/* Course */}
+                <div className="min-w-0">
+                  <div className="font-semibold text-gray-900 truncate">
+                    {a.courseCode || "-"}
                   </div>
-                  <div className="text-xs text-gray-600">
-                    {a.courseCode ? `${a.courseCode} • ` : ""}
+                  <div className="text-xs text-gray-600 truncate">
                     {a.courseName || ""}
                   </div>
                 </div>
-                <div className="text-gray-800">{a.pin}</div>
+
+                {/* Game */}
+                <div className="min-w-0">
+                  <div className="font-semibold text-gray-900 truncate">
+                    {a.quizTitle || "Quiz"}
+                  </div>
+                  <div className="text-xs text-gray-600 truncate">
+                    {[a.section ? `Section ${a.section}` : "", a.semester || ""]
+                      .filter(Boolean)
+                      .join(" • ")}
+                  </div>
+                </div>
+
+                {/* Score */}
                 <div className="font-bold text-[#034B6B]">
                   {a.correct}/{a.totalQuestions}
                 </div>
+
+                {/* Points */}
                 <div className="font-semibold text-[#034B6B]">{a.points}</div>
+
+                {/* Finished */}
                 <div className="text-xs text-gray-600">{fmt(a.finishedAt)}</div>
               </div>
             ))

@@ -52,8 +52,21 @@ export default function LivePage() {
     s.connect(); // ✅ IMPORTANT
 
     const pin = session.pin;
+    
+    const meta = {
+      gameId,
+      quizTitle: game?.quizNumber ?? "Quiz",
+      courseCode: course?.courseCode ?? "",
+      courseName: course?.courseName ?? "",
+      section: (course?.section ?? "").toString(),
+      semester: (course?.semester ?? "").toString(),
+    };
 
-    const doJoin = () => s.emit("join", { pin });
+    const doJoin = () => {
+      s.emit("join", { pin });
+      s.emit("meta:set", { pin, meta }); // ✅ important
+    };
+
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
       setStudents(Array.isArray(list) ? list : []);
