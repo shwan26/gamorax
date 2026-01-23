@@ -20,8 +20,6 @@ import QuestionView from "@/src/components/live/QuestionView";
 import AnswerReveal from "@/src/components/live/AnswerReveal";
 import FinalBoard from "@/src/components/live/FinalBoard";
 
-/* -------------------------------- helpers -------------------------------- */
-
 function toCorrectIndex(q: Question | any): number | null {
   if (!q) return null;
 
@@ -450,7 +448,7 @@ export default function TeacherLiveFlowPage() {
         <p className="text-sm text-gray-600 mt-1">PIN: {pin}</p>
       </div>
 
-      <div className="px-10 mt-10">
+      <div className="px-10 py-8 max-w-5xl mx-auto">
         {status === "question" && (
           <>
             {/* ✅ Centered timer (same width as QuestionView) */}
