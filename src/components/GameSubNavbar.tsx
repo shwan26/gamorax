@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { createLiveSession } from "@/src/lib/liveStorage";
-import { ArrowLeft, HelpCircle, Settings, Radio } from "lucide-react";
+import { ArrowLeft, Settings, Radio } from "lucide-react";
 
 export default function GameSubNavbar({ title }: { title: string }) {
   const params = useParams<{ courseId?: string; gameId?: string }>();
@@ -15,7 +15,6 @@ export default function GameSubNavbar({ title }: { title: string }) {
   const pathname = usePathname() ?? "";
   const base = `/course/${courseId}/game/${gameId}`;
 
-  const isQuestion = pathname.startsWith(`${base}/question`);
   const isSetting = pathname.startsWith(`${base}/setting`);
   const isLive = pathname.startsWith(`${base}/live`);
 
@@ -46,17 +45,11 @@ export default function GameSubNavbar({ title }: { title: string }) {
       "border border-slate-200/80 bg-white/70 text-slate-700 shadow-sm hover:bg-white " +
       "dark:border-slate-800/70 dark:bg-slate-950/55 dark:text-slate-200 dark:hover:bg-slate-950/70";
 
-    const content = (
-      <>
-        <Icon className="h-4 w-4" />
-        <span>{label}</span>
-      </>
-    );
-
     if (href) {
       return (
         <Link href={href} className={`${common} ${active ? activeCls : inactiveCls}`}>
-          {content}
+          <Icon className="h-4 w-4" />
+          <span>{label}</span>
         </Link>
       );
     }
@@ -67,13 +60,15 @@ export default function GameSubNavbar({ title }: { title: string }) {
         className={`${common} ${active ? activeCls : inactiveCls}`}
         onClick={onClickLive}
       >
-        {content}
+        <Icon className="h-4 w-4" />
+        <span>{label}</span>
       </button>
     );
   };
 
   return (
-    <div className="px-4 sm:px-6 mt-4">
+    // ✅ same container as LecturerNavbar
+    <div className="mx-auto max-w-6xl px-4 sm:px-6 mt-4">
       <div
         className="
           relative overflow-hidden rounded-3xl
@@ -81,7 +76,7 @@ export default function GameSubNavbar({ title }: { title: string }) {
           dark:border-slate-800/70 dark:bg-slate-950/45
         "
       >
-        {/* dot pattern like your landing cards */}
+        {/* dot pattern */}
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
           style={{
@@ -95,7 +90,7 @@ export default function GameSubNavbar({ title }: { title: string }) {
         <div className="pointer-events-none absolute -right-24 -bottom-24 h-60 w-60 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
         <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {/* left: back */}
+          {/* left */}
           <Link
             href={`/course/${courseId}`}
             className="
@@ -108,31 +103,24 @@ export default function GameSubNavbar({ title }: { title: string }) {
             Back to Course
           </Link>
 
-          {/* center: title */}
+          {/* center */}
           <Link
             href={`${base}/question`}
             className="
-              inline-flex items-center justify-center gap-2
-              text-sm font-semibold text-slate-900
-              hover:opacity-90 transition
+              inline-flex items-center justify-center
+              text-sm font-semibold text-slate-900 hover:opacity-90 transition
               dark:text-slate-50
             "
             title="Open questions"
           >
-           
             <span className="max-w-[260px] truncate sm:max-w-[360px]">
               {title}
             </span>
           </Link>
 
-          {/* right: tabs */}
+          {/* right */}
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Tab
-              href={`${base}/setting/general`}
-              active={isSetting}
-              icon={Settings}
-              label="Setting"
-            />
+            <Tab href={`${base}/setting/general`} active={isSetting} icon={Settings} label="Setting" />
             <Tab active={isLive} icon={Radio} label="Live" />
           </div>
         </div>

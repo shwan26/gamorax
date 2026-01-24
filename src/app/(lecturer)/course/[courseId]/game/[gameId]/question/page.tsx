@@ -8,11 +8,17 @@ import GameSubNavbar from "@/src/components/GameSubNavbar";
 
 import { getCourseById } from "@/src/lib/courseStorage";
 import { getGameById } from "@/src/lib/gameStorage";
-import { Question, getQuestions, saveQuestions } from "@/src/lib/questionStorage";
+import {
+  type Question,
+  getQuestions,
+  saveQuestions,
+} from "@/src/lib/questionStorage";
 
 import QuestionList from "./QuestionList";
 import QuestionEditorForm from "./QuestionEditorForm";
 import DeleteModal from "./DeleteModal";
+
+/* ------------------------------ helpers ------------------------------ */
 
 function emptyAnswers() {
   return [
@@ -34,20 +40,24 @@ function createBlankQuestion(defaultTime: number): Question {
   };
 }
 
+/* ------------------------------ page ------------------------------ */
+
 export default function QuestionPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
 
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
-  const course = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
+  const course = useMemo(
+    () => (courseId ? getCourseById(courseId) : null),
+    [courseId]
+  );
   const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
 
   const valid = !!course && !!game && game.courseId === courseId;
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
-
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
 
   // drag
@@ -154,39 +164,79 @@ export default function QuestionPage() {
   if (!valid || !course || !game || !activeQuestion) return null;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen app-surface app-bg">
       <Navbar />
 
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester? course.semester : ""}`}
+        title={`${game.quizNumber} — ${course.courseCode}${
+          course.section ? ` • Section ${course.section}` : ""
+        }${course.semester ? ` • ${course.semester}` : ""}`}
       />
 
-      <div className="flex mt-6 h-[calc(100vh-160px)]">
-        {/* LEFT LIST */}
-        <QuestionList
-          questions={questions}
-          activeIndex={activeIndex}
-          onSelect={setActiveIndex}
-          onAdd={addQuestion}
-          onDuplicate={duplicateQuestion}
-          onDelete={requestDelete}
-          dragIndex={dragIndex}
-          setDragIndex={setDragIndex}
-          onDrop={handleDrop}
-        />
-
-        {/* DIVIDER */}
-        <div className="w-px bg-gray-300 mx-2" />
-
-        {/* RIGHT EDITOR */}
-        <div className="flex-1 px-6 overflow-y-auto">
-          <QuestionEditorForm
-            question={activeQuestion}
-            gameDefaultTime={game.timer.defaultTime} // always 60 now
-            onUpdate={updateActiveQuestion}
+      <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
+        <div
+          className="
+            relative overflow-hidden rounded-3xl
+            border border-slate-200/70 bg-white/60 shadow-sm backdrop-blur
+            dark:border-slate-800/70 dark:bg-slate-950/45
+          "
+          style={{ height: "calc(100vh - 220px)" }}
+        >
+          {/* dot pattern + glow like other pages */}
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+              backgroundSize: "18px 18px",
+            }}
           />
+          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/14 blur-3xl" />
+          <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+
+          <div className="relative flex h-full">
+            {/* LEFT LIST */}
+            <aside
+              className="
+                w-[90px] shrink-0
+                border-r border-slate-200/70
+                dark:border-slate-800/70
+                sm:w-[100px]
+                lg:w-[120px]
+              "
+            >
+              <QuestionList
+                questions={questions}
+                activeIndex={activeIndex}
+                onSelect={setActiveIndex}
+                onAdd={addQuestion}
+                onDuplicate={duplicateQuestion}
+                onDelete={requestDelete}
+                dragIndex={dragIndex}
+                setDragIndex={setDragIndex}
+                onDrop={handleDrop}
+              />
+            </aside>
+
+
+            {/* RIGHT EDITOR */}
+            <section className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div
+                className="
+                  rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
+                  dark:border-slate-800/70 dark:bg-slate-950/55
+                "
+              >
+                <QuestionEditorForm
+                  question={activeQuestion}
+                  gameDefaultTime={game.timer.defaultTime}
+                  onUpdate={updateActiveQuestion}
+                />
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
+      </main>
 
       <DeleteModal
         open={deleteIndex !== null}
