@@ -67,19 +67,7 @@ export default function StudentNavbar() {
             Join
           </button>
 
-          {/* Reports */}
-          <Link
-            href="/me/reports"
-            className="
-              hidden sm:inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold
-              border border-slate-200/80 bg-white/70 text-slate-700 shadow-sm hover:bg-white transition-colors
-              dark:border-slate-800/70 dark:bg-slate-950/55 dark:text-slate-200 dark:hover:bg-slate-950/70
-              focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40
-            "
-          >
-            <FileText className="h-4 w-4" />
-            Reports
-          </Link>
+          
 
           {/* Points chip */}
           <div
