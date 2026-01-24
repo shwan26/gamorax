@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-
 import readXlsxFile from "read-excel-file";
-
 import { getGameById } from "@/src/lib/gameStorage";
 import { Question, getQuestions, saveQuestions } from "@/src/lib/questionStorage";
+import { UploadCloud, FileSpreadsheet, Info, CheckCircle2 } from "lucide-react";
 
 function norm(s: any) {
   return String(s ?? "")
@@ -33,9 +32,7 @@ function correctIndexFromValue(correctRaw: string, answers: string[]) {
   const map: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
   if (map[letter] !== undefined) return map[letter];
 
-  const idx = answers.findIndex(
-    (a) => a.trim().toLowerCase() === c.toLowerCase()
-  );
+  const idx = answers.findIndex((a) => a.trim().toLowerCase() === c.toLowerCase());
   return idx;
 }
 
@@ -58,7 +55,6 @@ function rowsToQuestions(rows: any[][], defaultTime: number): Question[] {
   }
 
   const out: Question[] = [];
-
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
 
@@ -101,14 +97,15 @@ function metaKey(gameId: string) {
   return `gamorax_import_meta_${gameId}`;
 }
 
+function fmt(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
 export default function AddFileSetting() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  // ✅ done notification
   const [notice, setNotice] = useState<string | null>(null);
-
-  // ✅ show last imported file
   const [lastMeta, setLastMeta] = useState<ImportMeta | null>(null);
 
   const params = useParams<{ gameId?: string }>();
@@ -155,7 +152,7 @@ export default function AddFileSetting() {
         return;
       }
 
-      // ✅ ADD mode (append)
+      // ADD mode (append)
       const existing = getQuestions(gameId);
       saveQuestions(gameId, [...existing, ...imported]);
 
@@ -177,64 +174,117 @@ export default function AddFileSetting() {
   }
 
   return (
-    <>
-      <h3 className="font-semibold mb-4">Add File</h3>
+    <div>
+      {/* soft glow */}
+      <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#00D4FF]/12 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 -bottom-24 h-64 w-64 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
-      <p className="text-sm text-gray-600 mb-6">
-        Upload an Excel file to create quiz questions in bulk.
-      </p>
-
-      {/* ✅ Success notification */}
-      {notice && (
-        <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          {notice}
-        </div>
-      )}
-
-      {/* ✅ Last imported info */}
-      {lastMeta && (
-        <div className="mb-4 rounded-md border bg-gray-50 px-4 py-3 text-sm">
-          <div className="font-medium">Last imported file</div>
-          <div className="text-gray-700">
-            {lastMeta.fileName} • {lastMeta.importedCount} questions
+      <div className="relative">
+        {/* header */}
+        <div className="flex items-start gap-3">
+          <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/55">
+            <FileSpreadsheet className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">
+              Add File
+            </h3>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Upload an Excel file to create quiz questions in bulk.
+            </p>
           </div>
         </div>
-      )}
 
-      {/* Upload Box (single button) */}
-      <label className="block border-2 border-dashed rounded-md p-6 text-center cursor-pointer hover:bg-blue-50 transition">
-        <input
-          type="file"
-          accept=".xlsx"
-          hidden
-          onChange={handleFileUpload}
-          disabled={loading}
-        />
+        {/* notice */}
+        {notice && (
+          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-4 text-sm text-emerald-900 backdrop-blur dark:border-emerald-900/40 dark:bg-emerald-950/35 dark:text-emerald-100">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+            <div className="min-w-0">{notice}</div>
+          </div>
+        )}
 
-        <p className="font-medium text-blue-700">
-          {loading ? "Importing..." : "+ Upload Excel File"}
-        </p>
-        <p className="text-xs text-gray-500 mt-1">Supported formats: .xlsx</p>
-      </label>
+        {/* last import */}
+        {lastMeta && (
+          <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200">
+            <div className="flex items-start gap-3">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <div className="font-semibold text-slate-900 dark:text-slate-50">
+                  Last imported
+                </div>
+                <div className="mt-1 text-slate-700 dark:text-slate-200">
+                  {lastMeta.fileName} • {lastMeta.importedCount} questions
+                </div>
+                <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  {fmt(lastMeta.importedAtIso)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {fileName && (
-        <p className="text-sm text-green-600 mt-3">Selected: {fileName}</p>
-      )}
+        {/* uploader */}
+        <label
+          className={[
+            "mt-4 block cursor-pointer rounded-3xl border border-slate-200/80 bg-white/55 p-6 text-center shadow-sm backdrop-blur transition",
+            "hover:bg-white hover:shadow-md",
+            "dark:border-slate-800/70 dark:bg-slate-950/40 dark:hover:bg-slate-950/55",
+            loading ? "opacity-80 cursor-not-allowed" : "",
+          ].join(" ")}
+        >
+          <input
+            type="file"
+            accept=".xlsx"
+            hidden
+            onChange={handleFileUpload}
+            disabled={loading}
+          />
 
-      {/* Template Preview */}
-      <div className="mt-8">
-        <p className="font-medium mb-2">Excel Template Format</p>
+          <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/55">
+              <UploadCloud className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+            </div>
 
-        <img
-          src="/excel-template-preview.png"
-          alt="Excel template example"
-          className="border rounded-md shadow-sm max-w-full"
-        />
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+              {loading ? "Importing..." : "Upload Excel (.xlsx)"}
+            </p>
 
-        <p className="text-xs text-gray-500 mt-2">
-          Columns must include: Question, Answer A–D, Correct Answer
-        </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Columns: Question, Answer A–D, Correct Answer
+            </p>
+
+            {fileName && (
+              <p className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-200">
+                Selected: <span className="font-semibold">{fileName}</span>
+              </p>
+            )}
+          </div>
+        </label>
+
+        {/* template */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+              Excel Template Format
+            </p>
+            <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 text-xs text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/55 dark:text-slate-200">
+              Preview
+            </span>
+          </div>
+
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/60 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/45">
+            <img
+              src="/excel-template-preview.png"
+              alt="Excel template example"
+              className="block w-full"
+            />
+          </div>
+
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Make sure the header names match (case/spacing doesn’t matter).
+          </p>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

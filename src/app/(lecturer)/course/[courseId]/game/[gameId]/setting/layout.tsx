@@ -82,7 +82,7 @@ export default function SettingLayout({
             {/* LEFT MENU */}
             <aside
               className="
-                w-[220px] shrink-0 border-r border-slate-200/70 p-3
+                w-[180px] shrink-0 border-r border-slate-200/70 p-3
                 dark:border-slate-800/70
               "
             >
