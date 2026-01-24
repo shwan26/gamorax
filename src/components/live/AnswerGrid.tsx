@@ -1,6 +1,11 @@
 "use client";
 
-// src/components/live/AnswerGrid.tsx
+import {
+  ANSWER_LABELS,
+  BADGE_ACCENT,
+  PICK_BTN_BASE,
+} from "@/src/components/ui/answerStyles";
+
 export default function AnswerGrid(props: {
   selectedIndex: number | null;
   disabled: boolean;
@@ -8,7 +13,6 @@ export default function AnswerGrid(props: {
   labelClassName?: string;
 }) {
   const { selectedIndex, disabled, onPick, labelClassName } = props;
-
   const hasPicked = selectedIndex !== null;
 
   return (
@@ -20,19 +24,14 @@ export default function AnswerGrid(props: {
           md:max-w-2xl md:gap-6
         "
       >
-        {(["A", "B", "C", "D"] as const).map((label, idx) => {
+        {ANSWER_LABELS.map((label, idx) => {
           const isSelected = selectedIndex === idx;
-
-          // optional: dim others only after pick
           const dimClass = hasPicked && !isSelected ? "opacity-40" : "opacity-100";
 
-          // ✅ ONE gradient only (same style for all)
-          const base =
-            "bg-gradient-to-b from-[#034B6B] to-[#0B6FA6]";
+          // one shared gradient
+          const base = `bg-gradient-to-br ${BADGE_ACCENT}`;
 
-          // ✅ selected: slightly stronger + ring (but still shows all 4)
-          const selected =
-            "from-[#023754] to-[#0A5E8F] ring-4 ring-white/70";
+          const selected = "brightness-110 ring-4 ring-white/70";
 
           return (
             <button
@@ -41,11 +40,8 @@ export default function AnswerGrid(props: {
               onClick={() => onPick(idx)}
               type="button"
               className={[
-                "flex items-center justify-center",
-                "rounded-3xl shadow-md",
-                "min-h-[120px] sm:min-h-[140px] md:min-h-[170px]", // mobile friendly
-                "active:scale-[0.98] transition",
-                "focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40",
+                PICK_BTN_BASE,
+                "min-h-[120px] sm:min-h-[140px] md:min-h-[170px]",
                 base,
                 isSelected ? selected : "",
                 dimClass,

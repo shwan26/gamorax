@@ -1,6 +1,12 @@
 "use client";
 
-const LABELS = ["A", "B", "C", "D"];
+import {
+  ANSWER_LABELS,
+  BADGE_ACCENT,
+  BADGE_OUTER,
+  BADGE_INNER,
+  ANSWER_CARD,
+} from "@/src/components/ui/answerStyles";
 
 function DotPattern() {
   return (
@@ -33,7 +39,6 @@ export default function QuestionView({
       <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
       <div className="relative">
-        {/* small line only: Question 2/4 */}
         <div className="mb-4 flex items-center justify-center">
           <div
             className="
@@ -51,14 +56,11 @@ export default function QuestionView({
           </div>
         </div>
 
-        {/* QUESTION TEXT big */}
         <div className="text-center">
           <p className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-50 leading-snug">
             {q.text}
           </p>
 
-
-          {/* QUESTION IMAGE */}
           {hasImage ? (
             <div
               className="
@@ -67,7 +69,6 @@ export default function QuestionView({
                 dark:border-slate-800/70 dark:bg-slate-950/55
               "
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={q.image}
                 className="max-h-[46vh] w-full object-contain p-4"
@@ -77,25 +78,16 @@ export default function QuestionView({
           ) : null}
         </div>
 
-        {/* ANSWERS big + same “blue badge” look like editor */}
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {q.answers.map((a: any, i: number) => (
-            <div
-              key={i}
-              className="
-                group relative overflow-hidden rounded-3xl
-                border border-slate-200/70 bg-white/60 p-5 sm:p-6 shadow-sm backdrop-blur
-                transition-all hover:-translate-y-0.5 hover:shadow-md
-                dark:border-slate-800/70 dark:bg-slate-950/45
-              "
-            >
+            <div key={i} className={ANSWER_CARD}>
               <DotPattern />
 
               <div className="relative flex items-center gap-4">
-                {/* badge: EXACT same blue vibe */}
-                <div className="shrink-0 rounded-2xl bg-gradient-to-br p-[1px]">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-b from-[#034B6B] to-[#0B6FA6] text-white shadow-sm">
-                    <span className="text-2xl font-extrabold">{LABELS[i]}</span>
+                {/* shared badge style */}
+                <div className={BADGE_OUTER}>
+                  <div className={`${BADGE_INNER} ${BADGE_ACCENT} h-14 w-14`}>
+                    <span className="text-2xl font-extrabold">{ANSWER_LABELS[i]}</span>
                   </div>
                 </div>
 
@@ -112,11 +104,10 @@ export default function QuestionView({
                         dark:border-slate-800/70 dark:bg-slate-950/55
                       "
                     >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={a.image}
                         className="max-h-[20vh] w-full object-contain p-3"
-                        alt={`Answer ${LABELS[i]}`}
+                        alt={`Answer ${ANSWER_LABELS[i]}`}
                       />
                     </div>
                   ) : null}

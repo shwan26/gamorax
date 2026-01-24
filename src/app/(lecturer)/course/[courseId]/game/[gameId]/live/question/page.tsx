@@ -20,6 +20,8 @@ import QuestionView from "@/src/components/live/QuestionView";
 import AnswerReveal from "@/src/components/live/AnswerReveal";
 import FinalBoard from "@/src/components/live/FinalBoard";
 
+/* -------------------------------- helpers -------------------------------- */
+
 function toCorrectIndex(q: Question | any): number | null {
   if (!q) return null;
 
@@ -177,9 +179,12 @@ export default function TeacherLiveFlowPage() {
     return { ...baseQ, answers: displayAnswers };
   }, [baseQ, answerOrder]);
 
-  // live counts (A/B/C/D in DISPLAY order)
+  // counts (A/B/C/D in DISPLAY order)
   const [counts, setCounts] = useState<[number, number, number, number]>([0, 0, 0, 0]);
-  const [totalAnswers, setTotalAnswers] = useState(0);
+  const [answeredCount, setAnsweredCount] = useState(0);
+
+  // ✅ joined students count (who joined the room)
+  const [joinedCount, setJoinedCount] = useState(0);
 
   // timer
   const [startAt, setStartAt] = useState<number | null>(null);
@@ -193,8 +198,8 @@ export default function TeacherLiveFlowPage() {
   // ✅ join room
   useEffect(() => {
     if (!pin) return;
-    
-    s.connect(); // ✅ connect only on Live page
+
+    s.connect();
 
     const doJoin = () => s.emit("join", { pin });
 
@@ -203,12 +208,30 @@ export default function TeacherLiveFlowPage() {
 
     return () => {
       s.off("connect", doJoin);
-      s.disconnect(); // ✅ disconnect when leaving lecturer live page
+      s.disconnect();
     };
   }, [pin]);
 
+  // ✅ listen: joined users count (server should emit this)
+  useEffect(() => {
+    const onJoined = (p: any) => {
+      // expects: { pin, totalJoined } OR { total }
+      const n = Number(p?.totalJoined ?? p?.total ?? p?.count ?? 0);
+      if (Number.isFinite(n) && n >= 0) setJoinedCount(n);
+    };
 
-  // listen answer counts
+    s.on("room:count", onJoined);
+    s.on("join:count", onJoined);
+    s.on("room:joined", onJoined);
+
+    return () => {
+      s.off("room:count", onJoined);
+      s.off("join:count", onJoined);
+      s.off("room:joined", onJoined);
+    };
+  }, []);
+
+  // listen answer counts -> answeredCount
   useEffect(() => {
     const onCount = (p: any) => {
       if (!p) return;
@@ -219,24 +242,27 @@ export default function TeacherLiveFlowPage() {
           Number(p.counts[2] ?? 0),
           Number(p.counts[3] ?? 0),
         ]);
-        setTotalAnswers(Number(p.totalAnswers ?? 0));
+
+        // ✅ only show "answered" (sum of A/B/C/D)
+        const a0 = Number(p.counts[0] ?? 0);
+        const a1 = Number(p.counts[1] ?? 0);
+        const a2 = Number(p.counts[2] ?? 0);
+        const a3 = Number(p.counts[3] ?? 0);
+        setAnsweredCount(Math.max(0, a0 + a1 + a2 + a3));
       }
     };
 
     s.on("answer:count", onCount);
 
     return () => {
-      s.off("answer:count", onCount); // ✅ returns socket, but inside block => cleanup returns void
+      s.off("answer:count", onCount);
     };
   }, [qIndex]);
-
 
   // ✅ broadcast question
   useEffect(() => {
     if (!pin || !q || status !== "question") return;
 
-
-    // ✅ last question timestamp (when shown)
     setLastQuestionAt(pin);
 
     const dur = getDurationSec(q);
@@ -248,7 +274,7 @@ export default function TeacherLiveFlowPage() {
     autoRevealedRef.current = false;
 
     setCounts([0, 0, 0, 0]);
-    setTotalAnswers(0);
+    setAnsweredCount(0);
 
     const correctIndex = toCorrectIndex(q) ?? 0;
     const answersText = q.answers.map((a) => a.text);
@@ -364,7 +390,6 @@ export default function TeacherLiveFlowPage() {
     autoRevealedRef.current = false;
 
     if (qIndex + 1 >= questions.length) {
-      // QA in LIVE order + answer order per live question
       const qa = [...Array(questions.length)].map((_, liveIdx) => {
         const bIdx = liveOrder[liveIdx] ?? liveIdx;
         const qq = questions[bIdx];
@@ -428,98 +453,27 @@ export default function TeacherLiveFlowPage() {
   // timer UI (FULL -> EMPTY)
   const elapsed = startAt ? Math.max(0, now - startAt) : 0;
   const limit = durationSec * 1000;
-  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
+  const pctRemaining =
+    startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
   const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
 
-  // ✅ props for your AnswerReveal (matches your TS error)
+  // props for AnswerReveal
   const correctIndex = toCorrectIndex(q) ?? 0;
   const answersText = q.answers.map((a) => a.text);
 
   return (
-  <div className="min-h-screen app-surface app-bg">
-    <Navbar />
+    <div className="min-h-screen app-surface app-bg">
+      <Navbar />
 
-    <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
-      {/* Header */}
-      <div
-        className="
-          relative overflow-hidden rounded-3xl
-          border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
-          dark:border-slate-800/70 dark:bg-slate-950/45
-        "
-      >
-        {/* dot pattern */}
+      <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
+        {/* Header */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
-            backgroundSize: "18px 18px",
-          }}
-        />
-        {/* glow blobs */}
-        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/14 blur-3xl" />
-        <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
-
-        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              {game.quizNumber}{" "}
-              <span className="text-slate-500 dark:text-slate-300 font-semibold">
-                — {course.courseCode}
-                {course.section ? ` • Section ${course.section}` : ""}
-                {course.semester ? ` • ${course.semester}` : ""}
-              </span>
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Teacher live control panel
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="
-                rounded-full border border-slate-200/70 bg-white/70
-                px-3 py-1 text-xs font-semibold text-slate-700
-                dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-200
-              "
-            >
-              PIN: <span className="font-mono tracking-wider">{pin}</span>
-            </span>
-
-            <span
-              className={[
-                "rounded-full border px-3 py-1 text-xs font-semibold",
-                status === "question"
-                  ? "border-[#00D4FF]/40 bg-white/70 text-slate-700 dark:bg-slate-950/50 dark:text-slate-200"
-                  : status === "answer"
-                  ? "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:border-amber-700/40 dark:bg-amber-950/25 dark:text-amber-200"
-                  : "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:border-emerald-700/40 dark:bg-emerald-950/25 dark:text-emerald-200",
-              ].join(" ")}
-            >
-              {status === "question"
-                ? "Question"
-                : status === "answer"
-                ? "Answer"
-                : "Final"}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Content area */}
-      <div className="mt-6 grid gap-4">
-        {/* main panel */}
-        <section
           className="
             relative overflow-hidden rounded-3xl
             border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
             dark:border-slate-800/70 dark:bg-slate-950/45
           "
         >
-        
-          {/* dot pattern */}
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
             style={{
@@ -528,158 +482,241 @@ export default function TeacherLiveFlowPage() {
               backgroundSize: "18px 18px",
             }}
           />
-          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/12 blur-3xl" />
+          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/14 blur-3xl" />
           <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
-          <div className="relative">
-            {status === "question" && (
-              <>
-                {/* Timer */}
-                {startAt && (
-                  <div className="mb-5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        Time remaining
-                      </p>
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {remainingSec}s
-                      </p>
-                    </div>
+          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+                {game.quizNumber}{" "}
+                <span className="text-slate-500 dark:text-slate-300 font-semibold">
+                  — {course.courseCode}
+                  {course.section ? ` • Section ${course.section}` : ""}
+                  {course.semester ? ` • ${course.semester}` : ""}
+                </span>
+              </h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Teacher live control panel
+              </p>
+            </div>
 
-                    <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                      <div
-                        className="h-full transition-[width] duration-100"
-                        style={{
-                          width: `${pctRemaining}%`,
-                          background:
-                            "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Question view wrapped */}
-                <div
-                  className="
-                    rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                    dark:border-slate-800/70 dark:bg-slate-950/55
-                  "
-                >
-                  <QuestionView q={q} index={qIndex} total={questions.length} />
-
-                </div>
-
-                {/* Show Answer */}
-                <div className="mt-5 flex justify-end">
-                  <button
-                    onClick={() => showAnswer(false)}
-                    className="
-                      inline-flex items-center justify-center rounded-full px-8 py-3 text-sm font-semibold text-white
-                      bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-                      shadow-[0_10px_25px_rgba(37,99,235,0.18)]
-                      hover:opacity-95 active:scale-[0.99] transition
-                      focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
-                    "
-                  >
-                    Show Answer
-                  </button>
-                </div>
-              </>
-            )}
-
-            {status === "answer" && (
-              <>
-                <div className="mb-4">
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Question {qIndex + 1} of {questions.length}
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-50">
-                    {q.text}
-                  </p>
-                </div>
-
-                <div
-                  className="
-                    rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                    dark:border-slate-800/70 dark:bg-slate-950/55
-                  "
-                >
-                  <AnswerReveal
-                    counts={counts}
-                    correctIndex={correctIndex}
-                    answersText={answersText}
-                  />
-                </div>
-
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={next}
-                    className="
-                      inline-flex items-center justify-center rounded-full px-10 py-3 text-sm font-semibold text-white
-                      bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-                      shadow-[0_10px_25px_rgba(37,99,235,0.18)]
-                      hover:opacity-95 active:scale-[0.99] transition
-                      focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
-                    "
-                  >
-                    Next
-                  </button>
-                </div>
-              </>
-            )}
-
-            {status === "final" && (
-              <div
+            <div className="flex flex-wrap items-center gap-2">
+              {/* ✅ PIN bigger */}
+              <span
                 className="
-                  rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                  dark:border-slate-800/70 dark:bg-slate-950/55
+                  rounded-full border border-slate-200/70 bg-white/70
+                  px-4 py-2 text-sm font-extrabold text-slate-900
+                  dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-50
                 "
               >
-                <FinalBoard
-                  ranked={ranked}
-                  total={questions.length}
-                  reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
-                  onReportClick={() => {
-                    try {
-                      s.disconnect();
-                    } catch {}
-                  }}
-                />
-              </div>
-            )}
+                PIN:{" "}
+                <span className="font-mono tracking-widest text-base sm:text-lg">
+                  {pin}
+                </span>
+              </span>
+
+              <span
+                className={[
+                  "rounded-full border px-3 py-1 text-xs font-semibold",
+                  status === "question"
+                    ? "border-[#00D4FF]/40 bg-white/70 text-slate-700 dark:bg-slate-950/50 dark:text-slate-200"
+                    : status === "answer"
+                    ? "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:border-amber-700/40 dark:bg-amber-950/25 dark:text-amber-200"
+                    : "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:border-emerald-700/40 dark:bg-emerald-950/25 dark:text-emerald-200",
+                ].join(" ")}
+              >
+                {status === "question" ? "Question" : status === "answer" ? "Answer" : "Final"}
+              </span>
+            </div>
           </div>
-        </section>
+        </div>
 
-        {/* Live stats */}
-        <aside
-          className="
-            rounded-2xl border border-slate-200/70 bg-white/60 p-4 shadow-sm backdrop-blur
-            dark:border-slate-800/70 dark:bg-slate-950/45
-          "
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-              Live counts
-            </p>
-            <span
-              className="
-                rounded-full border border-slate-200/70 bg-white/70
-                px-2.5 py-1 text-[11px] font-semibold text-slate-600
-                dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300
-              "
-            >
-              Total {totalAnswers}
-            </span>
-          </div>
+        {/* Content */}
+        <div className="mt-6 grid gap-4">
+          <section
+            className="
+              relative overflow-hidden rounded-3xl
+              border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
+              dark:border-slate-800/70 dark:bg-slate-950/45
+            "
+          >
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+                backgroundSize: "18px 18px",
+              }}
+            />
+            <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/12 blur-3xl" />
+            <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
-          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-            Updates in real-time.
-          </p>
-        </aside>
-      </div>
-    </main>
-  </div>
-);
+            <div className="relative">
+              {status === "question" && (
+                <>
+                  {/* Timer */}
+                  {startAt && (
+                    <div className="mb-5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          Time remaining
+                        </p>
+                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {remainingSec}s
+                        </p>
+                      </div>
 
+                      <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
+                        <div
+                          className="h-full transition-[width] duration-100"
+                          style={{
+                            width: `${pctRemaining}%`,
+                            background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className="
+                      rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
+                      dark:border-slate-800/70 dark:bg-slate-950/55
+                    "
+                  >
+                    <QuestionView q={q} index={qIndex} total={questions.length} />
+                  </div>
+
+                  <div className="mt-5 flex justify-end">
+                    <button
+                      onClick={() => showAnswer(false)}
+                      className="
+                        inline-flex items-center justify-center rounded-full px-8 py-3 text-sm font-semibold text-white
+                        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
+                        shadow-[0_10px_25px_rgba(37,99,235,0.18)]
+                        hover:opacity-95 active:scale-[0.99] transition
+                        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
+                      "
+                    >
+                      Show Answer
+                    </button>
+                  </div>
+
+                  {/* ✅ Live counts ONLY during question (joined + answered) */}
+                  <div
+                    className="
+                      mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 shadow-sm backdrop-blur
+                      dark:border-slate-800/70 dark:bg-slate-950/45
+                    "
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        Live room
+                      </p>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="
+                            rounded-full border border-slate-200/70 bg-white/70
+                            px-2.5 py-1 text-[11px] font-semibold text-slate-600
+                            dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300
+                          "
+                        >
+                          Joined {joinedCount}
+                        </span>
+                        <span
+                          className="
+                            rounded-full border border-slate-200/70 bg-white/70
+                            px-2.5 py-1 text-[11px] font-semibold text-slate-600
+                            dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300
+                          "
+                        >
+                          Answered {answeredCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      Students can join anytime with the PIN. Answered counts update in real-time.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {status === "answer" && (
+                <>
+                  {/* ✅ show answered count when reveal (no joined here if you prefer; you asked show answered on reveal) */}
+                  <div className="mb-4">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      Question {qIndex + 1} of {questions.length}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                        {q.text}
+                      </p>
+
+                      <span
+                        className="
+                          rounded-full border border-slate-200/70 bg-white/70
+                          px-3 py-1 text-xs font-semibold text-slate-700
+                          dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-200
+                        "
+                      >
+                        Answered: <span className="font-extrabold">{answeredCount}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    className="
+                      rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
+                      dark:border-slate-800/70 dark:bg-slate-950/55
+                    "
+                  >
+                    <AnswerReveal counts={counts} correctIndex={correctIndex} answersText={answersText} />
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={next}
+                      className="
+                        inline-flex items-center justify-center rounded-full px-10 py-3 text-sm font-semibold text-white
+                        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
+                        shadow-[0_10px_25px_rgba(37,99,235,0.18)]
+                        hover:opacity-95 active:scale-[0.99] transition
+                        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
+                      "
+                    >
+                      Next
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {status === "final" && (
+                <div
+                  className="
+                    rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
+                    dark:border-slate-800/70 dark:bg-slate-950/55
+                  "
+                >
+                  {/* ✅ no live count in final */}
+                  <FinalBoard
+                    ranked={ranked}
+                    total={questions.length}
+                    reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
+                    onReportClick={() => {
+                      try {
+                        s.disconnect();
+                      } catch {}
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  );
 }

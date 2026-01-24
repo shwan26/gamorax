@@ -2,9 +2,12 @@
 
 import { Answer } from "@/src/lib/questionStorage";
 import { Check, ImagePlus } from "lucide-react";
-
-const labels = ["A", "B", "C", "D"];
-const badgeAccent = "from-[#00D4FF] via-[#38BDF8] to-[#2563EB]";
+import {
+  ANSWER_LABELS,
+  BADGE_ACCENT,
+  BADGE_OUTER,
+  BADGE_INNER,
+} from "@/src/components/ui/answerStyles";
 
 export default function AnswerInput({
   answer,
@@ -41,16 +44,10 @@ export default function AnswerInput({
       />
 
       <div className="relative flex items-start gap-3">
-        {/* Label badge (same color for A/B/C/D) */}
-        <div className="shrink-0 rounded-2xl bg-gradient-to-br p-[1px]">
-          <div
-            className={`
-              flex h-11 w-11 items-center justify-center rounded-2xl
-              bg-gradient-to-br ${badgeAccent}
-              text-white shadow-sm
-            `}
-          >
-            <span className="text-sm font-bold">{labels[index]}</span>
+        {/* Label badge (shared) */}
+        <div className={BADGE_OUTER}>
+          <div className={`${BADGE_INNER} ${BADGE_ACCENT} h-11 w-11`}>
+            <span className="text-sm font-bold">{ANSWER_LABELS[index]}</span>
           </div>
         </div>
 
@@ -59,7 +56,7 @@ export default function AnswerInput({
           <input
             value={answer.text}
             onChange={(e) => onChange({ text: e.target.value })}
-            placeholder={`Answer ${labels[index]}`}
+            placeholder={`Answer ${ANSWER_LABELS[index]}`}
             className="
               w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
               shadow-sm outline-none
@@ -73,7 +70,7 @@ export default function AnswerInput({
             <div className="flex items-start gap-3">
               <img
                 src={answer.image}
-                alt={`Answer ${labels[index]} image`}
+                alt={`Answer ${ANSWER_LABELS[index]} image`}
                 className="
                   max-h-28 rounded-xl border border-slate-200/80 bg-white shadow-sm
                   dark:border-slate-800/70 dark:bg-slate-950/40

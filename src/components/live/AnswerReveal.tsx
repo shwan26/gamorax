@@ -37,13 +37,14 @@ export default function AnswerReveal({
   const total = safeCounts.reduce((a, b) => a + b, 0);
   const maxCount = Math.max(1, ...safeCounts);
 
-  // vertical chart sizing
+  // If correctIndex is not provided, don't dim anything.
+  const hasCorrect = typeof correctIndex === "number" && correctIndex >= 0;
+
   const maxBarPx = 220;
-  const minBarPx = 10; // keep a tiny visible bar for non-zero
+  const minBarPx = 10;
 
   return (
     <div>
-      {/* Chart */}
       <div className="flex items-end justify-between gap-3 sm:gap-5">
         {safeCounts.map((count, i) => {
           const percent = pct(count, total);
@@ -54,22 +55,25 @@ export default function AnswerReveal({
               ? 0
               : Math.max(minBarPx, Math.round((count / maxCount) * maxBarPx));
 
+          // ✅ Dim incorrect choices (bar + text + label) when correct exists
+          const dimIncorrect = hasCorrect && !isCorrect;
+          const itemDimClass = dimIncorrect ? "opacity-40 saturate-75" : "opacity-100";
+
           const barClass = isCorrect
-            ? "bg-gradient-to-b from-[#022B3A] via-[#034B6B] to-[#0B6FA6]" // ✅ darker, richer
-            : "bg-gradient-to-b from-slate-100 via-slate-50 to-white dark:from-slate-800/60 dark:via-slate-900/40 dark:to-slate-950/20"; // ✅ light + soft
+            ? "bg-gradient-to-b from-[#022B3A] via-[#034B6B] to-[#0B6FA6]"
+            : "bg-gradient-to-b from-slate-100 via-slate-50 to-white dark:from-slate-800/60 dark:via-slate-900/40 dark:to-slate-950/20";
 
           const ringClass = isCorrect
             ? "ring-2 ring-[#034B6B]/35"
             : "ring-1 ring-slate-200/80 dark:ring-slate-800/50";
 
-
           return (
-            <div key={i} className="flex w-full flex-col items-center">
+            <div key={i} className={`flex w-full flex-col items-center ${itemDimClass}`}>
               {/* Count pill */}
               <div
                 className={[
                   "mb-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold",
-                  "border shadow-sm",
+                  "border shadow-sm transition-opacity",
                   isCorrect
                     ? "border-[#034B6B]/25 bg-[#034B6B]/10 text-[#034B6B] dark:bg-[#034B6B]/20 dark:text-[#9FD4F2]"
                     : "border-slate-200/70 bg-white/70 text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200",
@@ -90,10 +94,8 @@ export default function AnswerReveal({
                   dark:border-slate-800/70 dark:bg-slate-950/35
                 "
               >
-                {/* subtle baseline */}
                 <div className="pointer-events-none absolute bottom-2 left-2 right-2 h-px bg-slate-200/70 dark:bg-slate-800/60" />
 
-                {/* bar */}
                 <div
                   className={[
                     "w-full rounded-xl shadow-sm transition-[height] duration-200",
@@ -102,7 +104,6 @@ export default function AnswerReveal({
                   ].join(" ")}
                   style={{ height: h }}
                 >
-                  {/* little glow cap */}
                   <div
                     className={[
                       "h-2 w-full rounded-t-xl opacity-70",
@@ -112,11 +113,11 @@ export default function AnswerReveal({
                 </div>
               </div>
 
-              {/* Label + answer (optional) */}
+              {/* Label */}
               <div className="mt-2 flex items-center gap-2">
                 <span
                   className={[
-                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold",
+                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold transition-opacity",
                     isCorrect
                       ? "bg-[#034B6B] text-white"
                       : "bg-white text-[#034B6B] border border-slate-200/70 dark:bg-slate-950/40 dark:border-slate-800/70",
@@ -126,8 +127,16 @@ export default function AnswerReveal({
                 </span>
               </div>
 
+              {/* Answer text */}
               {safeAnswers[i] ? (
-                <div className="mt-3 max-w-[150px] text-center text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 line-clamp-3">
+                <div
+                  className={[
+                    "mt-3 max-w-[150px] text-center text-sm sm:text-base font-semibold line-clamp-3 transition-opacity",
+                    isCorrect
+                      ? "text-slate-900 dark:text-slate-50"
+                      : "text-slate-500 dark:text-slate-400",
+                  ].join(" ")}
+                >
                   {safeAnswers[i]}
                 </div>
               ) : (
@@ -135,7 +144,6 @@ export default function AnswerReveal({
                   (no text)
                 </div>
               )}
-
             </div>
           );
         })}
