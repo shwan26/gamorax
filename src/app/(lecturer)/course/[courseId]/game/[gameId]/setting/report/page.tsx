@@ -192,7 +192,7 @@ export default function ReportPage() {
     meta.push(
       ["Quiz Title", quizTitle],
       ["Total Questions", String(totalQ)],
-      ["Point Rule", "points += correct answers * 10 * time bonus"],
+      ["Point Rule", "points += (correct answers * 100) + (10 * time bonus)"],
       ["", ""]
     );
 

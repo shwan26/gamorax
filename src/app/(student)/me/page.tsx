@@ -53,7 +53,7 @@ export default function MePage() {
             <div className="text-xs text-gray-600">Wallet Points</div>
             <div className="text-3xl font-extrabold text-[#034B6B]">{me.points ?? 0}</div>
             <div className="text-xs text-gray-500 mt-1">
-              (Used for avatar shop later)
+              
             </div>
           </div>
         </div>
@@ -87,7 +87,10 @@ export default function MePage() {
                     <div className="flex items-center justify-between gap-3">
                       <div className="font-semibold text-gray-900">
                         {a.quizTitle || "Quiz"}{" "}
-                        <span className="text-xs text-gray-500">• PIN {a.pin}</span>
+                        <span className="text-xs text-gray-500">
+                          • {a.courseCode ? a.courseCode : "No course"}
+                        </span>
+
                       </div>
                       <div className="text-sm font-bold text-[#034B6B]">
                         {a.correct}/{a.totalQuestions}

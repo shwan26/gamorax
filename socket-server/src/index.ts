@@ -45,7 +45,17 @@ type QuizFinishedPayload = {
 type AnswerRecord = { answerIndex: number; timeUsed: number };
 type Score = { correct: number; totalTime: number; points: number };
 
+type RoomMeta = {
+  gameId?: string | undefined;
+  quizTitle?: string | undefined;   // "Game name"
+  courseCode?: string | undefined;
+  courseName?: string | undefined;
+  section?: string | undefined;
+  semester?: string | undefined;
+};
+
 type Room = {
+  meta?: RoomMeta;
   students: Map<string, LiveStudent>;
   current?: QuestionPayloadOut;
   answers: Map<number, Map<string, AnswerRecord>>;
@@ -54,6 +64,23 @@ type Room = {
   scores: Map<string, Score>;
   durationByQuestion: Map<number, number>;
 };
+
+function cleanMeta(m: any): RoomMeta {
+  const s = (x: any) => {
+    const v = String(x ?? "").trim();
+    return v ? v : undefined;
+  };
+
+  return {
+    gameId: s(m?.gameId),
+    quizTitle: s(m?.quizTitle),
+    courseCode: s(m?.courseCode),
+    courseName: s(m?.courseName),
+    section: s(m?.section),
+    semester: s(m?.semester),
+  };
+}
+
 
 const rooms = new Map<string, Room>();
 
@@ -129,6 +156,22 @@ io.on("connection", (socket) => {
     socket.join(pin);
 
     const room = getRoom(pin);
+    if (room.meta) {
+      socket.emit("session:meta", room.meta);
+    }
+
+    socket.on("meta:set", ({ pin, meta }: { pin: string; meta: RoomMeta }) => {
+      if (!pin || !meta) return;
+
+      const room = getRoom(pin);
+      const next = cleanMeta(meta);
+
+      room.meta = { ...(room.meta ?? {}), ...next };
+
+      // ✅ broadcast to everyone in room (students + lecturer)
+      io.to(pin).emit("session:meta", room.meta);
+    });
+
 
     if (student?.studentId) {
       room.students.set(student.studentId, student);

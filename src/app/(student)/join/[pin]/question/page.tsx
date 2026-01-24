@@ -12,6 +12,7 @@ import { getCurrentStudent, addPointsToStudent } from "@/src/lib/studentAuthStor
 import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
 
 import type { LiveStudent } from "@/src/lib/liveStorage";
+import { getLiveMeta, saveLiveMeta } from "@/src/lib/liveStorage";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
 import { getAvatarSrc } from "@/src/lib/studentAvatar";
 
@@ -157,6 +158,11 @@ export default function StudentQuestionPage() {
     if (s.connected) doJoin();
     s.on("connect", doJoin);
 
+    const onMeta = (meta: any) => {
+      saveLiveMeta(pin, meta);
+    };
+    s.on("session:meta", onMeta);
+
     const onQuestionShow = (q: QuestionShowPayload) => {
       const number = Number(q?.number ?? 1);
       const qIndex =
@@ -298,6 +304,7 @@ export default function StudentQuestionPage() {
 
       const me = getCurrentStudent();
       if (!me) return;
+      const meta = getLiveMeta(pin);
 
       saveStudentAttempt({
         id: crypto.randomUUID(),
@@ -307,13 +314,21 @@ export default function StudentQuestionPage() {
         avatarSrc: getAvatarSrc(student, 96),
 
         pin,
-        quizTitle: `Quiz ${pin}`,
+        gameId: meta?.gameId,
+
+        courseCode: meta?.courseCode,
+        courseName: meta?.courseName,
+        section: meta?.section,
+        semester: meta?.semester,
+        quizTitle: meta?.quizTitle ?? "Quiz",
+
         totalQuestions: total,
         correct: computedCorrect,
         points: computedPoints,
         finishedAt: new Date().toISOString(),
         perQuestion,
       });
+
 
       addPointsToStudent(me.email, computedPoints);
     };
@@ -325,11 +340,13 @@ export default function StudentQuestionPage() {
 
     return () => {
       s.off("connect", doJoin);
+      s.off("session:meta", onMeta);
       s.off("question:show", onQuestionShow);
       s.off("answer:reveal", onReveal);
       s.off("question:next", onNext);
       s.off("quiz:finished", onFinished);
       s.off("quiz_finished", onFinished);
+      
     };
     // ✅ only mount/pin/student changes can rebind
   }, [mounted, pin, student]);

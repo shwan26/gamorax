@@ -9,9 +9,8 @@ export default function QuestionView({
   startAt,
 }: any) {
   return (
-    // ✅ center only horizontally
-    <div className="min-h-[calc(100vh-140px)] w-full px-6">
-      <div className="w-full max-w-5xl mx-auto py-8">
+    <div className="w-full px-6">
+      <div className="w-full max-w-5xl mx-auto py-4">
         {/* Top info */}
         <div className="w-full flex items-center justify-between mb-6">
           <div className="text-center">
@@ -59,7 +58,7 @@ export default function QuestionView({
               key={i}
               className="border bg-white rounded-2xl shadow-sm px-5 py-5 flex items-center gap-5"
             >
-              {/* Blue label */}
+  
               <div
                 className="w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center
                            font-extrabold text-xl md:text-2xl text-white
@@ -68,7 +67,6 @@ export default function QuestionView({
                 {LABELS[i]}
               </div>
 
-              {/* ✅ just large (not huge) */}
               <div className="flex-1 text-center">
                 <div className="text-lg md:text-2xl font-semibold text-gray-900 leading-snug">
                   {a.text}

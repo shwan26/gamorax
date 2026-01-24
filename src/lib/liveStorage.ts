@@ -300,3 +300,61 @@ export function getLatestLiveReportByGame(gameId: string): LiveReport | null {
   all.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
   return all[0] ?? null;
 }
+
+
+export type LiveMeta = {
+  gameId?: string;
+  quizTitle?: string;
+  courseCode?: string;
+  courseName?: string;
+  section?: string;
+  semester?: string;
+};
+
+const KEY = "gamorax_live_meta_by_pin";
+
+function safeParse<T>(raw: string | null, fallback: T): T {
+  try {
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function readAll(): Record<string, LiveMeta> {
+  if (typeof window === "undefined") return {};
+  return safeParse<Record<string, LiveMeta>>(localStorage.getItem(KEY), {});
+}
+
+function writeAll(obj: Record<string, LiveMeta>) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(KEY, JSON.stringify(obj));
+}
+
+export function saveLiveMeta(pin: string, meta: any) {
+  if (!pin) return;
+  const all = readAll();
+
+  const clean = (x: any) => {
+    const v = String(x ?? "").trim();
+    return v ? v : undefined;
+  };
+
+  const next: LiveMeta = {
+    gameId: clean(meta?.gameId),
+    quizTitle: clean(meta?.quizTitle),
+    courseCode: clean(meta?.courseCode),
+    courseName: clean(meta?.courseName),
+    section: clean(meta?.section),
+    semester: clean(meta?.semester),
+  };
+
+  all[pin] = { ...(all[pin] ?? {}), ...next };
+  writeAll(all);
+}
+
+export function getLiveMeta(pin: string): LiveMeta | null {
+  if (!pin) return null;
+  const all = readAll();
+  return all[pin] ?? null;
+}
