@@ -1,84 +1,125 @@
-import TimerBar from "../live/TimeBar";
+"use client";
 
 const LABELS = ["A", "B", "C", "D"];
+
+function DotPattern() {
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+        backgroundSize: "18px 18px",
+      }}
+    />
+  );
+}
 
 export default function QuestionView({
   q,
   index,
   total,
-  startAt,
-}: any) {
-  return (
-    <div className="w-full px-6">
-      <div className="w-full max-w-5xl mx-auto py-4">
-        {/* Top info */}
-        <div className="w-full flex items-center justify-between mb-6">
-          <div className="text-center">
-            <p className="text-sm text-gray-500">Question</p>
-            <p className="text-3xl md:text-4xl font-extrabold text-[#034B6B]">
-              {index + 1}
-              <span className="text-sm md:text-base text-gray-400 font-semibold">
-                {" "}
-                / {total}
-              </span>
-            </p>
-          </div>
+}: {
+  q: any;
+  index: number;
+  total: number;
+}) {
+  const hasImage = !!q?.image;
 
-          <div className="text-sm text-gray-600">
-            <span className="font-semibold">Progress:</span> {index + 1} of {total}
+  return (
+    <div className="relative">
+      <DotPattern />
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+
+      <div className="relative">
+        {/* small line only: Question 2/4 */}
+        <div className="mb-4 flex items-center justify-center">
+          <div
+            className="
+              inline-flex items-center gap-2 rounded-2xl
+              border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm
+              dark:border-slate-800/70 dark:bg-slate-950/50
+            "
+          >
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              Question
+            </span>
+            <span className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
+              {index + 1}/{total}
+            </span>
           </div>
         </div>
 
-        {/* Timer */}
-        {startAt && (
-          <div className="w-full mb-6">
-            <TimerBar duration={q.time} startAt={startAt} />
-          </div>
-        )}
-
-        {/* Question */}
-        <div className="w-full text-center mb-8">
-          <p className="text-xl md:text-3xl font-semibold leading-snug text-gray-900">
+        {/* QUESTION TEXT big */}
+        <div className="text-center">
+          <p className="mx-auto max-w-5xl text-2xl font-extrabold leading-snug text-slate-900 sm:text-3xl md:text-4xl dark:text-slate-50">
             {q.text}
           </p>
 
-          {q.image && (
-            <img
-              src={q.image}
-              className="mx-auto mt-6 max-h-[36vh] object-contain rounded-xl border bg-white"
-              alt="Question"
-            />
-          )}
+          {/* QUESTION IMAGE */}
+          {hasImage ? (
+            <div
+              className="
+                mx-auto mt-6 w-full max-w-5xl overflow-hidden rounded-3xl
+                border border-slate-200/70 bg-white/70 shadow-sm
+                dark:border-slate-800/70 dark:bg-slate-950/55
+              "
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={q.image}
+                className="max-h-[46vh] w-full object-contain p-4"
+                alt="Question"
+              />
+            </div>
+          ) : null}
         </div>
 
-        {/* Answers */}
-        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* ANSWERS big + same “blue badge” look like editor */}
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
           {q.answers.map((a: any, i: number) => (
             <div
               key={i}
-              className="border bg-white rounded-2xl shadow-sm px-5 py-5 flex items-center gap-5"
+              className="
+                group relative overflow-hidden rounded-3xl
+                border border-slate-200/70 bg-white/60 p-5 sm:p-6 shadow-sm backdrop-blur
+                transition-all hover:-translate-y-0.5 hover:shadow-md
+                dark:border-slate-800/70 dark:bg-slate-950/45
+              "
             >
-  
-              <div
-                className="w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center
-                           font-extrabold text-xl md:text-2xl text-white
-                           bg-gradient-to-b from-[#034B6B] to-[#0B6FA6]"
-              >
-                {LABELS[i]}
-              </div>
+              <DotPattern />
 
-              <div className="flex-1 text-center">
-                <div className="text-lg md:text-2xl font-semibold text-gray-900 leading-snug">
-                  {a.text}
+              <div className="relative flex items-center gap-4">
+                {/* badge: EXACT same blue vibe */}
+                <div className="shrink-0 rounded-2xl bg-gradient-to-br p-[1px]">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-b from-[#034B6B] to-[#0B6FA6] text-white shadow-sm">
+                    <span className="text-2xl font-extrabold">{LABELS[i]}</span>
+                  </div>
                 </div>
 
-                {a.image && (
-                  <img
-                    src={a.image}
-                    className="mx-auto mt-3 max-h-[16vh] object-contain rounded-xl border bg-white"
-                    alt={`Answer ${LABELS[i]}`}
-                  />
-                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-lg font-extrabold leading-snug text-slate-900 sm:text-xl md:text-2xl dark:text-slate-50">
+                    {a.text}
+                  </div>
+
+                  {a.image ? (
+                    <div
+                      className="
+                        mt-4 overflow-hidden rounded-2xl
+                        border border-slate-200/70 bg-white/70 shadow-sm
+                        dark:border-slate-800/70 dark:bg-slate-950/55
+                      "
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={a.image}
+                        className="max-h-[20vh] w-full object-contain p-3"
+                        alt={`Answer ${LABELS[i]}`}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))}
