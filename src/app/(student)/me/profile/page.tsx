@@ -12,7 +12,62 @@ import {
 import { botttsUrl, randomSeed } from "@/src/lib/dicebear";
 import { deleteCurrentStudent } from "@/src/lib/studentAuthStorage";
 import { deleteAttemptsByStudent } from "@/src/lib/studentReportStorage";
-import { clearLiveStudent } from "@/src/lib/liveStudentSession"; // optional
+import { clearLiveStudent } from "@/src/lib/liveStudentSession";
+import { LogOut, Trash2, UserRound, Shuffle } from "lucide-react";
+import GradientButton from "@/src/components/GradientButton";
+
+function DotPattern() {
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+        backgroundSize: "18px 18px",
+      }}
+    />
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  hint,
+}: {
+  label: string;
+  value: string;
+  onChange?: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-semibold text-slate-900 dark:text-slate-50">
+        {label}
+      </label>
+      <input
+        value={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={[
+          "mt-2 w-full rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-2.5",
+          "text-slate-900 shadow-sm outline-none backdrop-blur",
+          "placeholder:text-slate-400 focus:ring-2 focus:ring-[#00D4FF]/40",
+          "dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-50 dark:placeholder:text-slate-500",
+          disabled ? "opacity-70 cursor-not-allowed" : "",
+        ].join(" ")}
+      />
+      {hint ? (
+        <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">{hint}</p>
+      ) : null}
+    </div>
+  );
+}
 
 export default function MeProfilePage() {
   const router = useRouter();
@@ -78,139 +133,176 @@ export default function MeProfilePage() {
     );
     if (!ok) return;
 
-    // 1) delete reports
     deleteAttemptsByStudent(me.email);
 
-    // 2) clear live session cached student (optional but nice)
-    try { clearLiveStudent(); } catch {}
+    try {
+      clearLiveStudent();
+    } catch {}
 
-    // 3) delete account (includes logout)
     deleteCurrentStudent();
-
     router.push("/auth/register");
   }
 
+  const initials =
+    (name?.trim()?.charAt(0) || "S") + (me.email?.trim()?.charAt(0) || "");
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa]">
+    <div className="min-h-screen app-surface app-bg">
       <StudentNavbar />
 
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <div className="bg-white border rounded-xl shadow-sm p-6">
-          <h1 className="text-xl font-extrabold text-[#034B6B]">My Profile</h1>
-          <p className="text-xs text-gray-600 mt-1">
+      <main className="mx-auto max-w-4xl px-4 pb-12 pt-8 sm:pt-12 sm:pb-16">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            <span className="bg-gradient-to-r from-[#020024] to-[#00D4FF] bg-clip-text text-transparent dark:from-[#A7F3FF] dark:via-[#00D4FF] dark:to-[#7C3AED]">
+              My Profile
+            </span>
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-slate-600 dark:text-slate-300">
             Email is your login. Student ID can be auto-derived from AU email.
           </p>
+        </div>
 
-          <div className="mt-6 grid md:grid-cols-2 gap-6">
-            {/* left: avatar */}
-            <div>
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-full overflow-hidden border bg-white">
-                  <img src={avatarUrl} alt="avatar" className="w-16 h-16" />
+        <div
+          className="
+            relative mt-8 overflow-hidden rounded-3xl
+            border border-slate-200/80 bg-white/70 p-6 shadow-sm backdrop-blur
+            sm:p-8
+            dark:border-slate-800/70 dark:bg-slate-950/55
+          "
+        >
+          <DotPattern />
+          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/20 blur-3xl" />
+          <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#020024]/10 blur-3xl dark:bg-[#020024]/30" />
+
+          <div className="relative">
+            {/* Top row: avatar + email + points */}
+            <div className="flex items-center gap-4 sm:gap-5">
+              <div>
+                <div>
+                  <div className="rounded-full p-1.5 dark:bg-slate-950/75">
+                    <div
+                      className="
+                        relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full
+                        bg-white/80 text-slate-900 shadow-sm
+                        dark:bg-slate-950/60 dark:text-slate-50
+                      "
+                      aria-label="Avatar"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="text-sm">
-                  <div className="font-semibold">{me.email}</div>
-                  <div className="text-xs text-gray-600">
-                    Points: <span className="font-semibold">{me.points ?? 0}</span>
-                  </div>
+              </div>
 
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setAvatarSeed(randomSeed())}
-                      className="px-3 py-1.5 rounded-md text-xs font-semibold border bg-white hover:bg-gray-50"
-                    >
-                      Random
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAvatarSeed(me.email || "student")}
-                      className="px-3 py-1.5 rounded-md text-xs font-semibold border bg-white hover:bg-gray-50"
-                    >
-                      Reset
-                    </button>
-                  </div>
-                </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-lg font-semibold text-slate-900 dark:text-slate-50">
+                  {name?.trim() ? name.trim() : "Student"}
+                </p>
+                <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">
+                  {me.email}
+                </p>
+                <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
+                  Points: <span className="font-semibold text-slate-900 dark:text-slate-50">{me.points ?? 0}</span>
+                </p>
+              </div>
+
+              {/* Avatar actions */}
+              <div className="hidden sm:flex items-center gap-2">
+                <GradientButton
+                  variant="ghost"
+                  onClick={() => setAvatarSeed(randomSeed())}
+                  iconLeft={<Shuffle className="h-4 w-4" />}
+                >
+                  Random
+                </GradientButton>
+                <GradientButton
+                  variant="ghost"
+                  onClick={() => setAvatarSeed(me.email || "student")}
+                >
+                  Reset
+                </GradientButton>
               </div>
             </div>
 
-            {/* right: info */}
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <input
-                  value={me.email}
-                  disabled
-                  className="w-full border rounded-md px-3 py-2 bg-gray-50 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Full Name</label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Student ID</label>
-                <input
-                  value={studentId}
-                  onChange={(e) => setStudentId(e.target.value)}
-                  placeholder={autoId ? `Auto: ${autoId}` : "Enter your student ID"}
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                />
-                {autoId && (
-                  <div className="text-xs text-gray-600 mt-1">
-                    Auto from email: <span className="font-semibold">{autoId}</span>
-                  </div>
-                )}
-              </div>
+            {/* Mobile avatar buttons */}
+            <div className="mt-4 flex gap-2 sm:hidden">
+              <GradientButton
+                variant="ghost"
+                onClick={() => setAvatarSeed(randomSeed())}
+                iconLeft={<Shuffle className="h-4 w-4" />}
+              >
+                Random Avatar
+              </GradientButton>
+              <GradientButton
+                variant="ghost"
+                onClick={() => setAvatarSeed(me.email || "student")}
+              >
+                Reset
+              </GradientButton>
             </div>
-          </div>
 
-          <div className="flex gap-3 mt-8">
-            <button
-              onClick={onSave}
-              className="bg-[#3B8ED6] hover:bg-[#2F79B8] text-white px-5 py-2 rounded-md font-semibold"
-              type="button"
-            >
-              Save
-            </button>
+            {/* Fields */}
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <Field label="Email" value={me.email} disabled />
+              <Field
+                label="Full Name"
+                value={name}
+                onChange={setName}
+                placeholder="e.g. Shwan Myat Nay Chi"
+              />
+              <Field
+                label="Student ID"
+                value={studentId}
+                onChange={setStudentId}
+                placeholder={autoId ? `Auto: ${autoId}` : "Enter your student ID"}
+                hint={autoId ? `Auto from email: ${autoId}` : undefined}
+              />
+              
+            </div>
 
-            <button
-              onClick={() => router.push("/me")}
-              className="border bg-white px-5 py-2 rounded-md font-semibold"
-              type="button"
-            >
-              Cancel
-            </button>
+            {/* Actions */}
+            <div className="mt-6 space-y-3">
+              <GradientButton onClick={onSave}>Save Changes</GradientButton>
 
-            <div className="flex-1" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <GradientButton
+                  variant="ghost"
+                  onClick={onLogout}
+                  iconLeft={<LogOut className="h-4 w-4" />}
+                >
+                  Logout
+                </GradientButton>
 
-            <button
-              onClick={onLogout}
-              className="text-black-600 font-semibold"
-              type="button"
-            >
-              Logout
-            </button>
+                <GradientButton
+                  variant="danger"
+                  onClick={onDeleteAccount}
+                  iconLeft={<Trash2 className="h-4 w-4" />}
+                >
+                  Delete Account
+                </GradientButton>
+              </div>
 
-            <button
-              onClick={onDeleteAccount}
-              className="text-red-700"
-              type="button"
-            >
-              Delete Account
-            </button>
-
+              <button
+                type="button"
+                onClick={() => router.push("/me")}
+                className="
+                  w-full rounded-full border border-slate-200/80 bg-white/70 px-6 py-3 text-sm font-semibold
+                  text-slate-700 shadow-sm hover:bg-white transition
+                  dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200 dark:hover:bg-slate-950/70
+                "
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+
+        <footer className="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
+          © {new Date().getFullYear()} GAMORAX
+        </footer>
+      </main>
     </div>
   );
 }

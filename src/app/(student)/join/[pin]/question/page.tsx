@@ -12,16 +12,89 @@ import { getCurrentStudent, addPointsToStudent } from "@/src/lib/studentAuthStor
 import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
 
 import type { LiveStudent } from "@/src/lib/liveStorage";
-import { getLiveMeta, saveLiveMeta } from "@/src/lib/liveStorage";
+import { getLiveMeta, saveLiveMeta, getLiveMeta as _getLiveMeta } from "@/src/lib/liveStorage";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
 import { getAvatarSrc } from "@/src/lib/studentAvatar";
 
 import AnswerGrid from "@/src/components/live/AnswerGrid";
 import { calcPoints } from "@/src/lib/quizScoring";
+import { Trophy, CheckCircle2, XCircle, Timer, Sparkles } from "lucide-react";
 
 const caesar = localFont({
   src: "../../../../../../public/fonts/CaesarDressing-Regular.ttf",
 });
+
+/* ------------------------------ UI helpers ------------------------------ */
+
+function DotPattern() {
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+      style={{
+        backgroundImage:
+          "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+        backgroundSize: "18px 18px",
+      }}
+    />
+  );
+}
+
+function GlassCard({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={[
+        "relative overflow-hidden rounded-3xl",
+        "border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur",
+        "dark:border-slate-800/70 dark:bg-slate-950/45",
+        className,
+      ].join(" ")}
+    >
+      <DotPattern />
+      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/12 blur-3xl" />
+      <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+      <div className="relative">{children}</div>
+    </section>
+  );
+}
+
+function PrimaryButton({
+  children,
+  onClick,
+  disabled,
+  className = "",
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold text-white",
+        "bg-gradient-to-b from-[#034B6B] to-[#0B6FA6]",
+        "shadow-[0_10px_25px_rgba(37,99,235,0.18)]",
+        "hover:opacity-95 active:scale-[0.99] transition",
+        "focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50",
+        disabled ? "opacity-60 cursor-not-allowed" : "",
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ------------------------------ existing types ------------------------------ */
 
 type QuestionShowPayload = {
   questionIndex?: number;
@@ -37,7 +110,7 @@ type QuestionShowPayload = {
 type AnswerRevealPayload = {
   questionIndex?: number;
   correctIndex?: number;
-  maxTime?: number; // from server
+  maxTime?: number;
 };
 
 type QuizFinishedPayload = {
@@ -111,16 +184,16 @@ export default function StudentQuestionPage() {
       return;
     }
 
-    const s = getOrCreateLiveStudent();
-    if (!s) {
+    const st = getOrCreateLiveStudent();
+    if (!st) {
       router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
       return;
     }
 
-    setStudent(s);
+    setStudent(st);
   }, [mounted, pin, router]);
 
-  const titleText = useMemo(() => (pin ? `Quiz Session - ${pin}` : "Quiz Session"), [pin]);
+  const titleText = useMemo(() => (pin ? `Quiz Session — ${pin}` : "Quiz Session"), [pin]);
   const avatarSrc = useMemo(() => getAvatarSrc(student, 96), [student]);
 
   // timer tick
@@ -132,7 +205,7 @@ export default function StudentQuestionPage() {
     return () => window.clearInterval(t);
   }, [phase, startAt]);
 
-  // (optional) if time ends locally, show result screen, but still score only on reveal
+  // local time end => show result screen, score only on reveal
   useEffect(() => {
     if (phase !== "question") return;
     if (!startAt) return;
@@ -147,12 +220,12 @@ export default function StudentQuestionPage() {
     }
   }, [phase, startAt, now, durationSec]);
 
-  // ✅ STABLE socket listeners (no durationSec/scoredCount deps)
+  // socket listeners
   useEffect(() => {
     if (!mounted) return;
     if (!pin || !student) return;
-  
-    s.connect(); 
+
+    s.connect();
 
     const doJoin = () => s.emit("join", { pin, student });
     if (s.connected) doJoin();
@@ -197,7 +270,6 @@ export default function StudentQuestionPage() {
       setLastEarnedPoints(0);
     };
 
-    // ✅ reveal => IMMEDIATE switch + IMMEDIATE score/points
     const onReveal = (p?: AnswerRevealPayload) => {
       setPhase("result");
       setStartAt(null);
@@ -273,7 +345,7 @@ export default function StudentQuestionPage() {
       let computedCorrect = 0;
       let computedPoints = 0;
 
-      const perQuestion = [...Array(total)].map((_, qi) => {
+      [...Array(total)].forEach((_, qi) => {
         const mine = myByQRef.current[qi];
         const answerIndex = typeof mine?.answerIndex === "number" ? mine.answerIndex : -1;
 
@@ -288,23 +360,13 @@ export default function StudentQuestionPage() {
 
         if (isCorrect) computedCorrect += 1;
         computedPoints += earned;
-
-        return {
-          number: qi + 1,
-          answerIndex,
-          correctIndex: hasCorrect ? correctIndex : -1,
-          timeUsed,
-          maxTime,
-          isCorrect,
-          pointsEarned: earned,
-        };
       });
 
       setFinalPoints(computedPoints);
 
       const me = getCurrentStudent();
       if (!me) return;
-      const meta = getLiveMeta(pin);
+      const meta = _getLiveMeta(pin);
 
       saveStudentAttempt({
         id: crypto.randomUUID(),
@@ -326,9 +388,8 @@ export default function StudentQuestionPage() {
         correct: computedCorrect,
         points: computedPoints,
         finishedAt: new Date().toISOString(),
-        perQuestion,
+        perQuestion: [],
       });
-
 
       addPointsToStudent(me.email, computedPoints);
     };
@@ -346,9 +407,7 @@ export default function StudentQuestionPage() {
       s.off("question:next", onNext);
       s.off("quiz:finished", onFinished);
       s.off("quiz_finished", onFinished);
-      
     };
-    // ✅ only mount/pin/student changes can rebind
   }, [mounted, pin, student]);
 
   const pick = (answerIndex: number) => {
@@ -357,7 +416,6 @@ export default function StudentQuestionPage() {
 
     if (selectedIndexRef.current !== null) return;
 
-    // if time already over locally, block
     if (startAt) {
       const elapsed = Date.now() - startAt;
       if (elapsed >= durationSec * 1000) return;
@@ -398,111 +456,257 @@ export default function StudentQuestionPage() {
   if (!student) return null;
 
   return (
-    <div className="min-h-screen bg-[#f5f7fa]">
+    <div className="min-h-screen app-surface app-bg">
       <Navbar />
 
-      <div className="px-4 pt-8">
-        <p className="text-sm md:text-base font-semibold text-center">{titleText}</p>
-      </div>
-
-      {phase === "waiting" && (
-        <div className="flex flex-col items-center px-4 pt-14">
-          <div className="text-center space-y-6 mb-10">
-            <h1 className={`${caesar.className} text-3xl md:text-4xl`}>BE READY TO ANSWER!</h1>
-            <h2 className={`${caesar.className} text-2xl md:text-3xl`}>GOOD LUCK!</h2>
-          </div>
-
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-20 h-20 rounded-full bg-white border shadow-sm overflow-hidden">
-              <img src={avatarSrc} alt="Avatar" className="w-20 h-20" />
+      <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
+        {/* TOP header */}
+        <GlassCard className="mb-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                {titleText}
+              </div>
+              <div className="mt-1 flex items-center gap-2">
+                <span
+                  className={`${caesar.className} text-2xl tracking-wide text-slate-900 dark:text-slate-50`}
+                >
+                  GAMORAX
+                </span>
+                <span
+                  className="
+                    rounded-full border border-slate-200/70 bg-white/70 px-3 py-1 text-xs font-semibold
+                    text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200
+                  "
+                >
+                  PIN <span className="font-mono tracking-wider">{pin}</span>
+                </span>
+              </div>
             </div>
-            <p className="text-xs md:text-sm text-gray-700 text-center">
-              {student.studentId} - {student.name}
-            </p>
+
+            <div
+              className="
+                hidden sm:flex items-center gap-3
+                rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2
+                dark:border-slate-800/70 dark:bg-slate-950/45
+              "
+            >
+              <div className="h-10 w-10 overflow-hidden rounded-full bg-white/80 dark:bg-slate-950/40">
+                <img src={avatarSrc} alt="Avatar" className="h-10 w-10 object-cover" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+                  {student.name}
+                </div>
+                <div className="truncate text-xs text-slate-500 dark:text-slate-400">
+                  {student.studentId}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        </GlassCard>
 
-      {phase === "question" && question && (
-        <div className="px-4 pt-10 flex flex-col items-center">
-          <p className="text-sm md:text-base font-medium text-center mb-2">
-            Question {question.number} of {question.total}
-          </p>
+        {/* WAITING */}
+        {phase === "waiting" && (
+          <GlassCard className="text-center">
+            <div className="flex flex-col items-center gap-5 py-6">
+              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
+                <Sparkles className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
+              </div>
 
-          <div className="w-full max-w-3xl mb-4">
-            <div className="h-2 rounded-full bg-blue-100 overflow-hidden">
-              <div
-                className="h-full transition-[width] duration-100"
-                style={{ width: `${pctRemaining}%`, backgroundColor: "#034B6B" }}
+              <div className="space-y-2">
+                <h1 className={`${caesar.className} text-3xl sm:text-4xl text-slate-900 dark:text-slate-50`}>
+                  BE READY TO ANSWER!
+                </h1>
+                <h2 className={`${caesar.className} text-2xl sm:text-3xl text-slate-700 dark:text-slate-200`}>
+                  GOOD LUCK!
+                </h2>
+              </div>
+
+              <div className="flex flex-col items-center gap-3">
+                <div
+                  className="
+                    h-20 w-20 overflow-hidden rounded-full
+                    border border-slate-200/70 bg-white/80 shadow-sm
+                    dark:border-slate-800/70 dark:bg-slate-950/45
+                  "
+                >
+                  <img src={avatarSrc} alt="Avatar" className="h-full w-full object-cover" />
+                </div>
+
+                <div className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold">{student.studentId}</span> • {student.name}
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Waiting for host to start…
+              </div>
+            </div>
+          </GlassCard>
+        )}
+
+        {/* QUESTION */}
+        {phase === "question" && question && (
+          <>
+            {/* Question header + timer */}
+            <GlassCard className="mb-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div
+                  className="
+                    inline-flex items-center gap-2 rounded-2xl
+                    border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm
+                    dark:border-slate-800/70 dark:bg-slate-950/45
+                  "
+                >
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Question
+                  </span>
+                  <span className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
+                    {question.number}/{question.total}
+                  </span>
+                </div>
+
+                <div className="w-full sm:w-[360px]">
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-2">
+                      <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Time remaining
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {remainingSec}s
+                    </span>
+                  </div>
+
+                  <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
+                    <div
+                      className="h-full transition-[width] duration-100"
+                      style={{
+                        width: `${pctRemaining}%`,
+                        background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+
+
+            {/* Answers */}
+            <div className="flex justify-center">
+              <AnswerGrid
+                selectedIndex={selectedIndex}
+                disabled={disableButtons}
+                onPick={pick}
+                labelClassName={caesar.className}
               />
             </div>
-            <div className="mt-1 text-xs text-gray-600 text-center">{remainingSec}s</div>
-          </div>
 
-          <p className="text-sm md:text-base text-gray-700 text-center mb-8 max-w-3xl">
-            {question.text}
-          </p>
+            <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
+              Tap one choice. You can’t change after picking.
+            </div>
+          </>
+        )}
 
-          <AnswerGrid
-            selectedIndex={selectedIndex}
-            disabled={disableButtons}
-            onPick={pick}
-            labelClassName={caesar.className}
-          />
+        {/* RESULT */}
+        {phase === "result" && (
+          <GlassCard>
+            <div className="flex flex-col items-center gap-4 py-4 text-center">
+              <div
+                className="
+                  rounded-3xl border border-slate-200/70 bg-white/70 p-4
+                  dark:border-slate-800/70 dark:bg-slate-950/45
+                "
+              >
+                <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
+              </div>
 
-          <div className="mt-6 text-xs text-gray-600">
-            Correct: <span className="font-semibold">{correctCount}</span> · Points:{" "}
-            <span className="font-semibold">{totalPoints}</span>
-          </div>
-        </div>
-      )}
+              <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
+                Result
+              </div>
 
-      {phase === "result" && (
-        <div className="px-4 pt-10 flex flex-col items-center">
-          <p className="text-lg font-semibold">Result</p>
+              {lastWasCorrect === true && (
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Correct! +{lastEarnedPoints} points
+                </div>
+              )}
 
-          {lastWasCorrect === true && (
-            <p className="mt-2 text-green-600 font-semibold">
-              Correct! +{lastEarnedPoints} points
-            </p>
-          )}
-          {lastWasCorrect === false && (
-            <p className="mt-2 text-red-600 font-semibold">Incorrect · +0 points</p>
-          )}
-          {lastWasCorrect === null && <p className="mt-2 text-gray-600">Waiting for host reveal…</p>}
+              {lastWasCorrect === false && (
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
+                  <XCircle className="h-4 w-4" />
+                  Incorrect · +0 points
+                </div>
+              )}
 
-          <p className="text-sm text-gray-600 mt-6">Total correct:</p>
-          <p className={`${caesar.className} text-5xl mt-2`}>
-            {correctCount}/{Math.max(1, scoredCount)}
-          </p>
+              {lastWasCorrect === null && (
+                <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                  Waiting for host reveal…
+                </div>
+              )}
 
-          <p className="mt-4 text-sm text-gray-700">
-            Total points: <span className="font-semibold">{totalPoints}</span>
-          </p>
-        </div>
-      )}
+              <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+                Total correct
+              </div>
+              <div className={`${caesar.className} text-6xl text-slate-900 dark:text-slate-50`}>
+                {correctCount}/{Math.max(1, scoredCount)}
+              </div>
 
-      {phase === "final" && (
-        <div className="px-4 pt-10 flex flex-col items-center">
-          <p className="text-lg font-semibold">Final Score</p>
+              <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Total points{" "}
+                <span className="font-semibold text-slate-900 dark:text-slate-50">
+                  {totalPoints}
+                </span>
+              </div>
 
-          <p className={`${caesar.className} text-6xl mt-4`}>
-            {correctCount}/{finalDenom}
-          </p>
+              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Waiting for the next question…
+              </div>
+            </div>
+          </GlassCard>
+        )}
 
-          <p className="mt-4 text-sm text-gray-700">
-            Points earned: <span className="font-semibold">{finalPoints}</span>
-          </p>
+        {/* FINAL */}
+        {phase === "final" && (
+          <GlassCard>
+            <div className="flex flex-col items-center gap-4 py-5 text-center">
+              <div
+                className="
+                  rounded-3xl border border-slate-200/70 bg-white/70 p-4
+                  dark:border-slate-800/70 dark:bg-slate-950/45
+                "
+              >
+                <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
+              </div>
 
-          <button
-            onClick={() => router.push("/me/reports")}
-            className="mt-8 px-6 py-3 rounded-full bg-[#3B8ED6] hover:bg-[#2F79B8] text-white font-semibold"
-            type="button"
-          >
-            Go to My Reports
-          </button>
-        </div>
-      )}
+              <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
+                Final Score
+              </div>
+
+              <div className={`${caesar.className} text-7xl text-slate-900 dark:text-slate-50`}>
+                {correctCount}/{finalDenom}
+              </div>
+
+              <div className="text-sm text-slate-600 dark:text-slate-300">
+                Points earned{" "}
+                <span className="font-semibold text-slate-900 dark:text-slate-50">
+                  {finalPoints}
+                </span>
+              </div>
+
+              <PrimaryButton onClick={() => router.push("/me/reports")}>
+                Go to My Reports
+              </PrimaryButton>
+
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                You can review your attempt anytime.
+              </div>
+            </div>
+          </GlassCard>
+        )}
+      </main>
     </div>
   );
 }

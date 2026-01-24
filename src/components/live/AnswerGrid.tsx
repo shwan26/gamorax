@@ -1,6 +1,11 @@
 "use client";
 
-// src/components/live/AnswerGrid.tsx
+import {
+  ANSWER_LABELS,
+  BADGE_ACCENT,
+  PICK_BTN_BASE,
+} from "@/src/components/ui/answerStyles";
+
 export default function AnswerGrid(props: {
   selectedIndex: number | null;
   disabled: boolean;
@@ -8,39 +13,55 @@ export default function AnswerGrid(props: {
   labelClassName?: string;
 }) {
   const { selectedIndex, disabled, onPick, labelClassName } = props;
-
   const hasPicked = selectedIndex !== null;
 
   return (
-    <div className="grid grid-cols-2 gap-4 md:gap-6 w-full max-w-3xl">
-      {["A", "B", "C", "D"].map((label, idx) => {
-        const isSelected = selectedIndex === idx;
+    <div className="w-full">
+      <div
+        className="
+          mx-auto grid w-full max-w-md grid-cols-2 gap-3
+          sm:max-w-lg sm:gap-4
+          md:max-w-2xl md:gap-6
+        "
+      >
+        {ANSWER_LABELS.map((label, idx) => {
+          const isSelected = selectedIndex === idx;
+          const dimClass = hasPicked && !isSelected ? "opacity-40" : "opacity-100";
 
-        // ✅ always blue
-        const bgClass = isSelected ? "bg-[#034B6B]" : "bg-[#3B8ED6]";
+          // one shared gradient
+          const base = `bg-gradient-to-br ${BADGE_ACCENT}`;
 
-        // ✅ dim only AFTER pick (before pick: no dim)
-        const dimClass = hasPicked && !isSelected ? "opacity-40" : "opacity-100";
+          const selected = "brightness-110 ring-4 ring-white/70";
 
-        return (
-          <button
-            key={label}
-            disabled={disabled}
-            onClick={() => onPick(idx)}
-            className={`h-24 md:h-28 rounded-lg shadow-md flex items-center justify-center
-              active:scale-[0.98] transition
-              ${bgClass} ${dimClass}
-              ${isSelected ? "ring-4 ring-white/80" : ""}
-              ${disabled && !isSelected ? "cursor-not-allowed" : ""}
-            `}
-            type="button"
-          >
-            <span className={`${labelClassName ?? ""} text-4xl md:text-5xl text-white`}>
-              {label}
-            </span>
-          </button>
-        );
-      })}
+          return (
+            <button
+              key={label}
+              disabled={disabled}
+              onClick={() => onPick(idx)}
+              type="button"
+              className={[
+                PICK_BTN_BASE,
+                "min-h-[120px] sm:min-h-[140px] md:min-h-[170px]",
+                base,
+                isSelected ? selected : "",
+                dimClass,
+                disabled && !isSelected ? "cursor-not-allowed" : "cursor-pointer",
+              ].join(" ")}
+              aria-pressed={isSelected}
+            >
+              <span
+                className={[
+                  labelClassName ?? "",
+                  "text-white font-extrabold",
+                  "text-5xl sm:text-6xl md:text-7xl",
+                ].join(" ")}
+              >
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
