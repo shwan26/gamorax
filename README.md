@@ -50,6 +50,9 @@ gamorax/
 install dependencies:
 ```bash
 npm install
+npm i read-excel-file
+npm i lucide-react
+
 ```
 run the development server:
 ```bash
@@ -64,7 +67,7 @@ bun dev
 
 .env / .env.local:
 ```bash
-NEXT_PUBLIC_BASE_URL="http://localhost:3000"
+NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
 ```
 
 run app:

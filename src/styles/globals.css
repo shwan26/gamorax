@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+
+  /* Accent colors */
+  --cyan: #00D4FF;
+  --navy: #020024;
+
+  /* Subtle surface tint (light mode) */
+  --surface-from: #f8fbff;
+  --surface-to: #f6fbff;
+
+  /* Background blob colors (light mode) */
+  --blob-cyan: rgba(0, 212, 255, 0.22);
+  --blob-sky: rgba(186, 230, 253, 0.45); /* sky-200 */
+  --blob-blue: rgba(191, 219, 254, 0.30); /* blue-200 */
+  --blob-navy: rgba(2, 0, 36, 0.10);
+
+  --dot-color: rgba(2, 0, 36, 0.18);
+  color-scheme: light dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Dark mode variables */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+
+    /* Dark surface tint */
+    --surface-from: #05060a;
+    --surface-to: #070a12;
+
+    /* Stronger but still soft blobs in dark mode */
+    --blob-cyan: rgba(0, 212, 255, 0.14);
+    --blob-sky: rgba(56, 189, 248, 0.10); /* sky-400-ish */
+    --blob-blue: rgba(59, 130, 246, 0.10); /* blue-500-ish */
+    --blob-navy: rgba(2, 0, 36, 0.35);
+
+    --dot-color: rgba(237, 237, 237, 0.14);
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* -------------------------------------------------------
+   Global App Background Helpers
+   ------------------------------------------------------- */
+
+/* Base page surface (subtle top-to-bottom tint) */
+.app-surface {
+  background: linear-gradient(to bottom, var(--surface-from), var(--background), var(--surface-to));
+}
+
+/* Fancy blobs overlay (use with position: relative container) */
+.app-bg {
+  position: relative;
+  isolation: isolate; /* keeps blobs behind content */
+}
+
+.app-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  /* multiple soft blobs */
+  background:
+    radial-gradient(560px 560px at 50% -10%, var(--blob-cyan), transparent 60%),
+    radial-gradient(520px 520px at -10% 30%, var(--blob-sky), transparent 60%),
+    radial-gradient(560px 560px at 110% 40%, var(--blob-navy), transparent 60%),
+    radial-gradient(620px 620px at 35% 120%, var(--blob-blue), transparent 60%);
+  filter: blur(24px);
+  opacity: 1;
+}

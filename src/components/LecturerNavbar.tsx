@@ -14,7 +14,7 @@ export default function LecturerNavbar() {
   const user = getCurrentLecturer();
 
   return (
-    <nav className="w-full bg-gradient-to-r from-[#0593D1] to-[#034B6B] text-white py-4 px-6 shadow-md flex items-center justify-between">
+    <nav className="w-full bg-gradient-to-r from-[#00D4FF] to-[#020024] text-white py-4 px-6 shadow-md flex items-center justify-between">
       
       {/* Left: Logo */}
       <Link href="/dashboard" className="flex items-center">
