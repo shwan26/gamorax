@@ -169,7 +169,7 @@ export default function LecturerRegister() {
                   />
                 </div>
 
-                <GradientButton onClick={handleRegister} type="button" className="py-3 rounded-xl">
+                <GradientButton onClick={handleRegister} type="button">
                   Register
                 </GradientButton>
 

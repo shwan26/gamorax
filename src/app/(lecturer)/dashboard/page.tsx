@@ -32,9 +32,10 @@ function CourseCard({ course }: { course: Course }) {
     >
       <div
         className="
-          relative rounded-[23px] p-6
-          bg-white ring-1 ring-slate-200/70
+          relative rounded-[23px] bg-white ring-1 ring-slate-200/70
           dark:bg-[#071A33] dark:ring-slate-700/60
+          p-6
+          min-h-[140px]   /*  height */
         "
       >
         {/* dots */}
@@ -47,41 +48,48 @@ function CourseCard({ course }: { course: Course }) {
           }}
         />
 
-        {/* glow (no black) */}
+        {/* glow */}
         <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-[#00D4FF]/14 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
         <div className="pointer-events-none absolute -right-20 -bottom-20 h-56 w-56 rounded-full bg-[#2563EB]/12 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity dark:bg-[#3B82F6]/18" />
 
-        <div className="relative flex items-start gap-3">
-          <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
-            <BookOpen className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+        {/* ✅ layout for equal height */}
+        <div className="relative flex h-full flex-col">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
+              <BookOpen className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-50 truncate">
+                {course.courseCode}
+              </p>
+
+              {/* ✅ clamp so text doesn't change height too much */}
+              <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
+                {course.courseName}
+              </p>
+            </div>
           </div>
 
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50 truncate">
-              {course.courseCode}
-            </p>
-            <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
-              {course.courseName}
-            </p>
-
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-              {course.section ? (
-                <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200">
-                  Section {course.section}
-                </span>
-              ) : null}
-              {course.semester ? (
-                <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200">
-                  {course.semester}
-                </span>
-              ) : null}
-            </div>
+          {/* ✅ chips pinned to bottom */}
+          <div className="mt-auto pt-4 flex flex-wrap gap-2 text-xs">
+            {course.section ? (
+              <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200">
+                Section {course.section}
+              </span>
+            ) : null}
+            {course.semester ? (
+              <span className="rounded-full border border-slate-200/80 bg-white/70 px-2 py-1 text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200">
+                {course.semester}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
     </Link>
   );
 }
+
 
 function CreateCourseCard() {
   return (
@@ -96,7 +104,14 @@ function CreateCourseCard() {
         focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
       "
     >
-      <div className="relative rounded-[23px] p-6 bg-white ring-1 ring-slate-200/70 dark:bg-[#071A33] dark:ring-slate-700/60">
+      <div
+        className="
+          relative rounded-[23px] bg-white ring-1 ring-slate-200/70
+          dark:bg-[#071A33] dark:ring-slate-700/60
+          p-6
+          min-h-[140px]   /*  height */
+        "
+      >
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.05] dark:opacity-[0.10]"
           style={{
@@ -106,25 +121,27 @@ function CreateCourseCard() {
           }}
         />
 
-        <div className="relative flex items-center gap-4">
-          <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/70 dark:bg-[#071A33]">
-            <Plus className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+        <div className="relative flex h-full flex-col">
+          <div className="flex items-start gap-4">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/70 dark:bg-[#071A33]">
+              <Plus className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                Create new course
+              </p>
+              <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300 line-clamp-2">
+                Add course code, name, section, and semester.
+              </p>
+            </div>
           </div>
 
-          <div className="min-w-0 flex-1">
-            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-              Create new course
-            </p>
-            <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-              Add course code, name, section, and semester.
-            </p>
-          </div>
         </div>
       </div>
     </Link>
   );
 }
-
 
 export default function LecturerDashboard() {
   const [courses, setCourses] = useState<Course[]>([]);

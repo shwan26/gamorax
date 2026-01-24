@@ -141,7 +141,7 @@ export default function StudentLoginClient() {
                   />
                 </div>
 
-                <GradientButton onClick={onLogin} type="button" className="py-3 rounded-xl">
+                <GradientButton onClick={onLogin} type="button">
                   Login
                 </GradientButton>
 

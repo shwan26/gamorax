@@ -206,7 +206,7 @@ export default function StudentRegisterClient() {
                 <GradientButton
                   onClick={onRegister}
                   type="button"
-                  className="py-3 rounded-xl"
+          
                 >
                   Create Account
                 </GradientButton>

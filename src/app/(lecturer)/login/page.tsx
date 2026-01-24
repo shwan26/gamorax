@@ -139,7 +139,6 @@ export default function LecturerLogin() {
                 <GradientButton
                   onClick={handleLogin}
                   type="submit"
-                  className="mt-2 py-3 rounded-xl"
                 >
                   Login
                 </GradientButton>

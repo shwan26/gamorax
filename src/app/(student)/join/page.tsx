@@ -180,7 +180,7 @@ export default function StudentJoin() {
                 <GradientButton
                   onClick={handleJoin}
                   type="button"
-                  className="py-3 rounded-xl"
+                
                 >
                   Join
                 </GradientButton>
