@@ -53,9 +53,10 @@ export default function QuestionView({
 
         {/* QUESTION TEXT big */}
         <div className="text-center">
-          <p className="mx-auto max-w-5xl text-2xl font-extrabold leading-snug text-slate-900 sm:text-3xl md:text-4xl dark:text-slate-50">
+          <p className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-50 leading-snug">
             {q.text}
           </p>
+
 
           {/* QUESTION IMAGE */}
           {hasImage ? (

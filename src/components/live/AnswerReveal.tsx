@@ -1,4 +1,4 @@
-const LABELS = ["A", "B", "C", "D"];
+const LABELS = ["A", "B", "C", "D"] as const;
 
 function clampIndex(i: unknown) {
   const n = Number(i);
@@ -16,6 +16,11 @@ function safe4Answers(answersText?: string[]) {
   return [0, 1, 2, 3].map((i) => String(answersText?.[i] ?? ""));
 }
 
+function pct(n: number, d: number) {
+  if (d <= 0) return 0;
+  return Math.round((n / d) * 100);
+}
+
 export default function AnswerReveal({
   counts,
   correctIndex,
@@ -30,80 +35,111 @@ export default function AnswerReveal({
   const safeAnswers = safe4Answers(answersText);
 
   const total = safeCounts.reduce((a, b) => a + b, 0);
-
-  // scale bars nicely (avoid huge heights)
   const maxCount = Math.max(1, ...safeCounts);
+
+  // vertical chart sizing
   const maxBarPx = 220;
-  const minBarPx = 24;
+  const minBarPx = 10; // keep a tiny visible bar for non-zero
 
   return (
-    <>
-      <p className="mt-4 text-sm">
-        Correct answer:{" "}
-        <b className="text-[#034B6B]">
-          {LABELS[ci]} – {safeAnswers[ci] || "(no text)"}
-        </b>
-      </p>
-
-      <div className="mt-8 text-xs text-gray-600">
-        Total answers: <b>{total}</b>
-      </div>
-
-      <div className="mt-6 flex items-end gap-10 h-64 border-b">
+    <div>
+      {/* Chart */}
+      <div className="flex items-end justify-between gap-3 sm:gap-5">
         {safeCounts.map((count, i) => {
-          const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+          const percent = pct(count, total);
+          const isCorrect = i === ci;
 
-          // proportional height
           const h =
-            maxCount > 0
-              ? Math.round((count / maxCount) * maxBarPx)
-              : minBarPx;
+            count <= 0
+              ? 0
+              : Math.max(minBarPx, Math.round((count / maxCount) * maxBarPx));
 
-          const heightPx = Math.max(minBarPx, h);
+          const barClass = isCorrect
+            ? "bg-gradient-to-b from-[#022B3A] via-[#034B6B] to-[#0B6FA6]" // ✅ darker, richer
+            : "bg-gradient-to-b from-slate-100 via-slate-50 to-white dark:from-slate-800/60 dark:via-slate-900/40 dark:to-slate-950/20"; // ✅ light + soft
 
-          // ✅ blue gradients only
-          // Correct = darker + stronger gradient
-          // Wrong = lighter + softer gradient
-          const barClass =
-            i === ci
-              ? "bg-gradient-to-b from-[#034B6B] to-[#0B6FA6]"
-              : "bg-gradient-to-b from-[#9FD4F2] to-[#D9F0FF]";
+          const ringClass = isCorrect
+            ? "ring-2 ring-[#034B6B]/35"
+            : "ring-1 ring-slate-200/80 dark:ring-slate-800/50";
 
-          const textClass = i === ci ? "text-white" : "text-[#034B6B]";
-
-          const borderClass = i === ci ? "ring-2 ring-[#034B6B]/30" : "ring-1 ring-[#034B6B]/10";
 
           return (
-            <div key={i} className="flex flex-col items-center gap-2 w-20">
-              {/* Bar */}
+            <div key={i} className="flex w-full flex-col items-center">
+              {/* Count pill */}
               <div
-                className={`w-16 rounded-md font-bold flex items-end justify-center pb-2 ${barClass} ${borderClass}`}
-                style={{ height: heightPx }}
+                className={[
+                  "mb-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-extrabold",
+                  "border shadow-sm",
+                  isCorrect
+                    ? "border-[#034B6B]/25 bg-[#034B6B]/10 text-[#034B6B] dark:bg-[#034B6B]/20 dark:text-[#9FD4F2]"
+                    : "border-slate-200/70 bg-white/70 text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200",
+                ].join(" ")}
               >
-                {/* count inside bar */}
-                <span className={`text-xs ${textClass}`}>
-                  {count}
+                {count}
+                <span className="text-[11px] font-semibold opacity-70">
+                  ({percent}%)
                 </span>
               </div>
 
-              {/* Label */}
-              <div className="font-bold text-sm text-[#034B6B]">{LABELS[i]}</div>
+              {/* Bar rail */}
+              <div
+                className="
+                  relative flex h-[240px] w-full max-w-[82px] items-end justify-center
+                  rounded-2xl border border-slate-200/70 bg-white/60 p-2
+                  shadow-sm backdrop-blur
+                  dark:border-slate-800/70 dark:bg-slate-950/35
+                "
+              >
+                {/* subtle baseline */}
+                <div className="pointer-events-none absolute bottom-2 left-2 right-2 h-px bg-slate-200/70 dark:bg-slate-800/60" />
 
-              {/* Percent */}
-              <div className="text-xs text-gray-600">
-                {pct}% ({count})
+                {/* bar */}
+                <div
+                  className={[
+                    "w-full rounded-xl shadow-sm transition-[height] duration-200",
+                    barClass,
+                    ringClass,
+                  ].join(" ")}
+                  style={{ height: h }}
+                >
+                  {/* little glow cap */}
+                  <div
+                    className={[
+                      "h-2 w-full rounded-t-xl opacity-70",
+                      isCorrect ? "bg-white/25" : "bg-white/35",
+                    ].join(" ")}
+                  />
+                </div>
               </div>
 
-              {/* Answer text (optional) */}
+              {/* Label + answer (optional) */}
+              <div className="mt-2 flex items-center gap-2">
+                <span
+                  className={[
+                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-extrabold",
+                    isCorrect
+                      ? "bg-[#034B6B] text-white"
+                      : "bg-white text-[#034B6B] border border-slate-200/70 dark:bg-slate-950/40 dark:border-slate-800/70",
+                  ].join(" ")}
+                >
+                  {LABELS[i]}
+                </span>
+              </div>
+
               {safeAnswers[i] ? (
-                <div className="text-[11px] text-gray-600 text-center line-clamp-2">
+                <div className="mt-3 max-w-[150px] text-center text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 line-clamp-3">
                   {safeAnswers[i]}
                 </div>
-              ) : null}
+              ) : (
+                <div className="mt-3 text-center text-sm sm:text-base font-semibold text-slate-400">
+                  (no text)
+                </div>
+              )}
+
             </div>
           );
         })}
       </div>
-    </>
+    </div>
   );
 }
