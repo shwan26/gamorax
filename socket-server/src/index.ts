@@ -151,6 +151,7 @@ const io = new IOServer(httpServer, {
 });
 
 io.on("connection", (socket) => {
+  
   socket.on("join", ({ pin, student }: { pin: string; student?: LiveStudent }) => {
     if (!pin) return;
     socket.join(pin);
