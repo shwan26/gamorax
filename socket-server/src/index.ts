@@ -151,7 +151,17 @@ const io = new IOServer(httpServer, {
 });
 
 io.on("connection", (socket) => {
-  socket.on("meta:set", ({ pin, meta }: { pin: string; meta: RoomMeta }) => {
+  
+  socket.on("join", ({ pin, student }: { pin: string; student?: LiveStudent }) => {
+    if (!pin) return;
+    socket.join(pin);
+
+    const room = getRoom(pin);
+    if (room.meta) {
+      socket.emit("session:meta", room.meta);
+    }
+
+    socket.on("meta:set", ({ pin, meta }: { pin: string; meta: RoomMeta }) => {
       if (!pin || !meta) return;
 
       const room = getRoom(pin);
@@ -163,14 +173,6 @@ io.on("connection", (socket) => {
       io.to(pin).emit("session:meta", room.meta);
     });
 
-  socket.on("join", ({ pin, student }: { pin: string; student?: LiveStudent }) => {
-    if (!pin) return;
-    socket.join(pin);
-
-    const room = getRoom(pin);
-    if (room.meta) {
-      socket.emit("session:meta", room.meta);
-    }
 
     if (student?.studentId) {
       room.students.set(student.studentId, student);
