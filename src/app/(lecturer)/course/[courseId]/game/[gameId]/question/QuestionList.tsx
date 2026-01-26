@@ -31,6 +31,26 @@ export default function QuestionList({
         {questions.map((q, i) => {
           const active = i === activeIndex;
           const dragging = dragIndex === i;
+          const hasQuestion = !!q.text?.trim();
+
+          const hasAnyAnswerText = q.answers?.some((a) => !!a.text?.trim()) ?? false;
+          const allAnswersFilled = q.answers?.every((a) => !!a.text?.trim()) ?? false;
+          const hasCorrect = q.answers?.some((a) => a.correct) ?? false;
+
+          const status: "new" | "complete" | "incomplete" =
+            !hasQuestion && !hasAnyAnswerText
+              ? "new"
+              : hasQuestion && allAnswersFilled && hasCorrect
+              ? "complete"
+              : "incomplete";
+
+          const dotCls =
+            status === "new"
+              ? "bg-slate-300 dark:bg-slate-700"
+              : status === "complete"
+              ? "bg-emerald-500"
+              : "bg-red-500";
+
 
           return (
             <div
@@ -109,16 +129,22 @@ export default function QuestionList({
                 </button>
               </div>
 
-              {/* tiny "edited" dot if question has text */}
-              {q.text?.trim() ? (
-                <span
-                  className={[
-                    "absolute bottom-1.5 right-1.5 h-2 w-2 rounded-full",
-                    active ? "bg-[#00D4FF]" : "bg-slate-300 dark:bg-slate-700",
-                  ].join(" ")}
-                  title="Has content"
-                />
-              ) : null}
+              {/* status dot */}
+              <span
+                className={[
+                  "absolute bottom-1.5 right-1.5 h-2.5 w-2.5 rounded-full",
+                  "ring-2 ring-white/70 dark:ring-slate-950/60",
+                  dotCls,
+                ].join(" ")}
+                title={
+                  status === "new"
+                    ? "New question"
+                    : status === "complete"
+                    ? "Complete"
+                    : "Incomplete (missing answers or correct choice))"
+                }
+              />
+
             </div>
           );
         })}
