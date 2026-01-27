@@ -1,18 +1,34 @@
+export type QuestionType = "multiple_choice" | "true_false" | "matching" | "input";
+
 export type Answer = {
   text: string;
-  correct: boolean;
-  image?: string | null;   // allow delete
+  correct: boolean;        // ✅ now can be multiple true
+  image?: string | null;
+};
+
+export type MatchPair = {
+  left: string;
+  right: string;
 };
 
 export type Question = {
   id: string;
+  type: QuestionType;      // ✅ NEW
   text: string;
-  image?: string | null;   // allow delete
+  image?: string | null;
+
+  // used by MC + TF
   answers: Answer[];
+
+  // used by matching
+  matches?: MatchPair[];
+
+  // used by input answer
+  acceptedAnswers?: string[];
+
   timeMode: "default" | "specific";
   time: number;
 };
-
 
 const STORAGE_KEY = "gamorax_questions";
 

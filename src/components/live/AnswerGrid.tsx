@@ -4,7 +4,7 @@ import {
   ANSWER_LABELS,
   BADGE_ACCENT,
   PICK_BTN_BASE,
-} from "@/src/components/ui/answerStyles";
+} from "@/src/styles/answerStyles";
 
 export default function AnswerGrid(props: {
   selectedIndex: number | null;

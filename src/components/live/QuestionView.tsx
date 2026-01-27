@@ -6,7 +6,7 @@ import {
   BADGE_OUTER,
   BADGE_INNER,
   ANSWER_CARD,
-} from "@/src/components/ui/answerStyles";
+} from "@/src/styles/answerStyles";
 
 function DotPattern() {
   return (

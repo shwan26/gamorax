@@ -31,18 +31,55 @@ export default function QuestionList({
         {questions.map((q, i) => {
           const active = i === activeIndex;
           const dragging = dragIndex === i;
+          const type = q.type ?? "multiple_choice";
           const hasQuestion = !!q.text?.trim();
 
-          const hasAnyAnswerText = q.answers?.some((a) => !!a.text?.trim()) ?? false;
-          const allAnswersFilled = q.answers?.every((a) => !!a.text?.trim()) ?? false;
-          const hasCorrect = q.answers?.some((a) => a.correct) ?? false;
+          // ---- completeness by type ----
+          const mcAnswers = (q.answers ?? []).map((a) => String(a?.text ?? "").trim());
+          const mcNonEmpty = mcAnswers.filter(Boolean);
+          const mcHasCorrect = (q.answers ?? []).some((a) => !!a.correct);
 
+          const tfHasCorrect = (q.answers ?? []).some((a) => !!a.correct); // should be 1
+
+          const pairs = q.matches ?? [];
+          const pairCompleteCount = pairs.filter(
+            (p) => !!String(p?.left ?? "").trim() && !!String(p?.right ?? "").trim()
+          ).length;
+          const pairAnyStarted = pairs.some(
+            (p) => !!String(p?.left ?? "").trim() || !!String(p?.right ?? "").trim()
+          );
+          const pairHasBroken = pairs.some((p) => {
+            const L = !!String(p?.left ?? "").trim();
+            const R = !!String(p?.right ?? "").trim();
+            return (L && !R) || (!L && R);
+          });
+
+          const accepted = (q.acceptedAnswers ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+
+          // ---- determine "started" ----
+          const started =
+            hasQuestion ||
+            mcNonEmpty.length > 0 ||
+            pairAnyStarted ||
+            accepted.length > 0;
+
+          // ---- determine "complete" ----
+          let complete = false;
+
+          if (type === "multiple_choice") {
+            complete = hasQuestion && mcNonEmpty.length >= 2 && mcHasCorrect;
+          } else if (type === "true_false") {
+            complete = hasQuestion && tfHasCorrect;
+          } else if (type === "matching") {
+            // require at least 2 full pairs, no half-filled rows
+            complete = hasQuestion && pairCompleteCount >= 2 && !pairHasBroken;
+          } else if (type === "input") {
+            complete = hasQuestion && accepted.length >= 1;
+          }
+
+          // ---- status ----
           const status: "new" | "complete" | "incomplete" =
-            !hasQuestion && !hasAnyAnswerText
-              ? "new"
-              : hasQuestion && allAnswersFilled && hasCorrect
-              ? "complete"
-              : "incomplete";
+            !started ? "new" : complete ? "complete" : "incomplete";
 
           const dotCls =
             status === "new"
@@ -50,6 +87,7 @@ export default function QuestionList({
               : status === "complete"
               ? "bg-emerald-500"
               : "bg-red-500";
+
 
 
           return (
