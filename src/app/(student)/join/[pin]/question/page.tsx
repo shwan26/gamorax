@@ -597,11 +597,13 @@ export default function StudentQuestionPage() {
             {/* Answers */}
             <div className="flex justify-center">
               <AnswerGrid
-                selectedIndex={selectedIndex}
+                q={question}
                 disabled={disableButtons}
-                onPick={pick}
-                labelClassName={caesar.className}
+                onSubmitChoice={({ indices }) => {
+                  if (indices.length === 1) pick(indices[0]);
+                }}
               />
+
             </div>
 
             <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">

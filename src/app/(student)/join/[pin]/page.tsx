@@ -152,7 +152,11 @@ export default function LobbyPage() {
 
   // ✅ Save profile (name + studentId) then lock editing
   const handleSaveProfile = () => {
-    if (locked) return;
+    if (locked) {
+      // already saved -> go to lobby question waiting screen
+      router.push(`/join/${encodeURIComponent(pin)}/question`);
+      return;
+    }
 
     const cleanName = name.trim();
     const sid = effectiveStudentId;
@@ -174,6 +178,7 @@ export default function LobbyPage() {
     writeLiveStudent(nextLive);
     setStudent(nextLive);
 
+    // ensure server knows latest student profile
     s.emit("join", { pin, student: nextLive });
 
     try {
@@ -181,7 +186,8 @@ export default function LobbyPage() {
     } catch {}
     setLocked(true);
 
-    alert("Saved. You are ready!");
+    // ✅ go to question page (acts like “waiting room”)
+    router.push(`/join/${encodeURIComponent(pin)}/question`);
   };
 
   const handleLeave = () => {
@@ -404,7 +410,7 @@ export default function LobbyPage() {
               ].join(" ")}
               type="button"
             >
-              {locked ? "Saved (Locked)" : "Save / Update Profile"}
+              {locked ? "Continue" : "Save & Continue"}
             </button>
 
             <button
