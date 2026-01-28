@@ -149,11 +149,17 @@ export default function LecturerLiveFlow() {
     return order;
   };
 
-  // stable Matching orders
-  const getOrCreateMatchOrder = (liveQIndex: number, side: "L" | "R", optionCount: number) => {
+  // stable Matching orders (shuffle ONLY right side)
+  const getOrCreateMatchOrder = (
+    liveQIndex: number,
+    side: "L" | "R",
+    optionCount: number
+  ) => {
     if (!pin || !gameId) return [...Array(optionCount)].map((_, i) => i);
 
-    const key = `gamorax_live_match_${side}_${pin}_${gameId}_${liveQIndex}_${optionCount}`;
+    // ✅ bump key version to avoid old saved non-shuffled orders
+    const key = `gamorax_live_match_v2_${side}_${pin}_${gameId}_${liveQIndex}_${optionCount}`;
+
     const saved = sessionStorage.getItem(key);
     if (saved) {
       try {
@@ -163,7 +169,10 @@ export default function LecturerLiveFlow() {
     }
 
     const base = [...Array(optionCount)].map((_, i) => i);
-    const order = shuffleAnswers ? shuffleArray(base) : base;
+
+    // ✅ shuffle ONLY right side (always)
+    const order = side === "R" ? shuffleArray(base) : base;
+
     sessionStorage.setItem(key, JSON.stringify(order));
     return order;
   };
@@ -203,25 +212,17 @@ export default function LecturerLiveFlow() {
       return { ...baseQ, answers: displayAnswers };
     }
 
-    // Matching
+    // Matching 
     if (baseQ.type === "matching") {
       const pairs = (baseQ.matches ?? []).slice(0, 5);
-      const leftRaw = pairs.map((p: any) => String(p?.left ?? ""));
-      const rightRaw = pairs.map((p: any) => String(p?.right ?? ""));
-      const n = Math.min(leftRaw.length, rightRaw.length);
 
-      const left = leftRaw.slice(0, n);
-      const right = rightRaw.slice(0, n);
+      const left = pairs.map((p: any) => String(p?.left ?? ""));
+      const rightBase = pairs.map((p: any) => String(p?.right ?? ""));
 
-      const leftOrder = getOrCreateMatchOrder(qIndex, "L", n);
-      const rightOrder = getOrCreateMatchOrder(qIndex, "R", n);
+      const rightOrder = getOrCreateMatchOrder(qIndex, "R", rightBase.length);
+      const right = rightOrder.map((i) => rightBase[i]).filter(Boolean);
 
-      return {
-        ...baseQ,
-        matches: pairs,
-        left: leftOrder.map((i) => left[i]),
-        right: rightOrder.map((i) => right[i]),
-      };
+      return { ...baseQ, left, right, matches: pairs };
     }
 
     // Input
@@ -356,22 +357,29 @@ export default function LecturerLiveFlow() {
     }
 
     if (q.type === "matching") {
-        const pairs = (q.matches ?? []).slice(0, 5);
-        const left = pairs.map((p: any) => String(p?.left ?? ""));
-        const right = pairs.map((p: any) => String(p?.right ?? ""));
+      const pairs = (q.matches ?? []).slice(0, 5);
 
-        s.emit("question:show", {
+      const left = Array.isArray((q as any).left)
+        ? (q as any).left
+        : pairs.map((p: any) => String(p?.left ?? ""));
+
+      const right = Array.isArray((q as any).right)
+        ? (q as any).right
+        : pairs.map((p: any) => String(p?.right ?? ""));
+
+      s.emit("question:show", {
         pin,
         question: {
-            ...common,
-            left,
-            right,
-            correctPairs: pairs,
+          ...common,
+          left,
+          right,
+          correctPairs: pairs,
         },
-        });
+      });
 
       return;
     }
+
 
     // input
     s.emit("question:show", {
@@ -542,7 +550,6 @@ export default function LecturerLiveFlow() {
 
   return (
     <div className="min-h-screen app-surface app-bg">
-      <Navbar />
 
       <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
         <div className="mt-6 grid gap-4">
