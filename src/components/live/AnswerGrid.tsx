@@ -1,3 +1,4 @@
+// src/components/live/AnswerGrid.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,22 +12,32 @@ type Props = {
   q: any;
   disabled: boolean;
 
-  // MC / TF submit (single click)
   onSubmitChoice: (payload: { indices: number[] }) => void;
-
-  // Matching
   onAttemptMatch?: (payload: { leftIndex: number; rightIndex: number }) => Promise<{ correct: boolean }>;
-
-  // Input
   onSubmitInput?: (payload: { value: string }) => void;
 };
 
 export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch, onSubmitInput }: Props) {
   const type = (q?.type ?? "multiple_choice") as QType;
 
+  const [pickedIndex, setPickedIndex] = useState<number | null>(null);
+  const submittedOnceRef = useRef(false);
+
+  const [matchedLeft, setMatchedLeft] = useState<Set<number>>(() => new Set());
+  const [matchedRight, setMatchedRight] = useState<Set<number>>(() => new Set());
+  const [selSide, setSelSide] = useState<"L" | "R" | null>(null);
+  const [selIndex, setSelIndex] = useState<number | null>(null);
+
+  const [inputValue, setInputValue] = useState("");
+  const inputSubmittedRef = useRef(false);
+
   const qKey = `${q?.questionIndex ?? ""}|${q?.id ?? ""}|${type}`;
+
+  // ✅ IMPORTANT: reset ALL refs for new question, including inputSubmittedRef
   useEffect(() => {
     submittedOnceRef.current = false;
+    inputSubmittedRef.current = false;
+
     setPickedIndex(null);
 
     setSelSide(null);
@@ -36,10 +47,6 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
 
     setInputValue("");
   }, [qKey]);
-
-  /* =======================
-     MC / TF
-  ======================== */
 
   const optionsCount = useMemo(() => {
     if (type === "true_false") return 2;
@@ -52,9 +59,6 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
 
   const labels = useMemo(() => ABCDE.slice(0, Math.min(5, optionsCount)), [optionsCount]);
 
-  const [pickedIndex, setPickedIndex] = useState<number | null>(null);
-  const submittedOnceRef = useRef(false);
-
   function submitSingleChoice(idx: number) {
     if (disabled) return;
     if (submittedOnceRef.current) return;
@@ -64,26 +68,15 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
     onSubmitChoice({ indices: [idx] });
   }
 
-  /* =======================
-     MATCHING
-  ======================== */
-
   const leftItems: string[] = useMemo(
-  () => (Array.isArray(q?.left) ? q.left.map((x: any) => String(x ?? "")) : []),
-  [q]
-);
+    () => (Array.isArray(q?.left) ? q.left.map((x: any) => String(x ?? "")) : []),
+    [q]
+  );
 
   const rightItems: string[] = useMemo(
     () => (Array.isArray(q?.right) ? q.right.map((x: any) => String(x ?? "")) : []),
     [q]
   );
-
-
-  const [matchedLeft, setMatchedLeft] = useState<Set<number>>(() => new Set());
-  const [matchedRight, setMatchedRight] = useState<Set<number>>(() => new Set());
-
-  const [selSide, setSelSide] = useState<"L" | "R" | null>(null);
-  const [selIndex, setSelIndex] = useState<number | null>(null);
 
   const matchingBusyRef = useRef(false);
 
@@ -139,15 +132,6 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
     setSelIndex(i);
   }
 
-
-
-  /* =======================
-     INPUT
-  ======================== */
-
-  const [inputValue, setInputValue] = useState("");
-  const inputSubmittedRef = useRef(false);
-
   function submitInput() {
     if (disabled) return;
     if (!onSubmitInput) return;
@@ -160,13 +144,8 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
     onSubmitInput({ value: v });
   }
 
-  /* =======================
-     UI
-  ======================== */
-
   const grad = `bg-gradient-to-br ${BADGE_ACCENT}`;
 
-  // INPUT
   if (type === "input") {
     return (
       <div className="w-full">
@@ -205,7 +184,6 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
     );
   }
 
-  // MATCHING
   if (type === "matching") {
     return (
       <div className="w-full">
@@ -224,7 +202,9 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
                   onClick={() => clickLeft(i)}
                   className={[
                     "w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold border shadow-sm transition",
-                    isSelected ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25" : "border-slate-200/70",
+                    isSelected
+                      ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25"
+                      : "border-slate-200/70",
                     "bg-white/80 dark:bg-slate-950/45 dark:border-slate-800/70",
                     isMatched ? "opacity-35 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
                     disabled ? "opacity-70 cursor-not-allowed" : "",
@@ -250,7 +230,9 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
                   onClick={() => clickRight(i)}
                   className={[
                     "w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold border shadow-sm transition",
-                    isSelected ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25" : "border-slate-200/70",
+                    isSelected
+                      ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25"
+                      : "border-slate-200/70",
                     "bg-white/80 dark:bg-slate-950/45 dark:border-slate-800/70",
                     isMatched ? "opacity-35 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
                     disabled ? "opacity-70 cursor-not-allowed" : "",
@@ -260,14 +242,12 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
                 </button>
               );
             })}
-
           </div>
         </div>
       </div>
     );
   }
 
-  // TRUE/FALSE: show A/B only
   if (type === "true_false") {
     const tfLabels = ["A", "B"] as const;
 
@@ -285,7 +265,13 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
                 disabled={disabled || submittedOnceRef.current}
                 onClick={() => submitSingleChoice(idx)}
                 type="button"
-                className={[PICK_BTN_BASE, "min-h-[120px] sm:min-h-[140px]", grad, selected, dimClass].join(" ")}
+                className={[
+                  PICK_BTN_BASE,
+                  "min-h-[120px] sm:min-h-[140px]",
+                  grad,
+                  selected,
+                  dimClass,
+                ].join(" ")}
               >
                 <span className="text-white font-extrabold text-6xl sm:text-7xl">{tfLabels[idx]}</span>
               </button>
@@ -296,7 +282,6 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
     );
   }
 
-  // MULTIPLE CHOICE: show A..E only
   return (
     <div className="w-full">
       <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-3 sm:max-w-lg sm:gap-4 md:max-w-2xl md:gap-6">
@@ -311,7 +296,13 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
               disabled={disabled || submittedOnceRef.current}
               onClick={() => submitSingleChoice(idx)}
               type="button"
-              className={[PICK_BTN_BASE, "min-h-[120px] sm:min-h-[140px] md:min-h-[170px]", grad, selected, dimClass].join(" ")}
+              className={[
+                PICK_BTN_BASE,
+                "min-h-[120px] sm:min-h-[140px] md:min-h-[170px]",
+                grad,
+                selected,
+                dimClass,
+              ].join(" ")}
               aria-pressed={isSelected}
             >
               <span className="text-white font-extrabold text-6xl sm:text-7xl md:text-8xl">{lab}</span>
