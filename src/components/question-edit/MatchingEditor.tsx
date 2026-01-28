@@ -22,19 +22,27 @@ export default function MatchingEditor({
       "
     >
       <div className="mb-3 flex items-center justify-between">
-        <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Matching</p>
+        <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+          Matching
+        </p>
         <p className="text-xs text-slate-500 dark:text-slate-400">5 pairs</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      {/* 3 columns: Left | <-> | Right */}
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-3">
+        {/* Left */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Left</p>
+          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Left
+          </p>
           {pairs.map((p, i) => (
             <input
               key={`l-${i}`}
               value={p.left}
               onChange={(e) => {
-                const next = pairs.map((x, idx) => (idx === i ? { ...x, left: e.target.value } : x));
+                const next = pairs.map((x, idx) =>
+                  idx === i ? { ...x, left: e.target.value } : x
+                );
                 onUpdate({ matches: next });
               }}
               placeholder={`Left ${i + 1}`}
@@ -48,14 +56,48 @@ export default function MatchingEditor({
           ))}
         </div>
 
+        {/* Middle arrows aligned per row */}
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Right</p>
+          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 text-center">
+            Link
+          </p>
+
+          {pairs.map((_, i) => (
+            <div
+              key={`m-${i}`}
+              className="
+                h-[42px] flex items-center justify-center
+                text-slate-500 dark:text-slate-400
+              "
+              aria-hidden="true"
+            >
+              <span
+                className="
+                  inline-flex items-center justify-center
+                  rounded-full border border-slate-200/70 bg-white/70
+                  px-2.5 py-1 text-xs font-extrabold
+                  dark:border-slate-800/70 dark:bg-slate-950/45
+                "
+              >
+                ↔
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Right */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Right
+          </p>
           {pairs.map((p, i) => (
             <input
               key={`r-${i}`}
               value={p.right}
               onChange={(e) => {
-                const next = pairs.map((x, idx) => (idx === i ? { ...x, right: e.target.value } : x));
+                const next = pairs.map((x, idx) =>
+                  idx === i ? { ...x, right: e.target.value } : x
+                );
                 onUpdate({ matches: next });
               }}
               placeholder={`Right ${i + 1}`}
@@ -69,6 +111,10 @@ export default function MatchingEditor({
           ))}
         </div>
       </div>
+
+      <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
+        Each row is a correct pair: <b>Left {`i`}</b> ↔ <b>Right {`i`}</b>
+      </p>
     </div>
   );
 }

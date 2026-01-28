@@ -12,6 +12,15 @@ import { getCurrentStudent, addPointsToStudent } from "@/src/lib/studentAuthStor
 import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
 
 import type { LiveStudent } from "@/src/lib/liveStorage";
+import type {
+  LiveQuestionType,
+  LiveQuestionPayloadMC,
+  LiveQuestionPayloadMatching,
+  LiveQuestionPayloadInput,
+  LiveQuestionShowEvent,
+  LiveRevealEvent,
+} from "@/src/lib/liveStorage";
+
 import { getLiveMeta, saveLiveMeta, getLiveMeta as _getLiveMeta } from "@/src/lib/liveStorage";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
 import { getAvatarSrc } from "@/src/lib/studentAvatar";
@@ -20,11 +29,18 @@ import AnswerGrid from "@/src/components/live/AnswerGrid";
 import { calcPoints } from "@/src/lib/quizScoring";
 import { Trophy, CheckCircle2, XCircle, Timer, Sparkles } from "lucide-react";
 
+export type QuestionType = LiveQuestionType;
+
+
 const caesar = localFont({
   src: "../../../../../../public/fonts/CaesarDressing-Regular.ttf",
 });
 
 /* ------------------------------ UI helpers ------------------------------ */
+function isInputPayload(q: LiveQuestionPayload): q is LiveQuestionPayloadInput {
+  return "acceptedAnswers" in q;
+}
+
 
 function DotPattern() {
   return (
@@ -95,23 +111,19 @@ function PrimaryButton({
 }
 
 /* ------------------------------ existing types ------------------------------ */
+type LiveQuestionPayload =
+  | LiveQuestionPayloadMC
+  | LiveQuestionPayloadMatching
+  | LiveQuestionPayloadInput;
 
-type QuestionShowPayload = {
-  questionIndex?: number;
-  number?: number;
-  total?: number;
-  text?: string;
-  answers?: string[];
-  startAt?: number;
-  durationSec?: number;
-  correctIndex?: number;
-};
+function sameSet(a: number[], b: number[]) {
+  const A = new Set(a);
+  const B = new Set(b);
+  if (A.size !== B.size) return false;
+    for (const x of A) if (!B.has(x)) return false;
+  return true;
+}
 
-type AnswerRevealPayload = {
-  questionIndex?: number;
-  correctIndex?: number;
-  maxTime?: number;
-};
 
 type QuizFinishedPayload = {
   total: number;
@@ -127,13 +139,13 @@ export default function StudentQuestionPage() {
   const [student, setStudent] = useState<LiveStudent | null>(null);
 
   const [phase, setPhase] = useState<"waiting" | "question" | "result" | "final">("waiting");
-  const [question, setQuestion] = useState<{
-    questionIndex: number;
-    number: number;
-    total: number;
-    text: string;
-    answers: string[];
-  } | null>(null);
+  type StudentLiveQuestion =
+    | (LiveQuestionPayloadMC)
+    | (LiveQuestionPayloadMatching)
+    | (LiveQuestionPayloadInput);
+
+  const [question, setQuestion] = useState<StudentLiveQuestion | null>(null);
+
 
   // stable refs
   const selectedIndexRef = useRef<number | null>(null);
@@ -142,7 +154,7 @@ export default function StudentQuestionPage() {
   const correctIndexRef = useRef<number | null>(null);
   const lastScoredQIndexRef = useRef<number>(-1);
 
-  const myByQRef = useRef<Record<number, { answerIndex: number; timeUsed: number }>>({});
+  const myByQRef = useRef<Record<number, { indices: number[]; timeUsed: number }>>({});
   const correctByQRef = useRef<Record<number, number>>({});
   const maxTimeByQRef = useRef<Record<number, number>>({});
 
@@ -236,21 +248,20 @@ export default function StudentQuestionPage() {
     };
     s.on("session:meta", onMeta);
 
-    const onQuestionShow = (q: QuestionShowPayload) => {
-      const number = Number(q?.number ?? 1);
-      const qIndex =
-        typeof q?.questionIndex === "number" ? q.questionIndex : Math.max(0, number - 1);
+    const onQuestionShow = (payload: any) => {
+      const qq = (payload?.question ?? payload) as LiveQuestionPayload;
 
-      const total = Number(q?.total ?? 1);
-      const text = String(q?.text ?? "");
-      const answers = Array.isArray(q?.answers) ? q.answers : [];
+      const number = Number(qq?.number ?? 1);
+      const qIndex = typeof qq?.questionIndex === "number" ? qq.questionIndex : Math.max(0, number - 1);
+
+      const total = Number(qq?.total ?? 1);
+      const text = String(qq?.text ?? "");
+      const type = qq.type; // ✅ already LiveQuestionType
+
+      const sAt = typeof qq?.startAt === "number" ? qq.startAt : Date.now();
+      const dur = Number.isFinite(Number(qq?.durationSec)) ? Math.max(1, Number(qq.durationSec)) : 20;
 
       currentQIndexRef.current = qIndex;
-      if (typeof q?.correctIndex === "number") correctIndexRef.current = q.correctIndex;
-
-      const sAt = typeof q?.startAt === "number" ? q.startAt : Date.now();
-      const dur = Number.isFinite(Number(q?.durationSec)) ? Math.max(1, Number(q.durationSec)) : 20;
-
       maxTimeByQRef.current[qIndex] = dur;
       durationSecRef.current = dur;
 
@@ -259,7 +270,50 @@ export default function StudentQuestionPage() {
       setNow(Date.now());
       questionStartAtRef.current = sAt;
 
-      setQuestion({ questionIndex: qIndex, number, total, text, answers });
+      // ✅ Build question object based on type (narrow union)
+      if (type === "multiple_choice" || type === "true_false") {
+        setQuestion({
+          questionIndex: qIndex,
+          number,
+          total,
+          text,
+          type,
+          answers: Array.isArray(qq.answers) ? qq.answers : [],
+          allowMultiple: Boolean(qq.allowMultiple),
+        } as any);
+      } else if (type === "matching") {
+        setQuestion({
+          questionIndex: qIndex,
+          number,
+          total,
+          text,
+          type,
+          left: Array.isArray(qq.left) ? qq.left : [],
+          right: Array.isArray(qq.right) ? qq.right : [],
+        } as any);
+      } else if (isInputPayload(qq)) {
+        // input
+        setQuestion({
+          questionIndex: qIndex,
+          number,
+          total,
+          text,
+          type,
+          acceptedAnswers: Array.isArray(qq.acceptedAnswers) ? qq.acceptedAnswers : [],
+        } as any);
+      } else {
+        // fallback (if server sends unexpected shape)
+        setQuestion({
+          questionIndex: qIndex,
+          number,
+          total,
+          text,
+          type,
+          acceptedAnswers: [],
+        } as any);
+      }
+
+
       setPhase("question");
 
       setSelectedIndex(null);
@@ -270,50 +324,66 @@ export default function StudentQuestionPage() {
       setLastEarnedPoints(0);
     };
 
-    const onReveal = (p?: AnswerRevealPayload) => {
+
+
+    const onReveal = (p?: LiveRevealEvent | any) => {
+      const rv = (p ?? {}) as Partial<LiveRevealEvent>;
+
       setPhase("result");
       setStartAt(null);
       questionStartAtRef.current = null;
 
       const qIdx =
-        typeof p?.questionIndex === "number" ? p.questionIndex : currentQIndexRef.current;
+        typeof rv.questionIndex === "number"
+          ? rv.questionIndex
+          : currentQIndexRef.current;
 
-      const correct =
-        typeof p?.correctIndex === "number" ? p.correctIndex : correctIndexRef.current;
-
-      if (typeof p?.maxTime === "number" && Number.isFinite(p.maxTime)) {
-        maxTimeByQRef.current[qIdx] = Math.max(1, Math.round(p.maxTime));
+      if (typeof rv.maxTime === "number" && Number.isFinite(rv.maxTime)) {
+        maxTimeByQRef.current[qIdx] = Math.max(1, Math.round(rv.maxTime));
       }
 
       setScoredCount((prev) => Math.max(prev, qIdx + 1));
-
-      if (typeof correct !== "number") {
-        setLastWasCorrect(null);
-        setLastEarnedPoints(0);
-        return;
-      }
-
-      correctByQRef.current[qIdx] = correct;
 
       if (qIdx <= lastScoredQIndexRef.current) return;
       lastScoredQIndexRef.current = qIdx;
 
       const maxTime = maxTimeByQRef.current[qIdx] ?? durationSecRef.current ?? 0;
-
       const mine = myByQRef.current[qIdx];
-      const picked = answeredQIndexRef.current === qIdx ? selectedIndexRef.current : null;
+      const myIndices = mine?.indices ?? [];
 
-      const isCorrect = typeof picked === "number" && picked === correct;
-      const timeUsed = mine?.timeUsed ?? maxTime;
+      // ✅ MC/TF
+      if (rv.type === "multiple_choice" || rv.type === "true_false") {
+        const correctIndices =
+          Array.isArray((rv as any).correctIndices)
+            ? (rv as any).correctIndices
+            : Number.isFinite((rv as any).correctIndex)
+            ? [(rv as any).correctIndex]
+            : [];
 
-      const earned = calcPoints({ isCorrect, maxTime, timeUsed });
+        if (!correctIndices.length) {
+          setLastWasCorrect(null);
+          setLastEarnedPoints(0);
+          return;
+        }
 
-      setLastWasCorrect(isCorrect);
-      setLastEarnedPoints(earned);
+        const isCorrect = myIndices.length ? sameSet(myIndices, correctIndices) : false;
+        const timeUsed = mine?.timeUsed ?? maxTime;
+        const earned = calcPoints({ isCorrect, maxTime, timeUsed });
 
-      if (isCorrect) setCorrectCount((prev) => prev + 1);
-      setTotalPoints((prev) => prev + earned);
+        setLastWasCorrect(isCorrect);
+        setLastEarnedPoints(earned);
+
+        if (isCorrect) setCorrectCount((prev) => prev + 1);
+        setTotalPoints((prev) => prev + earned);
+        return;
+      }
+
+      // matching/input scoring later
+      setLastWasCorrect(null);
+      setLastEarnedPoints(0);
     };
+
+
 
     const onNext = () => {
       setPhase("waiting");
@@ -347,15 +417,18 @@ export default function StudentQuestionPage() {
 
       [...Array(total)].forEach((_, qi) => {
         const mine = myByQRef.current[qi];
-        const answerIndex = typeof mine?.answerIndex === "number" ? mine.answerIndex : -1;
+        const myIndices = mine?.indices ?? [];
 
-        const correctIndex = correctByQRef.current[qi];
+        const correctIndex = correctByQRef.current[qi]; // still number for now
         const hasCorrect = typeof correctIndex === "number";
 
         const maxTime = maxTimeByQRef.current[qi] ?? 0;
         const timeUsed = mine?.timeUsed ?? maxTime;
 
-        const isCorrect = hasCorrect && answerIndex >= 0 && answerIndex === correctIndex;
+        // compare first picked only (since server currently supports 1 correct index)
+        const myFirst = typeof myIndices[0] === "number" ? myIndices[0] : -1;
+        const isCorrect = hasCorrect && myFirst >= 0 && myFirst === correctIndex;
+
         const earned = calcPoints({ isCorrect, maxTime, timeUsed });
 
         if (isCorrect) computedCorrect += 1;
@@ -410,19 +483,21 @@ export default function StudentQuestionPage() {
     };
   }, [mounted, pin, student]);
 
-  const pick = (answerIndex: number) => {
+  const submitChoice = (indices: number[]) => {
     if (!student || !question) return;
     if (phase !== "question") return;
 
-    if (selectedIndexRef.current !== null) return;
+    // prevent double submit
+    if (answeredQIndexRef.current === question.questionIndex) return;
 
     if (startAt) {
       const elapsed = Date.now() - startAt;
       if (elapsed >= durationSec * 1000) return;
     }
 
-    setSelectedIndex(answerIndex);
-    selectedIndexRef.current = answerIndex;
+    // UI: highlight first picked only (fine)
+    setSelectedIndex(indices[0] ?? null);
+    selectedIndexRef.current = indices[0] ?? null;
 
     const qIndex = question.questionIndex;
     answeredQIndexRef.current = qIndex;
@@ -430,16 +505,21 @@ export default function StudentQuestionPage() {
     const ms = questionStartAtRef.current ? Date.now() - questionStartAtRef.current : 0;
     const timeUsed = Math.max(0, Math.round(ms / 1000));
 
-    myByQRef.current[qIndex] = { answerIndex, timeUsed };
+    // ✅ store array (important for multi-correct later)
+    myByQRef.current[qIndex] = { indices, timeUsed };
 
+    // ✅ send to server (MC/TF)
     s.emit("answer", {
       pin,
       studentId: student.studentId,
       questionIndex: qIndex,
-      answerIndex,
+      answerIndex: indices[0] ?? -1,   // ✅ server needs this
+      indices,                         // (optional, future use)
       timeUsed,
     });
+
   };
+
 
   const hasPicked = selectedIndex !== null;
   const disableButtons = phase !== "question" || hasPicked;
@@ -599,8 +679,10 @@ export default function StudentQuestionPage() {
               <AnswerGrid
                 q={question}
                 disabled={disableButtons}
-                onSubmitChoice={({ indices }) => {
-                  if (indices.length === 1) pick(indices[0]);
+                onSubmitChoice={({ indices }) => submitChoice(indices)}
+                onAttemptMatch={async () => ({ correct: false })} // later wire
+                onSubmitInput={({ value }) => {
+                  // later wire input submit
                 }}
               />
 
