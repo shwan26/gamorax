@@ -30,6 +30,76 @@ function sameSet(a: number[], b: number[]) {
   return true;
 }
 
+function LobbyWaitingCard({
+  pin,
+  me,
+  avatarSrc,
+  onBack,
+  onReconnect,
+}: {
+  pin: string;
+  me: LiveStudent | null;
+  avatarSrc: string;
+  onBack: () => void;
+  onReconnect: () => void;
+}) {
+  return (
+    <GlassCard className="mb-6">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+            <img src={avatarSrc} alt="Avatar" className="h-12 w-12" />
+          </div>
+
+          <div className="min-w-0">
+            <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
+              {me?.name ?? "Student"}
+            </div>
+            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              PIN {pin} • Waiting room
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onReconnect}
+            className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white transition dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200 dark:hover:bg-slate-950/70"
+          >
+            Reconnect
+          </button>
+
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-full border border-slate-200/80 bg-white/70 px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white transition dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200 dark:hover:bg-slate-950/70"
+          >
+            Back to Lobby
+          </button>
+        </div>
+      </div>
+
+      {/* fancy waiting animation */}
+      <div className="mt-5 rounded-3xl border border-slate-200/70 bg-white/70 p-5 dark:border-slate-800/70 dark:bg-slate-950/35">
+        <div className="flex items-center gap-3">
+          <div className="h-3 w-3 rounded-full bg-sky-400 animate-pulse" />
+          <div className="h-3 w-3 rounded-full bg-sky-400 animate-pulse [animation-delay:150ms]" />
+          <div className="h-3 w-3 rounded-full bg-sky-400 animate-pulse [animation-delay:300ms]" />
+          <div className="ml-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            Waiting for the lecturer to start the quiz…
+          </div>
+        </div>
+
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          Don’t close this page — you’ll jump into the question automatically when it starts.
+        </p>
+      </div>
+    </GlassCard>
+  );
+}
+
+
 /* ------------------------------ UI helpers ------------------------------ */
 
 function DotPattern() {
@@ -436,190 +506,229 @@ export default function StudentQuestionPage() {
 
   if (!pin) return null;
 
+  const hasQuestion = Boolean(q && (q.text || q.type));
+  const waitingForHost = phase !== "final" && !hasQuestion;
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
       <div className="mx-auto max-w-4xl px-4 py-6">
-        {/* header */}
-        {phase !== "final" ? (
-          <GlassCard className="mb-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                {/* top row: avatar + pin + progress */}
-                <div className="flex items-center gap-3">
-                  {me ? (
-                    <div className="flex items-center gap-2">
-                      <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
-                        <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
+        {/* Waiting room (no question yet) */}
+        {waitingForHost ? (
+          <LobbyWaitingCard
+            pin={pin}
+            me={me}
+            avatarSrc={avatarSrc}
+            onBack={() => router.push(`/join/${encodeURIComponent(pin)}`)}
+            onReconnect={() => {
+              try {
+                s.disconnect();
+              } catch {}
+              try {
+                s.connect();
+              } catch {}
+              if (me) s.emit("join", { pin, student: me });
+            }}
+          />
+        ) : null}
+
+        {/* Normal flow (question exists) */}
+        {!waitingForHost ? (
+          <>
+            {/* header (hide on final) */}
+            {phase !== "final" ? (
+              <GlassCard className="mb-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    {/* top row: avatar + pin + progress */}
+                    <div className="flex items-center gap-3">
+                      {me ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+                            <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
+                              {me.name}
+                            </div>
+                            <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                              PIN {pin} • Q{Number(q?.number ?? 0) || "-"} /{" "}
+                              {Number(q?.total ?? 0) || "-"}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          PIN {pin} • Q{Number(q?.number ?? 0) || "-"} /{" "}
+                          {Number(q?.total ?? 0) || "-"}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* question text */}
+                    <h1 className="mt-3 text-lg font-extrabold text-slate-900 dark:text-slate-50">
+                      {q?.text ?? "Waiting for question..."}
+                    </h1>
+                  </div>
+
+                  {/* timer only during question phase */}
+                  {phase === "question" ? (
+                    <div className="w-full sm:w-[360px]">
+                      <div className="flex items-center justify-between">
+                        <div className="inline-flex items-center gap-2">
+                          <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            Time remaining
+                          </span>
+                        </div>
+                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          {q?.startAt ? `${timeLeft}s` : "-"}
+                        </span>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
-                          {me.name}
-                        </div>
-                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                          PIN {pin} • Q{Number(q?.number ?? 0) || "-"} / {Number(q?.total ?? 0) || "-"}
-                        </div>
+
+                      <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
+                        <div
+                          className="h-full transition-[width] duration-100"
+                          style={{
+                            width:
+                              q?.startAt && maxSec > 0
+                                ? `${(timeLeft / maxSec) * 100}%`
+                                : "0%",
+                            background:
+                              "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
+                          }}
+                        />
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      PIN {pin} • Q{Number(q?.number ?? 0) || "-"} / {Number(q?.total ?? 0) || "-"}
-                    </div>
+                    <div className="w-full sm:w-[360px]" />
                   )}
                 </div>
 
-                {/* question text */}
-                <h1 className="mt-3 text-lg font-extrabold text-slate-900 dark:text-slate-50">
-                  {q?.text ?? "Waiting for question..."}
-                </h1>
-              </div>
-
-              {/* timer only during question phase */}
-              {phase === "question" ? (
-                <div className="w-full sm:w-[360px]">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center gap-2">
-                      <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        Time remaining
-                      </span>
+                {/* status + last result */}
+                <div className="mt-4">
+                  {phase === "waiting" ? (
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
+                      Waiting for lecturer to reveal…
+                    </p>
+                  ) : phase === "answer" && lastWasCorrect === true ? (
+                    <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Correct! +{lastEarnedPoints} points
                     </div>
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      {q?.startAt ? `${timeLeft}s` : "-"}
+                  ) : phase === "answer" && lastWasCorrect === false ? (
+                    <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
+                      <XCircle className="h-4 w-4" />
+                      Incorrect · +0 points
+                    </div>
+                  ) : phase === "answer" ? (
+                    <p className="text-sm font-semibold text-sky-600 dark:text-sky-300">
+                      {revealText ?? "Answer revealed"}
+                    </p>
+                  ) : (
+                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">
+                      Answer now
+                    </p>
+                  )}
+
+                  <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Total correct:{" "}
+                    <span className="font-semibold">{correctCount}</span> • Total
+                    points: <span className="font-semibold">{totalPoints}</span>
+                  </div>
+                </div>
+              </GlassCard>
+            ) : null}
+
+            {/* Final card */}
+            {phase === "final" ? (
+              <GlassCard className="mb-6">
+                <div className="flex items-center gap-2">
+                  <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+                    <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
+                      {me?.name ?? "Student"}
+                    </div>
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      PIN {pin} • {Number(q?.total ?? scoredCount ?? 0) || 0}{" "}
+                      questions completed
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center gap-4 py-5 text-center">
+                  <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
+                    <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
+                  </div>
+
+                  <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
+                    Final Score
+                  </div>
+
+                  <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
+                    {correctCount}/{Number(q?.total ?? scoredCount ?? 1) || 1}
+                  </div>
+
+                  <div className="text-sm text-slate-600 dark:text-slate-300">
+                    Points earned{" "}
+                    <span className="font-semibold text-slate-900 dark:text-slate-50">
+                      {finalPoints}
                     </span>
                   </div>
 
-                  <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                    <div
-                      className="h-full transition-[width] duration-100"
-                      style={{
-                        width: q?.startAt && maxSec > 0 ? `${(timeLeft / maxSec) * 100}%` : "0%",
-                        background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                      }}
-                    />
+                  <PrimaryButton onClick={() => router.push("/me/reports")}>
+                    Go to My Reports
+                  </PrimaryButton>
+
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    You can review your attempt anytime.
                   </div>
                 </div>
-              ) : (
-                <div className="w-full sm:w-[360px]" />
-              )}
-            </div>
+              </GlassCard>
+            ) : null}
 
-            {/* status + last result */}
-            <div className="mt-4">
-              {phase === "waiting" ? (
-                <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
-                  Waiting for lecturer to reveal…
+            {/* Answer grid (hide on final) */}
+            {phase !== "final" ? (
+              <div className="mt-6">
+                <AnswerGrid
+                  q={q}
+                  disabled={disabled}
+                  onSubmitChoice={({ indices }) => submitChoice(indices)}
+                  onSubmitInput={({ value }) => submitInput(value)}
+                  onAttemptMatch={
+                    q?.type === "matching"
+                      ? ({ leftIndex, rightIndex }) =>
+                          attemptMatch(leftIndex, rightIndex)
+                      : undefined
+                  }
+                />
+              </div>
+            ) : null}
+
+            {/* Matching reveal */}
+            {phase === "answer" &&
+            q?.type === "matching" &&
+            Array.isArray(reveal?.correctPairs) ? (
+              <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/35">
+                <p className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
+                  Correct pairs
                 </p>
-              ) : phase === "answer" && lastWasCorrect === true ? (
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Correct! +{lastEarnedPoints} points
-                </div>
-              ) : phase === "answer" && lastWasCorrect === false ? (
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
-                  <XCircle className="h-4 w-4" />
-                  Incorrect · +0 points
-                </div>
-              ) : phase === "answer" ? (
-                <p className="text-sm font-semibold text-sky-600 dark:text-sky-300">
-                  {revealText ?? "Answer revealed"}
-                </p>
-              ) : (
-                <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">
-                  Answer now
-                </p>
-              )}
-
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Total correct: <span className="font-semibold">{correctCount}</span> • Total points:{" "}
-                <span className="font-semibold">{totalPoints}</span>
+                <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
+                  {reveal.correctPairs.map((p: any, i: number) => (
+                    <li key={i}>
+                      • {String(p?.left ?? "")} — {String(p?.right ?? "")}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            </div>
-          </GlassCard>
-        ) : null}
-
-        {/* ✅ final card OUTSIDE header */}
-        {phase === "final" ? (
-          <GlassCard className="mb-6">
-            {me ? (
-                    <div className="flex items-center gap-2">
-                      <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
-                        <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
-                          {me.name}
-                        </div>
-                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                          PIN {pin} • {Number(q?.number ?? 0) || "-"} questions completed
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      PIN {pin} • {Number(q?.number ?? 0) || "-"} questions completed
-                    </div>
-                  )}
-            <div className="flex flex-col items-center gap-4 py-5 text-center">
-              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
-                <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
-              </div>
-
-              <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">Final Score</div>
-
-              <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
-                {correctCount}/{Number(q?.total ?? scoredCount ?? 1) || 1}
-              </div>
-
-              <div className="text-sm text-slate-600 dark:text-slate-300">
-                Points earned{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-50">
-                  {finalPoints}
-                </span>
-              </div>
-
-              <PrimaryButton onClick={() => router.push("/me/reports")}>Go to My Reports</PrimaryButton>
-
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                You can review your attempt anytime.
-              </div>
-            </div>
-          </GlassCard>
-        ) : null}
-
-        {/* grid (hide on final) */}
-        {phase !== "final" ? (
-          <div className="mt-6">
-            <AnswerGrid
-              q={q}
-              disabled={disabled}
-              onSubmitChoice={({ indices }) => submitChoice(indices)}
-              onSubmitInput={({ value }) => submitInput(value)}
-              onAttemptMatch={
-                q?.type === "matching"
-                  ? ({ leftIndex, rightIndex }) => attemptMatch(leftIndex, rightIndex)
-                  : undefined
-              }
-            />
-          </div>
-        ) : null}
-
-
-        {/* reveal detail for matching */}
-        {phase === "answer" && q?.type === "matching" && Array.isArray(reveal?.correctPairs) ? (
-          <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/35">
-            <p className="text-sm font-extrabold text-slate-900 dark:text-slate-50">Correct pairs</p>
-            <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
-              {reveal.correctPairs.map((p: any, i: number) => (
-                <li key={i}>
-                  • {String(p?.left ?? "")} — {String(p?.right ?? "")}
-                </li>
-              ))}
-            </ul>
-          </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </div>
   );
+
 }
