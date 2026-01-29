@@ -12,7 +12,6 @@ import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
 
 import AnswerGrid from "@/src/components/live/AnswerGrid";
 
-import { calcPoints } from "@/src/lib/quizScoring";
 import { Trophy, CheckCircle2, XCircle, Timer } from "lucide-react";
 
 type Phase = "question" | "waiting" | "answer" | "final";
@@ -137,6 +136,22 @@ export default function StudentQuestionPage() {
 
   // reveal payload
   const [reveal, setReveal] = useState<any>(null);
+  const onScore = (p: any) => {
+    if (!p || !me?.studentId) return;
+    if (p.studentId !== me.studentId) return;
+
+    const total = p.total ?? {};
+    setCorrectCount(Number(total.correct ?? 0));
+    setTotalPoints(Number(total.points ?? 0));
+    totalPointsRef.current = Number(total.points ?? 0);
+
+    // last question feedback
+    const last = p.last;
+    if (last && typeof last.isCorrect === "boolean") {
+      setLastWasCorrect(last.isCorrect);
+      setLastEarnedPoints(Number(last.pointsEarned ?? 0));
+    }
+  };
 
   // keep qRef synced (so onReveal always reads latest question, not stale closure)
   useEffect(() => {
@@ -182,7 +197,10 @@ export default function StudentQuestionPage() {
       
       if (question?.number === 1 || question?.questionIndex === 0) {
         totalPointsRef.current = 0;
+        setTotalPoints(0);
+        setCorrectCount(0);
       }
+
 
     };
 
@@ -239,19 +257,6 @@ export default function StudentQuestionPage() {
         return;
       }
 
-      const earned = calcPoints({ isCorrect, maxTime, timeUsed });
-
-      setLastWasCorrect(isCorrect);
-      setLastEarnedPoints(earned);
-
-      if (isCorrect) setCorrectCount((p) => p + 1);
-      setTotalPoints((p) => {
-        const next = p + earned;
-        totalPointsRef.current = next;
-        return next;
-      });
-
-      
     };
 
     const onFinal = () => {
@@ -273,6 +278,36 @@ export default function StudentQuestionPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin, me]);
+
+  useEffect(() => {
+    if (!me?.studentId) return;
+
+    const onScore = (p: any) => {
+      if (!p) return;
+      if (p.studentId !== me.studentId) return;
+
+      const total = p.total ?? {};
+      const correct = Number(total.correct ?? 0);
+      const points = Number(total.points ?? 0);
+
+      setCorrectCount(correct);
+      setTotalPoints(points);
+      totalPointsRef.current = points;
+
+      // last question feedback
+      const last = p.last;
+      if (last && typeof last.isCorrect === "boolean") {
+        setLastWasCorrect(last.isCorrect);
+        setLastEarnedPoints(Number(last.pointsEarned ?? 0));
+      }
+    };
+
+    s.on("score:update", onScore);
+    return () => {
+      s.off("score:update", onScore);
+    };
+  }, [s, me?.studentId]);
+
 
   /* ------------------------------ timer ------------------------------ */
 

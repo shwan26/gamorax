@@ -293,8 +293,9 @@ export default function LecturerLiveFlow() {
         if (prev.length === next.length && prev.every((v, i) => v === next[i])) return prev;
         return next;
       });
+      const totalAnswers = Number(p.totalAnswers ?? 0);
+      setAnsweredCount(Number.isFinite(totalAnswers) ? totalAnswers : next.reduce((sum: number, v: number) => sum + v, 0));
 
-      setAnsweredCount(next.reduce((sum: number, v: number) => sum + v, 0));
     };
 
     s.on("answer:count", onCount);
@@ -482,10 +483,27 @@ export default function LecturerLiveFlow() {
           name: String(r.name ?? ""),
           score: Number(r.correct ?? 0),
           points: Number(r.points ?? 0),
+          totalTime: Number(r.totalTime ?? 0),
         }));
+
 
       const nowIso = new Date().toISOString();
       const live = pin ? getLiveByPin(pin) : null;
+
+      const scores = rows.map(r => r.score);
+      const times = rows.map(r => r.totalTime);
+
+      const stat = (arr: number[]) => {
+        if (!arr.length) return { min: 0, max: 0, avg: 0 };
+        const min = Math.min(...arr);
+        const max = Math.max(...arr);
+        const avg = arr.reduce((a,b)=>a+b,0) / arr.length;
+        return { min, max, avg: Math.round(avg * 100) / 100 };
+      };
+
+      const scoreStats = stat(scores);
+      const timeStats = stat(times);
+
 
       saveLiveReport({
         id: crypto.randomUUID(),
@@ -496,7 +514,12 @@ export default function LecturerLiveFlow() {
         lastQuestionAt: live?.lastQuestionAt ?? nowIso,
         savedAt: nowIso,
         rows,
+        stats: {
+          score: scoreStats,
+          timeSpent: timeStats,
+        },
       });
+
     };
 
     s.on("leaderboard:update", onLb);

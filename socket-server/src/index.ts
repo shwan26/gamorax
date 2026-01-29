@@ -51,7 +51,22 @@ type AnswerMatching = {
 
 type AnswerRecord = AnswerChoice | AnswerInput | AnswerMatching;
 
-type Score = { correct: number; totalTime: number; points: number };
+type PerQuestion = {
+  questionIndex: number;
+  number: number;          // 1-based
+  type: LiveQuestionType;
+  isCorrect: boolean;
+  timeUsed: number;        // seconds used for scoring
+  maxTime: number;         // seconds
+  pointsEarned: number;
+};
+
+type Score = {
+  correct: number;
+  totalTime: number;
+  points: number;
+  perQuestion: PerQuestion[];
+};
 
 type RoomMeta = {
   gameId?: string;
@@ -146,7 +161,7 @@ function normalizeText(s: any) {
 function makeLeaderboard(room: Room) {
   return Array.from(room.students.values())
     .map((st) => {
-      const sc = room.scores.get(st.studentId) ?? { correct: 0, totalTime: 0, points: 0 };
+      const sc = room.scores.get(st.studentId) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] };
       return { ...st, ...sc };
     })
     .sort(
@@ -162,18 +177,35 @@ function makeLeaderboard(room: Room) {
 // counts only meaningful for MC/TF (first selected index)
 function countsForRoom(room: Room, qIndex: number) {
   const map = room.answers.get(qIndex);
-  const counts: [number, number, number, number] = [0, 0, 0, 0];
+  const totalAnswers = map ? map.size : 0;
 
-  if (!map) return { counts, totalAnswers: 0 };
+  const q = room.current;
+  const optionCount =
+    q && (q.type === "multiple_choice" || q.type === "true_false")
+      ? q.type === "true_false"
+        ? 2
+        : Math.min(5, Array.isArray((q as any).answers) ? (q as any).answers.length : 0)
+      : 0;
+
+  const counts = Array.from({ length: optionCount }, () => 0);
+
+  if (!map || optionCount === 0) return { counts, totalAnswers };
 
   for (const rec of map.values()) {
     if (rec.kind !== "choice") continue;
-    const idx = rec.indices?.[0];
-    if (idx === 0 || idx === 1 || idx === 2 || idx === 3) counts[idx]++;
+
+    // ✅ multi-select distribution: count each selected index once
+    const uniq = Array.from(new Set(rec.indices ?? []));
+    for (const idx of uniq) {
+        if (idx >= 0 && idx < optionCount) {
+          counts[idx] = (counts[idx] ?? 0) + 1;
+        }
+    }
   }
 
-  return { counts, totalAnswers: map.size };
+  return { counts, totalAnswers };
 }
+
 
 // for matching: build correct index map from strings
 function buildCorrectMatchIndexMap(room: Room): Map<number, number> {
@@ -210,6 +242,10 @@ const io = new IOServer(httpServer, {
   transports: ["websocket"],
 });
 
+function emitRoomCount(pin: string, room: Room) {
+  io.to(pin).emit("room:count", { totalJoined: room.students.size });
+}
+
 /* -------------------- Socket Logic -------------------- */
 
 io.on("connection", (socket: Socket) => {
@@ -221,23 +257,33 @@ io.on("connection", (socket: Socket) => {
     const room = getRoom(pin);
 
     if (room.meta) socket.emit("session:meta", room.meta);
-
     if (student?.studentId) {
       room.students.set(student.studentId, student);
       room.scores.set(
         student.studentId,
-        room.scores.get(student.studentId) ?? { correct: 0, totalTime: 0, points: 0 }
+        room.scores.get(student.studentId) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] }
       );
 
+      emitRoomCount(pin, room);
       io.to(pin).emit("students:update", [...room.students.values()]);
     }
 
-    if (room.current) {
-      socket.emit("question:show", topublicQuestion(room.current));
-      const { counts, totalAnswers } = countsForRoom(room, room.current.questionIndex);
-      socket.emit("answer:count", { questionIndex: room.current.questionIndex, counts, totalAnswers });
+    const cur = room.current;
+
+    if (cur) {
+      socket.emit("question:show", topublicQuestion(cur));
+
+      const { counts, totalAnswers } = countsForRoom(room, cur.questionIndex);
+
+      socket.emit("answer:count", {
+        questionIndex: cur.questionIndex,
+        counts,
+        totalAnswers,
+      });
+
       socket.emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
     }
+
   });
 
   // META
@@ -301,7 +347,18 @@ io.on("connection", (socket: Socket) => {
     room.durationByQuestion.set(qIndex, dur);
 
     io.to(pin).emit("question:show", topublicQuestion(room.current));
-    io.to(pin).emit("answer:count", { questionIndex: qIndex, counts: [0, 0, 0, 0], totalAnswers: 0 });
+    const initCounts =
+      out.type === "true_false"
+        ? [0, 0]
+        : out.type === "multiple_choice"
+        ? Array.from({ length: Math.min(5, out.answers.length) }, () => 0)
+        : [];
+
+    io.to(pin).emit("answer:count", {
+      questionIndex: qIndex,
+      counts: initCounts,
+      totalAnswers: 0,
+    });
   });
 
   // ANSWER (MC/TF) - supports new {indices[]} and old {answerIndex}
@@ -328,7 +385,11 @@ io.on("connection", (socket: Socket) => {
     map.set(studentId, { kind: "choice", indices, timeUsed });
     room.answers.set(qIndex, map);
 
-    io.to(pin).emit("answer:count", { questionIndex: qIndex, ...countsForRoom(room, qIndex) });
+    io.to(pin).emit("answer:count", {
+      questionIndex: qIndex,
+      ...countsForRoom(room, qIndex),
+    });
+
   });
 
   // INPUT ANSWER
@@ -348,54 +409,68 @@ io.on("connection", (socket: Socket) => {
 
     map.set(studentId, { kind: "input", value, timeUsed });
     room.answers.set(qIndex, map);
+
+    io.to(pin).emit("answer:count", {
+      questionIndex: qIndex,
+      counts: [],         // input has no bars
+      totalAnswers: map.size,
+    });
+
   });
 
   // MATCH ATTEMPT (ack returns {correct})
   socket.on("match:attempt", (payload: any, cb?: (resp: any) => void) => {
-    const { pin, studentId, questionIndex, leftIndex, rightIndex } = payload ?? {};
-    if (!pin || !studentId) return cb?.({ correct: false });
+  const { pin, studentId, questionIndex, leftIndex, rightIndex } = payload ?? {};
+  if (!pin || !studentId) return cb?.({ correct: false });
 
-    const room = getRoom(pin);
-    const qIndex = safeInt(questionIndex, -1);
-    if (qIndex < 0) return cb?.({ correct: false });
+  const room = getRoom(pin);
+  const qIndex = safeInt(questionIndex, -1);
+  if (qIndex < 0) return cb?.({ correct: false });
 
-    // must be the current matching question
-    if (!room.current || room.current.questionIndex !== qIndex || room.current.type !== "matching") {
-      return cb?.({ correct: false });
-    }
+  if (!room.current || room.current.questionIndex !== qIndex || room.current.type !== "matching") {
+    return cb?.({ correct: false });
+  }
 
-    const correctMap = buildCorrectMatchIndexMap(room);
-    const L = safeInt(leftIndex, -1);
-    const R = safeInt(rightIndex, -1);
-    const isCorrect = correctMap.get(L) === R;
+  const correctMap = buildCorrectMatchIndexMap(room);
+  const L = safeInt(leftIndex, -1);
+  const R = safeInt(rightIndex, -1);
+  const isCorrect = correctMap.get(L) === R;
 
-    const map = room.answers.get(qIndex) ?? new Map<string, AnswerRecord>();
-    let rec = map.get(studentId);
+  const map = room.answers.get(qIndex) ?? new Map<string, AnswerRecord>();
+  let rec = map.get(studentId);
 
-    if (!rec || rec.kind !== "matching") {
-      rec = { kind: "matching", pairs: new Map(), lastTimeUsed: 0 } as AnswerMatching;
-    }
+  // ✅ count as "answered" once they attempt matching (first attempt)
+  if (!rec || rec.kind !== "matching") {
+    rec = { kind: "matching", pairs: new Map(), lastTimeUsed: 0 } as AnswerMatching;
+    map.set(studentId, rec);
+    room.answers.set(qIndex, map);
 
-    const mr = rec as AnswerMatching;
+    io.to(pin).emit("answer:count", {
+      questionIndex: qIndex,
+      counts: [],              // matching has no bars
+      totalAnswers: map.size,  // ✅ answeredCount
+    });
+  }
 
-    // do not allow reusing left/right once used
-    for (const [l, r] of mr.pairs.entries()) {
-      if (l === L || r === R) {
-        return cb?.({ correct: false });
-      }
-    }
+  const mr = rec as AnswerMatching;
 
-    if (isCorrect) {
-      mr.pairs.set(L, R);
-      mr.lastTimeUsed = safeInt(payload?.timeUsed, mr.lastTimeUsed);
-      map.set(studentId, mr);
-      room.answers.set(qIndex, map);
-      cb?.({ correct: true });
-      return;
-    }
+  // do not allow reusing left/right once used
+  for (const [l, r] of mr.pairs.entries()) {
+    if (l === L || r === R) return cb?.({ correct: false });
+  }
 
-    cb?.({ correct: false });
-  });
+  if (isCorrect) {
+    mr.pairs.set(L, R);
+    mr.lastTimeUsed = safeInt(payload?.timeUsed, mr.lastTimeUsed);
+    map.set(studentId, mr);
+    room.answers.set(qIndex, map);
+    cb?.({ correct: true });
+    return;
+  }
+
+  cb?.({ correct: false });
+});
+
 
   // REVEAL + SCORE
   socket.on("reveal", (payload: any) => {
@@ -428,6 +503,8 @@ io.on("connection", (socket: Socket) => {
         correctIndices: room.current.correctIndices,
         maxTime,
       });
+
+      
     }
 
     // score once
@@ -436,22 +513,33 @@ io.on("connection", (socket: Socket) => {
     const ansMap = room.answers.get(qIndex) ?? new Map<string, AnswerRecord>();
 
     for (const [sid, rec] of ansMap.entries()) {
-      const prev = room.scores.get(sid) ?? { correct: 0, totalTime: 0, points: 0 };
+      const prevScore: Score =
+        room.scores.get(sid) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] };
+
+      if (prevScore.perQuestion.some((pq) => pq.questionIndex === qIndex)) continue;
 
       let isCorrect = false;
       let timeUsed = 0;
 
       if (room.current.type === "multiple_choice" || room.current.type === "true_false") {
-        const correctIndices = Array.isArray((room.current as any).correctIndices) ? (room.current as any).correctIndices : [];
+        const correctIndices = Array.isArray(room.current.correctIndices) ? room.current.correctIndices : [];
+        const allowMultiple = Boolean(room.current.allowMultiple) || correctIndices.length > 1;
+
         if (rec.kind === "choice") {
-          isCorrect = sameSet(rec.indices ?? [], correctIndices ?? []);
+          if (allowMultiple) {
+            const mine = Array.isArray(rec.indices) ? rec.indices : [];
+            isCorrect = mine.some((i) => correctIndices.includes(i)); // ANY overlap
+          } else {
+            isCorrect = sameSet(rec.indices ?? [], correctIndices ?? []);
+          }
           timeUsed = safeInt(rec.timeUsed, maxTime);
         } else {
           isCorrect = false;
           timeUsed = maxTime;
         }
       } else if (room.current.type === "input") {
-        const accepted = Array.isArray((room.current as any).acceptedAnswers) ? (room.current as any).acceptedAnswers : [];
+        const accepted = Array.isArray(room.current.acceptedAnswers) ? room.current.acceptedAnswers : [];
+
         if (rec.kind === "input") {
           const v = normalizeText(rec.value);
           isCorrect = accepted.map(normalizeText).includes(v);
@@ -462,10 +550,11 @@ io.on("connection", (socket: Socket) => {
         }
       } else if (room.current.type === "matching") {
         const correctMap = buildCorrectMatchIndexMap(room);
+
         if (rec.kind === "matching") {
-          // correct only if completed all pairs correctly
           const okSize = rec.pairs.size === correctMap.size && correctMap.size > 0;
           let ok = okSize;
+
           if (ok) {
             for (const [l, r] of correctMap.entries()) {
               if (rec.pairs.get(l) !== r) {
@@ -474,6 +563,7 @@ io.on("connection", (socket: Socket) => {
               }
             }
           }
+
           isCorrect = ok;
           timeUsed = safeInt(rec.lastTimeUsed, maxTime);
         } else {
@@ -482,13 +572,31 @@ io.on("connection", (socket: Socket) => {
         }
       }
 
-      const add = calcPoints({ isCorrect, maxTime, timeUsed });
-      room.scores.set(sid, {
-        correct: prev.correct + (isCorrect ? 1 : 0),
-        totalTime: prev.totalTime + timeUsed,
-        points: prev.points + add,
-      });
-    }
+  const pointsEarned = calcPoints({ isCorrect, maxTime, timeUsed });
+
+  const detail: PerQuestion = {
+    questionIndex: qIndex,
+    number: room.current.number,
+    type: room.current.type,
+    isCorrect,
+    timeUsed,
+    maxTime,
+    pointsEarned,
+  };
+
+  const nextScore: Score = {
+    correct: prevScore.correct + (isCorrect ? 1 : 0),
+    totalTime: prevScore.totalTime + timeUsed,
+    points: prevScore.points + pointsEarned,
+    perQuestion: [...prevScore.perQuestion, detail],
+  };
+
+  room.scores.set(sid, nextScore);
+
+  // ✅ per-student update (student filters by their id)
+  io.to(pin).emit("score:update", { studentId: sid, total: nextScore, last: detail });
+}
+
 
     io.to(pin).emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
   });
@@ -508,6 +616,7 @@ io.on("connection", (socket: Socket) => {
     room.scores.delete(studentId);
     for (const m of room.answers.values()) m.delete(studentId);
     socket.leave(pin);
+    emitRoomCount(pin, room);
     io.to(pin).emit("students:update", [...room.students.values()]);
   });
 });

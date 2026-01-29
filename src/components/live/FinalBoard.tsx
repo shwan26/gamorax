@@ -446,6 +446,15 @@ export default function FinalBoard({
                     </div>
                   ) : null}
 
+                  <div className="text-right">
+                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      Time spent
+                    </div>
+                    <div className="font-extrabold text-slate-900 dark:text-slate-50">
+                      {safeNum(r.totalTime, 0)}s
+                    </div>
+                  </div>
+                  
                   {isTop ? (
                     <span
                       className="

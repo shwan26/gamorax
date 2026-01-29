@@ -370,9 +370,11 @@ export type LiveReportRow = {
   rank: number;
   studentId: string;
   name: string;
-  score: number;     // correct answers count
+  score: number;
   points: number;
+  totalTime: number; 
 };
+
 
 export type LiveReport = {
   id: string;
@@ -383,6 +385,10 @@ export type LiveReport = {
   lastQuestionAt: string;       // ISO (timestamp of last live question)
   savedAt: string;              // ISO (when report saved)
   rows: LiveReportRow[];
+  stats?: {
+    score: { min: number; max: number; avg: number };
+    timeSpent: { min: number; max: number; avg: number };
+  };
 };
 
 const REPORT_KEY = "gamorax_live_reports";
