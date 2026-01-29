@@ -44,7 +44,7 @@ export default function SettingLayout({
     { label: "General", href: `${base}/setting/general`, icon: Settings },
     { label: "Add File", href: `${base}/setting/addfile`, icon: FileUp },
     { label: "Timer", href: `${base}/setting/timer`, icon: Timer },
-    { label: "Report", href: `${base}/setting/report`, icon: BarChart3 },
+    { label: "Report", href: `${base}/setting/reports`, icon: BarChart3 },
   ];
 
   return (

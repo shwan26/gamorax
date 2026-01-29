@@ -174,6 +174,39 @@ function normalizeSession(s: any): LiveSession {
   };
 }
 
+function normalizeReport(r: any): LiveReport {
+  const rows: LiveReportRow[] = Array.isArray(r?.rows) ? r.rows : [];
+
+  // stats might be missing or partially missing (old data)
+  const hasFullStats =
+    r?.stats &&
+    r.stats.score &&
+    r.stats.timeSpent &&
+    r.stats.points &&
+    typeof r.stats.score.avg === "number" &&
+    typeof r.stats.timeSpent.avg === "number" &&
+    typeof r.stats.points.avg === "number";
+
+  const stats: LiveReportStats = hasFullStats
+    ? r.stats
+    : computeLiveReportStats(rows);
+
+  return {
+    id: String(r?.id ?? crypto.randomUUID()),
+    gameId: String(r?.gameId ?? ""),
+    pin: String(r?.pin ?? ""),
+    totalQuestions: Number(r?.totalQuestions ?? 0),
+
+    startedAt: r?.startedAt,
+    lastQuestionAt: String(r?.lastQuestionAt ?? ""),
+    savedAt: String(r?.savedAt ?? ""),
+
+    rows,
+    stats,
+  };
+}
+
+
 
 function getAll(): LiveSession[] {
   if (typeof window === "undefined") return [];
@@ -366,54 +399,135 @@ export function nextOrFinal(params: {
 }
 
 /* ---------- REPORT STORAGE ---------- */
+/* ---------- REPORT STORAGE ---------- */
 export type LiveReportRow = {
   rank: number;
   studentId: string;
   name: string;
   score: number;
   points: number;
-  totalTime: number; 
+  totalTime: number; // seconds
 };
 
+export type LiveReportStats = {
+  students: number;
+
+  score: { min: number; max: number; avg: number };
+  points: { min: number; max: number; avg: number };
+  timeSpent: { min: number; max: number; avg: number };
+};
 
 export type LiveReport = {
   id: string;
   gameId: string;
   pin: string;
   totalQuestions: number;
-  startedAt?: string;           // ISO
-  lastQuestionAt: string;       // ISO (timestamp of last live question)
-  savedAt: string;              // ISO (when report saved)
+
+  startedAt?: string;      // ISO
+  lastQuestionAt: string;  // ISO
+  savedAt: string;         // ISO
+
   rows: LiveReportRow[];
-  stats?: {
-    score: { min: number; max: number; avg: number };
-    timeSpent: { min: number; max: number; avg: number };
-  };
+  stats?: LiveReportStats;
 };
 
 const REPORT_KEY = "gamorax_live_reports";
 
+function safeParse<T>(raw: string | null, fallback: T): T {
+  try {
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function getAllReports(): LiveReport[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(REPORT_KEY);
-  const raw = data ? JSON.parse(data) : [];
-  return Array.isArray(raw) ? raw : [];
+
+  const raw = safeParse<any[]>(localStorage.getItem(REPORT_KEY), []);
+  const arr = Array.isArray(raw) ? raw : [];
+
+  const normalized = arr.map(normalizeReport);
+
+  // optional: write back if something changed (migrate old stats -> new stats)
+  // cheap check: if any report had missing stats.points
+  const needWriteBack = arr.some((r) => !(r?.stats?.points));
+  if (needWriteBack) {
+    localStorage.setItem(REPORT_KEY, JSON.stringify(normalized));
+  }
+
+  return normalized;
 }
 
-// store ONLY latest report per game (simple)
+
+function writeAllReports(list: LiveReport[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(REPORT_KEY, JSON.stringify(list));
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+export function computeLiveReportStats(rows: LiveReportRow[]): LiveReportStats {
+  const students = rows.length;
+
+  const scores = rows.map((r) => Number(r.score || 0));
+  const points = rows.map((r) => Number(r.points || 0));
+  const times = rows.map((r) => Number(r.totalTime || 0));
+
+  const stat = (arr: number[]) => {
+    if (arr.length === 0) return { min: 0, max: 0, avg: 0 };
+    const min = Math.min(...arr);
+    const max = Math.max(...arr);
+    const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
+    return { min: round2(min), max: round2(max), avg: round2(avg) };
+  };
+
+  return {
+    students,
+    score: stat(scores),
+    points: stat(points),
+    timeSpent: stat(times),
+  };
+}
+
+/** ✅ Save ONE report entry (history). */
 export function saveLiveReport(report: LiveReport) {
-  const all = getAllReports().filter((r) => r.gameId !== report.gameId);
-  all.push(report);
-  localStorage.setItem(REPORT_KEY, JSON.stringify(all));
+  const all = getAllReports();
+
+  const next: LiveReport = {
+    ...report,
+    id: report.id || crypto.randomUUID(),
+    savedAt: report.savedAt || new Date().toISOString(),
+    stats: report.stats ?? computeLiveReportStats(report.rows ?? []),
+  };
+
+  all.push(next);
+
+  // newest first
+  all.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+  writeAllReports(all);
 }
 
-export function getLatestLiveReportByGame(gameId: string): LiveReport | null {
-  const all = getAllReports().filter((r) => r.gameId === gameId);
-  if (all.length === 0) return null;
-  // latest by savedAt
-  all.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
-  return all[0] ?? null;
+/** ✅ List all reports for a game (history) */
+export function getReportsByGame(gameId: string): LiveReport[] {
+  return getAllReports()
+    .filter((r) => r.gameId === gameId)
+    .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
 }
+
+/** ✅ Get one report by id (detail) */
+export function getReportById(reportId: string): LiveReport | null {
+  return getAllReports().find((r) => r.id === reportId) ?? null;
+}
+
+/** Keep this helper if you still want “latest” */
+export function getLatestLiveReportByGame(gameId: string): LiveReport | null {
+  const list = getReportsByGame(gameId);
+  return list[0] ?? null;
+}
+
 
 
 export type LiveMeta = {
@@ -426,14 +540,6 @@ export type LiveMeta = {
 };
 
 const KEY = "gamorax_live_meta_by_pin";
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  try {
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function readAll(): Record<string, LiveMeta> {
   if (typeof window === "undefined") return {};

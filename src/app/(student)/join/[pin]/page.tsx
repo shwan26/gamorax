@@ -110,7 +110,22 @@ export default function LobbyPage() {
 
     s.connect(); // ✅ connect in lobby
 
-    const doJoin = () => s.emit("join", { pin, student });
+    const doJoin = () => {
+      const sid = effectiveStudentId || student.studentId; // must exist
+      const nm = (name.trim() || student.name || "").trim();
+
+      if (!sid || !nm) return; // don't join until we have both
+
+      const studentToJoin = { ...student, studentId: sid, name: nm };
+
+      // keep session in sync so refresh/reconnect keeps the id
+      writeLiveStudent(studentToJoin);
+
+      s.emit("join", { pin, student: studentToJoin });
+      console.log("JOIN payload", { pin, studentToJoin });
+
+    };
+
 
     if (s.connected) doJoin();
     s.on("connect", doJoin);
@@ -127,7 +142,8 @@ export default function LobbyPage() {
       s.off("connect_error", onErr);
       // ❌ don't disconnect here because question page still needs socket
     };
-  }, [mounted, pin, ready, student, router]);
+  }, [mounted, pin, ready, student, router, effectiveStudentId, name]);
+
 
   // ✅ Random avatar (disabled after save)
   const handleChangeAvatar = () => {
@@ -174,11 +190,9 @@ export default function LobbyPage() {
     const me2 = getCurrentStudent();
     if (!me2) return;
 
-    const nextLive = toLiveStudent(me2, 96);
+    const nextLive = { ...toLiveStudent(me2, 96), studentId: sid, name: cleanName };
     writeLiveStudent(nextLive);
     setStudent(nextLive);
-
-    // ensure server knows latest student profile
     s.emit("join", { pin, student: nextLive });
 
     try {

@@ -242,7 +242,7 @@ export default function LecturerLiveFlow() {
 
     s.connect();
 
-    const doJoin = () => s.emit("join", { pin });
+    const doJoin = () => s.emit("lecturer:join", { pin });
     if (s.connected) doJoin();
     s.on("connect", doJoin);
 
@@ -513,11 +513,7 @@ export default function LecturerLiveFlow() {
         startedAt: live?.startedAt,
         lastQuestionAt: live?.lastQuestionAt ?? nowIso,
         savedAt: nowIso,
-        rows,
-        stats: {
-          score: scoreStats,
-          timeSpent: timeStats,
-        },
+        rows
       });
 
     };
