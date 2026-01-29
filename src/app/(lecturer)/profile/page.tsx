@@ -1,50 +1,78 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import { getCurrentLecturer, fakeLogout } from "@/src/lib/fakeAuth";
 import GradientButton from "@/src/components/GradientButton";
+import { supabase } from "@/src/lib/supabaseClient";
+import { useLecturerGuard } from "../../../lib/useLecturerGuard";
 
 export default function LecturerProfile() {
   const router = useRouter();
-  const user = getCurrentLecturer();
 
-  const [firstName, setFirstName] = useState(user?.firstName || "");
-  const [lastName, setLastName] = useState(user?.lastName || "");
+  // ✅ unified guard
+  const { loading: guardLoading } = useLecturerGuard("/profile");
 
-  function handleSave() {
-    localStorage.setItem(
-      "gamorax_lecturer",
-      JSON.stringify({
-        ...user,
-        firstName,
-        lastName,
+  const [loading, setLoading] = useState(true);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+
+  // load profile only after guard finishes
+  useEffect(() => {
+    if (guardLoading) return;
+
+    (async () => {
+      const { data: p, error } = await supabase
+        .from("my_profile_api")
+        .select("firstName, lastName")
+        .single();
+
+      if (error) {
+        alert(error.message);
+        setLoading(false);
+        return;
+      }
+
+      setFirstName(p?.firstName ?? "");
+      setLastName(p?.lastName ?? "");
+      setLoading(false);
+    })();
+  }, [guardLoading]);
+
+  async function handleSave() {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+
+    if (!fn || !ln) {
+      alert("First name and last name are required.");
+      return;
+    }
+
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) {
+      router.replace("/login?next=/profile");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("my_profile_api")
+      .update({
+        firstName: fn,
+        lastName: ln,
       })
-    );
-    alert("Profile updated (mock)");
+      .eq("id", u.user.id);
+
+    if (error) return alert("Save error: " + error.message);
+
+    alert("✅ Profile updated");
   }
 
-  function handleLogout() {
-    fakeLogout();
+  async function handleLogout() {
+    await supabase.auth.signOut();
     router.push("/login");
   }
 
-  function handleDeleteAccount() {
-    const ok = confirm(
-      "Delete your lecturer account?\n\nThis will remove your account from this browser (mock)."
-    );
-    if (!ok) return;
-
-    // remove account record (mock storage)
-    localStorage.removeItem("gamorax_lecturer");
-
-    // logout state
-    fakeLogout();
-
-    // go to register (or login)
-    router.push("/register");
-  }
+  if (guardLoading || loading) return null;
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
@@ -53,12 +81,10 @@ export default function LecturerProfile() {
       <div className="flex flex-col items-center mt-10 px-4">
         <h2 className="text-2xl font-bold mb-6">Profile</h2>
 
-        {/* Avatar */}
         <div className="w-24 h-24 rounded-full bg-blue-600 text-white flex items-center justify-center text-3xl font-bold mb-4">
           {firstName?.charAt(0) || "L"}
         </div>
 
-        {/* Profile Form */}
         <div className="w-full max-w-sm space-y-4">
           <div>
             <label className="block mb-1 text-sm font-medium">First Name</label>
@@ -86,15 +112,6 @@ export default function LecturerProfile() {
             type="button"
           >
             Logout
-          </button>
-
-          {/* ✅ Delete Account */}
-          <button
-            onClick={handleDeleteAccount}
-            className="w-full border border-red-200 bg-red-50 text-red-700 py-2 rounded-md text-sm font-semibold hover:bg-red-100"
-            type="button"
-          >
-            Delete Account
           </button>
         </div>
       </div>

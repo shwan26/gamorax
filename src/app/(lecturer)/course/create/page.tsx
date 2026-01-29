@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import { saveCourse } from "@/src/lib/courseStorage";
+import { supabase } from "@/src/lib/supabaseClient";
+import { useLecturerGuard } from "../../../../lib/useLecturerGuard";
 
 export default function CreateCoursePage() {
+  // ✅ Guard (must be called, but don't early-return before hooks exist)
+  const { loading } = useLecturerGuard("/course/create");
+
   const router = useRouter();
   const [form, setForm] = useState({
     courseCode: "",
@@ -18,24 +22,33 @@ export default function CreateCoursePage() {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  function handleCreate() {
+  async function handleCreate() {
     if (!form.courseCode.trim() || !form.courseName.trim()) {
       alert("Please fill in Course Code and Course Name.");
       return;
     }
 
-    const id = crypto.randomUUID();
+    const { data, error } = await supabase
+      .from("courses_api")
+      .insert({
+        courseCode: form.courseCode.trim(),
+        courseName: form.courseName.trim(),
+        section: form.section.trim() || null,
+        semester: form.semester.trim() || null,
+      })
+      .select("id")
+      .single();
 
-    saveCourse({
-      id,
-      courseCode: form.courseCode.trim(),
-      courseName: form.courseName.trim(),
-      section: form.section.trim() || undefined,   // ✅ optional
-      semester: form.semester.trim() || undefined, // ✅ optional
-    });
+    if (error) {
+      alert("Create course failed: " + error.message);
+      return;
+    }
 
-    router.push(`/course/${id}`);
+    router.push(`/course/${data.id}`);
   }
+
+  // ✅ Safe return AFTER hooks are declared
+  if (loading) return null;
 
   return (
     <div className="min-h-screen bg-[#f5f7fa]">
@@ -100,6 +113,7 @@ export default function CreateCoursePage() {
           <button
             onClick={handleCreate}
             className="w-full bg-[#3B8ED6] hover:bg-[#2F79B8] text-white py-2 rounded-md font-semibold shadow-md"
+            type="button"
           >
             Create Course
           </button>

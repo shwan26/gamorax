@@ -14,6 +14,8 @@ import QuestionList from "./QuestionList";
 import QuestionEditorForm from "./QuestionEditorForm";
 import DeleteModal from "./DeleteModal";
 
+import { useLecturerGuard } from "../../../../../../../lib/useLecturerGuard";
+
 function emptyAnswers() {
   return [
     { text: "", correct: false, image: undefined },
@@ -40,6 +42,11 @@ export default function QuestionPage() {
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
+  // ✅ Guard (must run but do NOT early-return before hooks)
+  const { loading: guardLoading } = useLecturerGuard(
+    `/course/${courseId}/game/${gameId}/question`
+  );
+
   const course = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
   const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
 
@@ -55,6 +62,7 @@ export default function QuestionPage() {
 
   // Load
   useEffect(() => {
+    if (guardLoading) return;
     if (!valid || !game) return;
 
     const stored = getQuestions(gameId);
@@ -66,14 +74,15 @@ export default function QuestionPage() {
       setQuestions([first]);
       setActiveIndex(0);
     }
-  }, [valid, gameId, game]);
+  }, [guardLoading, valid, gameId, game]);
 
   // Auto-save
   useEffect(() => {
+    if (guardLoading) return;
     if (!valid) return;
     if (questions.length === 0) return;
     saveQuestions(gameId, questions);
-  }, [valid, gameId, questions]);
+  }, [guardLoading, valid, gameId, questions]);
 
   const activeQuestion = questions[activeIndex];
 
@@ -151,6 +160,8 @@ export default function QuestionPage() {
     setDragIndex(null);
   }
 
+  // ✅ Safe returns AFTER hooks
+  if (guardLoading) return null;
   if (!valid || !course || !game || !activeQuestion) return null;
 
   return (
@@ -158,11 +169,12 @@ export default function QuestionPage() {
       <Navbar />
 
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode} ${course.section ? `Section ${course.section}` : ""} ${course.semester? course.semester : ""}`}
+        title={`${game.quizNumber} — ${course.courseCode} ${
+          course.section ? `Section ${course.section}` : ""
+        } ${course.semester ? course.semester : ""}`}
       />
 
       <div className="flex mt-6 h-[calc(100vh-160px)]">
-        {/* LEFT LIST */}
         <QuestionList
           questions={questions}
           activeIndex={activeIndex}
@@ -175,14 +187,12 @@ export default function QuestionPage() {
           onDrop={handleDrop}
         />
 
-        {/* DIVIDER */}
         <div className="w-px bg-gray-300 mx-2" />
 
-        {/* RIGHT EDITOR */}
         <div className="flex-1 px-6 overflow-y-auto">
           <QuestionEditorForm
             question={activeQuestion}
-            gameDefaultTime={game.timer.defaultTime} // always 60 now
+            gameDefaultTime={game.timer.defaultTime}
             onUpdate={updateActiveQuestion}
           />
         </div>
