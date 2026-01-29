@@ -94,7 +94,7 @@ export default function GameSubNavbar({ title }: { title: string }) {
           <Link
             href={`/course/${courseId}`}
             className="
-              inline-flex items-center gap-2 text-sm font-semibold
+              inline-flex items-center gap-2 text-xs font-semibold
               text-slate-700 hover:text-slate-900 transition-colors
               dark:text-slate-200 dark:hover:text-slate-50
             "
@@ -108,8 +108,10 @@ export default function GameSubNavbar({ title }: { title: string }) {
             href={`${base}/question`}
             className="
               inline-flex items-center justify-center
-              text-sm font-semibold text-slate-900 hover:opacity-90 transition
-              dark:text-slate-50
+              text-lg sm:text-l font-semibold
+              bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
+              bg-clip-text text-transparent
+              hover:opacity-90 transition
             "
             title="Open questions"
           >

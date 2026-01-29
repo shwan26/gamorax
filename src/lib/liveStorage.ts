@@ -1,3 +1,94 @@
+/* =========================
+   LIVE SOCKET TYPES
+========================= */
+
+export type LiveQuestionType = "multiple_choice" | "true_false" | "matching" | "input";
+
+export type LiveQuestionPayloadBase = {
+  questionIndex: number;
+  number: number;
+  total: number;
+  text: string;
+  type: LiveQuestionType;
+  image?: string | null;
+
+  startAt: number;        // ms epoch
+  durationSec: number;
+};
+
+export type LiveQuestionPayloadMC = LiveQuestionPayloadBase & {
+  type: "multiple_choice" | "true_false";
+  answers: string[];
+  allowMultiple?: boolean;
+  correctIndices?: number[]; // optional (usually only lecturer knows)
+};
+
+export type LiveQuestionPayloadMatching = LiveQuestionPayloadBase & {
+  type: "matching";
+  left: string[];
+  right: string[];
+  // correctPairs can be lecturer-only
+  correctPairs?: { left: string; right: string }[];
+};
+
+export type LiveQuestionPayloadInput = LiveQuestionPayloadBase & {
+  type: "input";
+  acceptedAnswers?: string[];
+};
+
+export type LiveQuestionShowEvent = {
+  pin: string;
+  question: LiveQuestionPayloadMC | LiveQuestionPayloadMatching | LiveQuestionPayloadInput;
+};
+
+export type LiveAnswerSubmitEvent =
+  | {
+      pin: string;
+      studentId: string;
+      questionIndex: number;
+      indices: number[]; // MC/TF (and multi-correct)
+      timeUsed: number;
+    }
+  | {
+      pin: string;
+      studentId: string;
+      questionIndex: number;
+      value: string; // input
+      timeUsed: number;
+    }
+  | {
+      pin: string;
+      studentId: string;
+      questionIndex: number;
+      leftIndex: number;
+      rightIndex: number;
+      timeUsed: number;
+    };
+
+export type LiveRevealEvent =
+  | {
+      pin: string;
+      questionIndex: number;
+      type: "multiple_choice" | "true_false";
+      correctIndices: number[];
+      maxTime: number;
+    }
+  | {
+      pin: string;
+      questionIndex: number;
+      type: "matching";
+      correctPairs: { left: string; right: string }[];
+      maxTime: number;
+    }
+  | {
+      pin: string;
+      questionIndex: number;
+      type: "input";
+      acceptedAnswers: string[];
+      maxTime: number;
+    };
+
+
 export type LiveStudent = {
   studentId: string;
   name: string;
@@ -6,9 +97,10 @@ export type LiveStudent = {
 
 export type LiveAnswer = {
   studentId: string;
-  answerIndex: number; // 0-3
-  timeUsed: number; // seconds
+  indices: number[];   // ✅ replaces answerIndex
+  timeUsed: number;    // seconds
 };
+
 
 export type LiveScore = {
   correct: number;
@@ -39,6 +131,20 @@ export type LiveSession = {
 
 const STORAGE_KEY = "gamorax_live_sessions";
 
+function normalizeAnswer(a: any): LiveAnswer {
+  const indices =
+    Array.isArray(a?.indices) ? a.indices.map((n: any) => Number(n)).filter(Number.isFinite)
+    : Number.isFinite(a?.answerIndex) ? [Number(a.answerIndex)]
+    : [];
+
+  return {
+    studentId: String(a?.studentId ?? ""),
+    indices,
+    timeUsed: Number.isFinite(a?.timeUsed) ? Number(a.timeUsed) : 0,
+  };
+}
+
+
 function normalizeSession(s: any): LiveSession {
   return {
     id: String(s?.id ?? crypto.randomUUID()),
@@ -52,9 +158,14 @@ function normalizeSession(s: any): LiveSession {
     students: Array.isArray(s?.students) ? s.students : [],
     answersByQuestion:
       s?.answersByQuestion && typeof s.answersByQuestion === "object"
-        ? s.answersByQuestion
+        ? Object.fromEntries(
+            Object.entries(s.answersByQuestion).map(([k, arr]) => [
+              Number(k),
+              Array.isArray(arr) ? arr.map(normalizeAnswer) : [],
+            ])
+          )
         : {},
-    scores: s?.scores && typeof s.scores === "object" ? s.scores : {},
+        scores: s?.scores && typeof s.scores === "object" ? s.scores : {},
 
     startedAt: s?.startedAt,
     endedAt: s?.endedAt,
@@ -167,15 +278,9 @@ export function setLiveStatus(pin: string, status: LiveStatus) {
 }
 
 /* ---------- SUBMIT ANSWER ---------- */
-export function submitAnswer(
-  pin: string,
-  questionIndex: number,
-  answer: LiveAnswer
-) {
+export function submitAnswer(pin: string, questionIndex: number, answer: LiveAnswer) {
   updateSession(pin, (s) => {
     const prev = s.answersByQuestion[questionIndex] || [];
-
-    // prevent double submit per student per question
     if (prev.some((a) => a.studentId === answer.studentId)) return s;
 
     return {
@@ -188,31 +293,37 @@ export function submitAnswer(
   });
 }
 
+
 export function setLastQuestionAt(pin: string, iso = new Date().toISOString()) {
   updateSession(pin, (s) => ({ ...s, lastQuestionAt: iso }));
 }
 
 
 /* ---------- REVEAL (CALC POINTS) ---------- */
+function sameSet(a: number[], b: number[]) {
+  const A = new Set(a);
+  const B = new Set(b);
+  if (A.size !== B.size) return false;
+  for (const x of A) if (!B.has(x)) return false;
+  return true;
+}
+
 export function revealAndScoreQuestion(params: {
   pin: string;
   questionIndex: number;
-  correctIndex: number;
+  correctIndices: number[]; // ✅ array now
   maxTime: number;
 }) {
-  const { pin, questionIndex, correctIndex, maxTime } = params;
+  const { pin, questionIndex, correctIndices, maxTime } = params;
 
   updateSession(pin, (s) => {
     const answers = s.answersByQuestion[questionIndex] || [];
-
     const nextScores: Record<string, LiveScore> = { ...s.scores };
 
     for (const a of answers) {
       const prev = nextScores[a.studentId] || { correct: 0, points: 0, totalTime: 0 };
+      const isCorrect = sameSet(a.indices ?? [], correctIndices ?? []);
 
-      const isCorrect = a.answerIndex === correctIndex;
-
-      // Points: correct gives 100, plus speed bonus (maxTime - timeUsed)
       const base = isCorrect ? 100 : 0;
       const bonus = isCorrect ? Math.max(0, maxTime - a.timeUsed) : 0;
 
@@ -223,13 +334,10 @@ export function revealAndScoreQuestion(params: {
       };
     }
 
-    return {
-      ...s,
-      status: "answer",
-      scores: nextScores,
-    };
+    return { ...s, status: "answer", scores: nextScores };
   });
 }
+
 
 /* ---------- NEXT / FINAL ---------- */
 export function nextOrFinal(params: {
@@ -262,9 +370,11 @@ export type LiveReportRow = {
   rank: number;
   studentId: string;
   name: string;
-  score: number;     // correct answers count
+  score: number;
   points: number;
+  totalTime: number; 
 };
+
 
 export type LiveReport = {
   id: string;
@@ -275,6 +385,10 @@ export type LiveReport = {
   lastQuestionAt: string;       // ISO (timestamp of last live question)
   savedAt: string;              // ISO (when report saved)
   rows: LiveReportRow[];
+  stats?: {
+    score: { min: number; max: number; avg: number };
+    timeSpent: { min: number; max: number; avg: number };
+  };
 };
 
 const REPORT_KEY = "gamorax_live_reports";

@@ -14,27 +14,25 @@ import {
   saveQuestions,
 } from "@/src/lib/questionStorage";
 
-import QuestionList from "./QuestionList";
-import QuestionEditorForm from "./QuestionEditorForm";
-import DeleteModal from "./DeleteModal";
+import QuestionList from "@/src/components/question-edit/QuestionList";
+import QuestionEditorForm from "@/src/components/question-edit/QuestionEditorForm";
+import DeleteModal from "@/src/components/question-edit/DeleteModal";
 
 /* ------------------------------ helpers ------------------------------ */
 
-function emptyAnswers() {
-  return [
-    { text: "", correct: false, image: undefined },
-    { text: "", correct: false, image: undefined },
-    { text: "", correct: false, image: undefined },
-    { text: "", correct: false, image: undefined },
-  ];
+function emptyAnswers(n = 4) {
+  return Array.from({ length: n }, () => ({ text: "", correct: false, image: undefined }));
 }
 
 function createBlankQuestion(defaultTime: number): Question {
   return {
     id: crypto.randomUUID(),
+    type: "multiple_choice",     // ✅ default
     text: "",
     image: undefined,
-    answers: emptyAnswers(),
+    answers: emptyAnswers(4),
+    matches: Array.from({ length: 5 }, () => ({ left: "", right: "" })),
+    acceptedAnswers: [""],
     timeMode: "specific",
     time: defaultTime,
   };
@@ -100,7 +98,10 @@ export default function QuestionPage() {
         ...copy[index],
         id: crypto.randomUUID(),
         answers: copy[index].answers.map((a) => ({ ...a })),
+        matches: copy[index].matches?.map((m) => ({ ...m })),
+        acceptedAnswers: copy[index].acceptedAnswers ? [...copy[index].acceptedAnswers] : undefined,
       };
+      
       copy.splice(index + 1, 0, duplicated);
       return copy;
     });
@@ -221,12 +222,7 @@ export default function QuestionPage() {
 
             {/* RIGHT EDITOR */}
             <section className="flex-1 overflow-y-auto p-4 sm:p-6">
-              <div
-                className="
-                  rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                  dark:border-slate-800/70 dark:bg-slate-950/55
-                "
-              >
+              <div>
                 <QuestionEditorForm
                   question={activeQuestion}
                   gameDefaultTime={game.timer.defaultTime}

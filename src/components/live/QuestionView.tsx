@@ -6,7 +6,7 @@ import {
   BADGE_OUTER,
   BADGE_INNER,
   ANSWER_CARD,
-} from "@/src/components/ui/answerStyles";
+} from "@/src/styles/answerStyles";
 
 function DotPattern() {
   return (
@@ -21,6 +21,8 @@ function DotPattern() {
   );
 }
 
+const MC_LABELS = ["A", "B", "C", "D", "E"] as const;
+
 export default function QuestionView({
   q,
   index,
@@ -31,6 +33,11 @@ export default function QuestionView({
   total: number;
 }) {
   const hasImage = !!q?.image;
+  const type = (q?.type ?? "multiple_choice") as
+    | "multiple_choice"
+    | "true_false"
+    | "matching"
+    | "input";
 
   return (
     <div className="relative">
@@ -53,12 +60,22 @@ export default function QuestionView({
             <span className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
               {index + 1}/{total}
             </span>
+
+            <span className="ml-1 rounded-full border border-slate-200/70 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300">
+              {type === "multiple_choice"
+                ? "Multiple choice"
+                : type === "true_false"
+                ? "True / False"
+                : type === "matching"
+                ? "Matching"
+                : "Input answer"}
+            </span>
           </div>
         </div>
 
         <div className="text-center">
           <p className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-50 leading-snug">
-            {q.text}
+            {q?.text ?? ""}
           </p>
 
           {hasImage ? (
@@ -78,44 +95,93 @@ export default function QuestionView({
           ) : null}
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {q.answers.map((a: any, i: number) => (
-            <div key={i} className={ANSWER_CARD}>
-              <DotPattern />
+        {/* MC / TF */}
+        {type === "multiple_choice" || type === "true_false" ? (
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {(q?.answers ?? []).map((a: any, i: number) => (
+              <div key={i} className={ANSWER_CARD}>
+                <DotPattern />
 
-              <div className="relative flex items-center gap-4">
-                {/* shared badge style */}
-                <div className={BADGE_OUTER}>
-                  <div className={`${BADGE_INNER} ${BADGE_ACCENT} h-14 w-14`}>
-                    <span className="text-2xl font-extrabold">{ANSWER_LABELS[i]}</span>
-                  </div>
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="text-lg font-extrabold leading-snug text-slate-900 sm:text-xl md:text-2xl dark:text-slate-50">
-                    {a.text}
-                  </div>
-
-                  {a.image ? (
-                    <div
-                      className="
-                        mt-4 overflow-hidden rounded-2xl
-                        border border-slate-200/70 bg-white/70 shadow-sm
-                        dark:border-slate-800/70 dark:bg-slate-950/55
-                      "
-                    >
-                      <img
-                        src={a.image}
-                        className="max-h-[20vh] w-full object-contain p-3"
-                        alt={`Answer ${ANSWER_LABELS[i]}`}
-                      />
+                <div className="relative flex items-center gap-4">
+                  <div className={BADGE_OUTER}>
+                    <div className={`${BADGE_INNER} ${BADGE_ACCENT} h-14 w-14`}>
+                      <span className="text-2xl font-extrabold">
+                        {type === "true_false"
+                          ? i === 0
+                            ? "T"
+                            : "F"
+                          : (MC_LABELS[i] ?? ANSWER_LABELS[i])}
+                      </span>
                     </div>
-                  ) : null}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="text-lg font-extrabold leading-snug text-slate-900 sm:text-xl md:text-2xl dark:text-slate-50">
+                      {a?.text ?? ""}
+                    </div>
+                  </div>
                 </div>
               </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Matching */}
+        {type === "matching" ? (
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/55">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Word L
+              </p>
+              <div className="mt-3 space-y-2">
+                {(q?.left ?? []).slice(0, 5).map((w: string, i: number) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-800 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-100"
+                  >
+                    {w || `Left ${i + 1}`}
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+
+            <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/55">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Word R
+              </p>
+              <div className="mt-3 space-y-2">
+                {(q?.right ?? []).slice(0, 5).map((w: string, i: number) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2 text-sm font-semibold text-slate-800 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-100"
+                  >
+                    {w || `Right ${i + 1}`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Input */}
+        {type === "input" ? (
+          <div className="mt-6 mx-auto max-w-2xl">
+            <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/55">
+              <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Student will type an answer
+              </p>
+              <input
+                disabled
+                placeholder="Student input..."
+                className="
+                  mt-3 w-full rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3
+                  text-sm font-semibold text-slate-700 shadow-sm outline-none
+                  dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-200
+                "
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

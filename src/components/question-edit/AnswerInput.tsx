@@ -1,24 +1,26 @@
 "use client";
 
 import { Answer } from "@/src/lib/questionStorage";
-import { Check, ImagePlus } from "lucide-react";
+import { Check, ImagePlus, Trash2 } from "lucide-react";
 import {
   ANSWER_LABELS,
   BADGE_ACCENT,
   BADGE_OUTER,
   BADGE_INNER,
-} from "@/src/components/ui/answerStyles";
+} from "@/src/styles/answerStyles";
 
 export default function AnswerInput({
   answer,
   index,
   onChange,
   onCorrect,
+  onRemove,
 }: {
   answer: Answer;
   index: number;
   onChange: (patch: Partial<Answer>) => void;
   onCorrect: () => void;
+  onRemove?: () => void;
 }) {
   function handleAnswerImage(file?: File) {
     if (!file) return;
@@ -44,10 +46,12 @@ export default function AnswerInput({
       />
 
       <div className="relative flex items-start gap-3">
-        {/* Label badge (shared) */}
+        {/* Label badge */}
         <div className={BADGE_OUTER}>
           <div className={`${BADGE_INNER} ${BADGE_ACCENT} h-11 w-11`}>
-            <span className="text-sm font-bold">{ANSWER_LABELS[index]}</span>
+            <span className="text-sm font-bold">
+              {ANSWER_LABELS[index] ?? String(index + 1)}
+            </span>
           </div>
         </div>
 
@@ -56,7 +60,7 @@ export default function AnswerInput({
           <input
             value={answer.text}
             onChange={(e) => onChange({ text: e.target.value })}
-            placeholder={`Answer ${ANSWER_LABELS[index]}`}
+            placeholder={`Answer ${ANSWER_LABELS[index] ?? index + 1}`}
             className="
               w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
               shadow-sm outline-none
@@ -70,7 +74,7 @@ export default function AnswerInput({
             <div className="flex items-start gap-3">
               <img
                 src={answer.image}
-                alt={`Answer ${ANSWER_LABELS[index]} image`}
+                alt={`Answer ${ANSWER_LABELS[index] ?? index + 1} image`}
                 className="
                   max-h-28 rounded-xl border border-slate-200/80 bg-white shadow-sm
                   dark:border-slate-800/70 dark:bg-slate-950/40
@@ -79,7 +83,7 @@ export default function AnswerInput({
 
               <button
                 type="button"
-                onClick={() => onChange({ image: "" })}
+                onClick={() => onChange({ image: null })}
                 className="
                   text-xs font-semibold text-slate-600 hover:text-slate-900 hover:underline
                   dark:text-slate-300 dark:hover:text-slate-50
@@ -108,25 +112,47 @@ export default function AnswerInput({
           </label>
         </div>
 
-        {/* Correct toggle */}
-        <button
-          type="button"
-          onClick={onCorrect}
-          className={`
-            mt-1 inline-flex h-10 w-10 items-center justify-center rounded-xl
-            border shadow-sm transition
-            ${
-              answer.correct
-                ? "border-[#00D4FF]/40 bg-[#00D4FF]/10 text-[#2563EB] dark:text-[#A7F3FF]"
-                : "border-slate-200/80 bg-white/70 text-slate-400 hover:text-slate-700 hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/40 dark:hover:bg-slate-950/70"
-            }
-            focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
-          `}
-          aria-label="Mark as correct answer"
-          title="Mark correct"
-        >
-          <Check className={`h-5 w-5 ${answer.correct ? "opacity-100" : "opacity-60"}`} />
-        </button>
+        {/* Actions */}
+        <div className="mt-1 flex flex-col gap-2">
+          {onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="
+                inline-flex h-10 w-10 items-center justify-center rounded-xl
+                border border-red-200/80 bg-white/70 text-red-600 shadow-sm
+                hover:bg-white transition
+                dark:border-red-900/40 dark:bg-slate-950/40 dark:text-red-400 dark:hover:bg-slate-950/70
+                focus:outline-none focus:ring-2 focus:ring-red-400/35
+              "
+              aria-label="Remove answer"
+              title="Remove"
+            >
+              <Trash2 className="h-5 w-5" />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onCorrect}
+            className={`
+              inline-flex h-10 w-10 items-center justify-center rounded-xl
+              border shadow-sm transition
+              ${
+                answer.correct
+                  ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
+                  : "border-slate-200/80 bg-white/70 text-slate-400 hover:text-slate-700 hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/40 dark:hover:bg-slate-950/70"
+              }
+              focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
+            `}
+            aria-label="Toggle correct answer"
+            title="Toggle correct"
+          >
+            <Check
+              className={`h-5 w-5 ${answer.correct ? "opacity-100" : "opacity-60"}`}
+            />
+          </button>
+        </div>
       </div>
     </div>
   );

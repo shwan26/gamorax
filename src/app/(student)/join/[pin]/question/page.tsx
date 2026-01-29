@@ -3,26 +3,30 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import localFont from "next/font/local";
 
 import Navbar from "@/src/components/Navbar";
 import { socket } from "@/src/lib/socket";
 
-import { getCurrentStudent, addPointsToStudent } from "@/src/lib/studentAuthStorage";
-import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
-
 import type { LiveStudent } from "@/src/lib/liveStorage";
-import { getLiveMeta, saveLiveMeta, getLiveMeta as _getLiveMeta } from "@/src/lib/liveStorage";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
-import { getAvatarSrc } from "@/src/lib/studentAvatar";
 
 import AnswerGrid from "@/src/components/live/AnswerGrid";
-import { calcPoints } from "@/src/lib/quizScoring";
-import { Trophy, CheckCircle2, XCircle, Timer, Sparkles } from "lucide-react";
 
-const caesar = localFont({
-  src: "../../../../../../public/fonts/CaesarDressing-Regular.ttf",
-});
+import { Trophy, CheckCircle2, XCircle, Timer } from "lucide-react";
+
+type Phase = "question" | "waiting" | "answer" | "final";
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function sameSet(a: number[], b: number[]) {
+  const A = new Set(a);
+  const B = new Set(b);
+  if (A.size !== B.size) return false;
+  for (const x of A) if (!B.has(x)) return false;
+  return true;
+}
 
 /* ------------------------------ UI helpers ------------------------------ */
 
@@ -94,599 +98,432 @@ function PrimaryButton({
   );
 }
 
-/* ------------------------------ existing types ------------------------------ */
-
-type QuestionShowPayload = {
-  questionIndex?: number;
-  number?: number;
-  total?: number;
-  text?: string;
-  answers?: string[];
-  startAt?: number;
-  durationSec?: number;
-  correctIndex?: number;
-};
-
-type AnswerRevealPayload = {
-  questionIndex?: number;
-  correctIndex?: number;
-  maxTime?: number;
-};
-
-type QuizFinishedPayload = {
-  total: number;
-  qa: any[];
-};
+/* ------------------------------ page ------------------------------ */
 
 export default function StudentQuestionPage() {
   const router = useRouter();
   const params = useParams<{ pin?: string }>();
-  const pin = (params?.pin ?? "").toString().trim();
+  const pin = (params?.pin ?? "").trim();
 
-  const [mounted, setMounted] = useState(false);
-  const [student, setStudent] = useState<LiveStudent | null>(null);
+  const s = socket;
 
-  const [phase, setPhase] = useState<"waiting" | "question" | "result" | "final">("waiting");
-  const [question, setQuestion] = useState<{
-    questionIndex: number;
-    number: number;
-    total: number;
-    text: string;
-    answers: string[];
-  } | null>(null);
+  const [me, setMe] = useState<LiveStudent | null>(null);
 
-  // stable refs
-  const selectedIndexRef = useRef<number | null>(null);
-  const answeredQIndexRef = useRef<number | null>(null);
-  const currentQIndexRef = useRef<number>(0);
-  const correctIndexRef = useRef<number | null>(null);
-  const lastScoredQIndexRef = useRef<number>(-1);
+  const [phase, setPhase] = useState<Phase>("question");
+  const [q, setQ] = useState<any>(null);
+  const qRef = useRef<any>(null);
 
-  const myByQRef = useRef<Record<number, { answerIndex: number; timeUsed: number }>>({});
-  const correctByQRef = useRef<Record<number, number>>({});
-  const maxTimeByQRef = useRef<Record<number, number>>({});
+  const [now, setNow] = useState(Date.now());
 
-  // UI state
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // score state
   const [correctCount, setCorrectCount] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
+  const totalPointsRef = useRef(0);
   const [scoredCount, setScoredCount] = useState(0);
 
   const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
   const [lastEarnedPoints, setLastEarnedPoints] = useState<number>(0);
 
   const [finalPoints, setFinalPoints] = useState<number>(0);
-  const [downloadPayload, setDownloadPayload] = useState<QuizFinishedPayload | null>(null);
 
-  // timer
-  const [startAt, setStartAt] = useState<number | null>(null);
-  const [durationSec, setDurationSec] = useState<number>(20);
-  const durationSecRef = useRef<number>(20);
+  // track what student submitted
+  const myChoiceRef = useRef<number[] | null>(null);
+  const myInputRef = useRef<string | null>(null);
+  const matchedPairsRef = useRef<Map<number, number>>(new Map());
 
-  const [now, setNow] = useState<number>(0);
-  const questionStartAtRef = useRef<number | null>(null);
+  // scoring helper
+  const myTimeUsedRef = useRef<number | null>(null);
 
-  const s = socket;
+  // reveal payload
+  const [reveal, setReveal] = useState<any>(null);
+  const onScore = (p: any) => {
+    if (!p || !me?.studentId) return;
+    if (p.studentId !== me.studentId) return;
 
+    const total = p.total ?? {};
+    setCorrectCount(Number(total.correct ?? 0));
+    setTotalPoints(Number(total.points ?? 0));
+    totalPointsRef.current = Number(total.points ?? 0);
+
+    // last question feedback
+    const last = p.last;
+    if (last && typeof last.isCorrect === "boolean") {
+      setLastWasCorrect(last.isCorrect);
+      setLastEarnedPoints(Number(last.pointsEarned ?? 0));
+    }
+  };
+
+  // keep qRef synced (so onReveal always reads latest question, not stale closure)
   useEffect(() => {
-    setMounted(true);
-    setNow(Date.now());
-  }, []);
+    qRef.current = q;
+  }, [q]);
 
   // load student
   useEffect(() => {
-    if (!mounted) return;
     if (!pin) return;
-
-    const me = getCurrentStudent();
-    if (!me) {
-      router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
+    const live = getOrCreateLiveStudent();
+    if (!live) {
+      router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}/question`)}`);
       return;
     }
+    setMe(live);
+  }, [pin, router]);
 
-    const st = getOrCreateLiveStudent();
-    if (!st) {
-      router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
-      return;
-    }
-
-    setStudent(st);
-  }, [mounted, pin, router]);
-
-  const titleText = useMemo(() => (pin ? `Quiz Session — ${pin}` : "Quiz Session"), [pin]);
-  const avatarSrc = useMemo(() => getAvatarSrc(student, 96), [student]);
-
-  // timer tick
+  // socket connect + listeners
   useEffect(() => {
-    if (phase !== "question") return;
-    if (!startAt) return;
-
-    const t = window.setInterval(() => setNow(Date.now()), 100);
-    return () => window.clearInterval(t);
-  }, [phase, startAt]);
-
-  // local time end => show result screen, score only on reveal
-  useEffect(() => {
-    if (phase !== "question") return;
-    if (!startAt) return;
-
-    const limit = durationSec * 1000;
-    if (now - startAt >= limit) {
-      setStartAt(null);
-      questionStartAtRef.current = null;
-      setPhase("result");
-      setLastWasCorrect(null);
-      setLastEarnedPoints(0);
-    }
-  }, [phase, startAt, now, durationSec]);
-
-  // socket listeners
-  useEffect(() => {
-    if (!mounted) return;
-    if (!pin || !student) return;
+    if (!pin || !me) return;
 
     s.connect();
 
-    const doJoin = () => s.emit("join", { pin, student });
+    const doJoin = () => s.emit("join", { pin, student: me });
     if (s.connected) doJoin();
     s.on("connect", doJoin);
 
-    const onMeta = (meta: any) => {
-      saveLiveMeta(pin, meta);
-    };
-    s.on("session:meta", onMeta);
+    const onQuestion = (question: any) => {
+      setQ(question);
+      setReveal(null);
 
-    const onQuestionShow = (q: QuestionShowPayload) => {
-      const number = Number(q?.number ?? 1);
-      const qIndex =
-        typeof q?.questionIndex === "number" ? q.questionIndex : Math.max(0, number - 1);
-
-      const total = Number(q?.total ?? 1);
-      const text = String(q?.text ?? "");
-      const answers = Array.isArray(q?.answers) ? q.answers : [];
-
-      currentQIndexRef.current = qIndex;
-      if (typeof q?.correctIndex === "number") correctIndexRef.current = q.correctIndex;
-
-      const sAt = typeof q?.startAt === "number" ? q.startAt : Date.now();
-      const dur = Number.isFinite(Number(q?.durationSec)) ? Math.max(1, Number(q.durationSec)) : 20;
-
-      maxTimeByQRef.current[qIndex] = dur;
-      durationSecRef.current = dur;
-
-      setStartAt(sAt);
-      setDurationSec(dur);
-      setNow(Date.now());
-      questionStartAtRef.current = sAt;
-
-      setQuestion({ questionIndex: qIndex, number, total, text, answers });
       setPhase("question");
 
-      setSelectedIndex(null);
-      selectedIndexRef.current = null;
-      answeredQIndexRef.current = null;
+      myChoiceRef.current = null;
+      myInputRef.current = null;
+      myTimeUsedRef.current = null;
+      matchedPairsRef.current = new Map();
 
       setLastWasCorrect(null);
       setLastEarnedPoints(0);
-    };
 
-    const onReveal = (p?: AnswerRevealPayload) => {
-      setPhase("result");
-      setStartAt(null);
-      questionStartAtRef.current = null;
-
-      const qIdx =
-        typeof p?.questionIndex === "number" ? p.questionIndex : currentQIndexRef.current;
-
-      const correct =
-        typeof p?.correctIndex === "number" ? p.correctIndex : correctIndexRef.current;
-
-      if (typeof p?.maxTime === "number" && Number.isFinite(p.maxTime)) {
-        maxTimeByQRef.current[qIdx] = Math.max(1, Math.round(p.maxTime));
+      setNow(Date.now());
+      
+      if (question?.number === 1 || question?.questionIndex === 0) {
+        totalPointsRef.current = 0;
+        setTotalPoints(0);
+        setCorrectCount(0);
       }
 
-      setScoredCount((prev) => Math.max(prev, qIdx + 1));
 
-      if (typeof correct !== "number") {
+    };
+
+    const onReveal = (payload: any) => {
+      setReveal(payload);
+      setPhase("answer");
+
+      const curQ = qRef.current;
+
+      // scoring
+      const maxTime = Number(curQ?.durationSec ?? payload?.maxTime ?? 0) || 0;
+      const timeUsed = myTimeUsedRef.current ?? maxTime;
+
+      let isCorrect: boolean | null = null;
+
+      if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
+        const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
+        const mine = myChoiceRef.current ?? [];
+
+        if (!correct.length) {
+          isCorrect = null;
+        } else {
+          const allowMultiple = Boolean(payload?.allowMultiple) || correct.length > 1;
+
+          // ✅ your rule: "either one is correct" (ANY match)
+          if (allowMultiple) {
+            isCorrect = mine.length > 0 ? mine.some((i) => correct.includes(i)) : false;
+          } else {
+            // single-correct: must match the one correct choice
+            isCorrect = sameSet(correct, mine);
+          }
+        }
+      }
+
+      if (payload?.type === "input") {
+        const mine = (myInputRef.current ?? "").trim().toLowerCase();
+        const accepted = Array.isArray(payload?.acceptedAnswers) ? payload.acceptedAnswers : [];
+        const normAccepted = accepted
+          .map((x: any) => String(x ?? "").trim().toLowerCase())
+          .filter(Boolean);
+        isCorrect = mine ? normAccepted.includes(mine) : false;
+      }
+     if (payload?.type === "matching") {
+        const totalPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs.length : 0;
+        isCorrect = totalPairs > 0 ? matchedPairsRef.current.size === totalPairs : null;
+      }
+
+      const qNumber = Number(curQ?.number ?? curQ?.questionIndex ?? 0) || 0;
+      setScoredCount((p) => Math.max(p, qNumber));
+
+      if (isCorrect === null) {
         setLastWasCorrect(null);
         setLastEarnedPoints(0);
         return;
       }
 
-      correctByQRef.current[qIdx] = correct;
-
-      if (qIdx <= lastScoredQIndexRef.current) return;
-      lastScoredQIndexRef.current = qIdx;
-
-      const maxTime = maxTimeByQRef.current[qIdx] ?? durationSecRef.current ?? 0;
-
-      const mine = myByQRef.current[qIdx];
-      const picked = answeredQIndexRef.current === qIdx ? selectedIndexRef.current : null;
-
-      const isCorrect = typeof picked === "number" && picked === correct;
-      const timeUsed = mine?.timeUsed ?? maxTime;
-
-      const earned = calcPoints({ isCorrect, maxTime, timeUsed });
-
-      setLastWasCorrect(isCorrect);
-      setLastEarnedPoints(earned);
-
-      if (isCorrect) setCorrectCount((prev) => prev + 1);
-      setTotalPoints((prev) => prev + earned);
     };
 
-    const onNext = () => {
-      setPhase("waiting");
-
-      setSelectedIndex(null);
-      selectedIndexRef.current = null;
-      answeredQIndexRef.current = null;
-
-      setStartAt(null);
-      questionStartAtRef.current = null;
-
-      setLastWasCorrect(null);
-      setLastEarnedPoints(0);
-    };
-
-    const onFinished = (data: any) => {
-      const payload: QuizFinishedPayload | null =
-        data?.payload && typeof data.payload === "object"
-          ? data.payload
-          : data && typeof data === "object" && Array.isArray(data.qa)
-          ? data
-          : null;
-
-      setDownloadPayload(payload ?? null);
+    const onFinal = () => {
       setPhase("final");
-
-      const total = Math.max(1, Number(payload?.total ?? scoredCount ?? 1));
-
-      let computedCorrect = 0;
-      let computedPoints = 0;
-
-      [...Array(total)].forEach((_, qi) => {
-        const mine = myByQRef.current[qi];
-        const answerIndex = typeof mine?.answerIndex === "number" ? mine.answerIndex : -1;
-
-        const correctIndex = correctByQRef.current[qi];
-        const hasCorrect = typeof correctIndex === "number";
-
-        const maxTime = maxTimeByQRef.current[qi] ?? 0;
-        const timeUsed = mine?.timeUsed ?? maxTime;
-
-        const isCorrect = hasCorrect && answerIndex >= 0 && answerIndex === correctIndex;
-        const earned = calcPoints({ isCorrect, maxTime, timeUsed });
-
-        if (isCorrect) computedCorrect += 1;
-        computedPoints += earned;
-      });
-
-      setFinalPoints(computedPoints);
-
-      const me = getCurrentStudent();
-      if (!me) return;
-      const meta = _getLiveMeta(pin);
-
-      saveStudentAttempt({
-        id: crypto.randomUUID(),
-        studentEmail: me.email,
-        studentId: me.studentId,
-        studentName: me.name,
-        avatarSrc: getAvatarSrc(student, 96),
-
-        pin,
-        gameId: meta?.gameId,
-
-        courseCode: meta?.courseCode,
-        courseName: meta?.courseName,
-        section: meta?.section,
-        semester: meta?.semester,
-        quizTitle: meta?.quizTitle ?? "Quiz",
-
-        totalQuestions: total,
-        correct: computedCorrect,
-        points: computedPoints,
-        finishedAt: new Date().toISOString(),
-        perQuestion: [],
-      });
-
-      addPointsToStudent(me.email, computedPoints);
+      setFinalPoints(totalPointsRef.current);
     };
 
-    s.on("question:show", onQuestionShow);
+
+    s.on("question:show", onQuestion);
     s.on("answer:reveal", onReveal);
-    s.on("question:next", onNext);
-    s.on("quiz:finished", onFinished);
+    s.on("final_results", onFinal);
 
     return () => {
       s.off("connect", doJoin);
-      s.off("session:meta", onMeta);
-      s.off("question:show", onQuestionShow);
+      s.off("question:show", onQuestion);
       s.off("answer:reveal", onReveal);
-      s.off("question:next", onNext);
-      s.off("quiz:finished", onFinished);
-      s.off("quiz_finished", onFinished);
+      s.off("final_results", onFinal);
+      // do NOT disconnect
     };
-  }, [mounted, pin, student]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin, me]);
 
-  const pick = (answerIndex: number) => {
-    if (!student || !question) return;
+  useEffect(() => {
+    if (!me?.studentId) return;
+
+    const onScore = (p: any) => {
+      if (!p) return;
+      if (p.studentId !== me.studentId) return;
+
+      const total = p.total ?? {};
+      const correct = Number(total.correct ?? 0);
+      const points = Number(total.points ?? 0);
+
+      setCorrectCount(correct);
+      setTotalPoints(points);
+      totalPointsRef.current = points;
+
+      // last question feedback
+      const last = p.last;
+      if (last && typeof last.isCorrect === "boolean") {
+        setLastWasCorrect(last.isCorrect);
+        setLastEarnedPoints(Number(last.pointsEarned ?? 0));
+      }
+    };
+
+    s.on("score:update", onScore);
+    return () => {
+      s.off("score:update", onScore);
+    };
+  }, [s, me?.studentId]);
+
+
+  /* ------------------------------ timer ------------------------------ */
+
+  const elapsedSec = useMemo(() => {
+    const startAt = Number(q?.startAt ?? 0);
+    if (!startAt) return 0;
+    return Math.max(0, Math.floor((now - startAt) / 1000));
+  }, [q?.startAt, now]);
+
+  const maxSec = useMemo(() => Math.max(0, Number(q?.durationSec ?? 0)), [q?.durationSec]);
+
+  const timeLeft = useMemo(() => clamp(maxSec - elapsedSec, 0, 999999), [maxSec, elapsedSec]);
+  const isTimeUp = useMemo(() => maxSec > 0 && elapsedSec >= maxSec, [maxSec, elapsedSec]);
+
+  // ✅ single interval only while answering
+  useEffect(() => {
     if (phase !== "question") return;
+    if (!q?.startAt || !q?.durationSec) return;
 
-    if (selectedIndexRef.current !== null) return;
+    const t = window.setInterval(() => setNow(Date.now()), 200);
+    return () => window.clearInterval(t);
+  }, [phase, q?.startAt, q?.durationSec]);
 
-    if (startAt) {
-      const elapsed = Date.now() - startAt;
-      if (elapsed >= durationSec * 1000) return;
+  // auto move to waiting when time is up
+  useEffect(() => {
+    if (phase !== "question") return;
+    if (!q) return;
+    if (!isTimeUp) return;
+    setPhase("waiting");
+  }, [phase, q, isTimeUp]);
+
+  /* ------------------------------ disabled logic ------------------------------ */
+
+  const alreadySubmitted = useMemo(() => {
+    return (
+      myChoiceRef.current !== null ||
+      myInputRef.current !== null ||
+      (q?.type === "matching" && matchedPairsRef.current.size > 0)
+    );
+  }, [q?.type, phase]);
+
+  const disabled = phase !== "question" || isTimeUp || alreadySubmitted;
+
+  /* ------------------------------ reveal text ------------------------------ */
+
+  const revealText = useMemo(() => {
+    if (!reveal || !q) return null;
+
+    if (reveal.type === "multiple_choice" || reveal.type === "true_false") {
+      const idxs = Array.isArray(reveal.correctIndices) ? reveal.correctIndices : [];
+      const labels = ["A", "B", "C", "D", "E"];
+      const correct = idxs.map((i: number) => labels[i] ?? "?").join(", ");
+      return `Correct: ${correct}`;
     }
 
-    setSelectedIndex(answerIndex);
-    selectedIndexRef.current = answerIndex;
+    if (reveal.type === "input") {
+      return `Accepted answers: ${(reveal.acceptedAnswers ?? []).join(", ")}`;
+    }
 
-    const qIndex = question.questionIndex;
-    answeredQIndexRef.current = qIndex;
+    if (reveal.type === "matching") return "Answer revealed";
 
-    const ms = questionStartAtRef.current ? Date.now() - questionStartAtRef.current : 0;
-    const timeUsed = Math.max(0, Math.round(ms / 1000));
+    return null;
+  }, [reveal, q]);
 
-    myByQRef.current[qIndex] = { answerIndex, timeUsed };
+  /* ------------------------------ submit handlers ------------------------------ */
+
+  function submitChoice(indices: number[]) {
+    if (!pin || !me?.studentId || !q) return;
+
+    myChoiceRef.current = indices;
+    myTimeUsedRef.current = elapsedSec;
+    setPhase("waiting");
 
     s.emit("answer", {
       pin,
-      studentId: student.studentId,
-      questionIndex: qIndex,
-      answerIndex,
-      timeUsed,
+      studentId: me.studentId,
+      questionIndex: q.questionIndex,
+      indices,
+      timeUsed: elapsedSec,
     });
-  };
+  }
 
-  const hasPicked = selectedIndex !== null;
-  const disableButtons = phase !== "question" || hasPicked;
+  function submitInput(value: string) {
+    if (!pin || !me?.studentId || !q) return;
 
-  const elapsed = startAt ? Math.max(0, now - startAt) : 0;
-  const limit = durationSec * 1000;
-  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
-  const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
+    myInputRef.current = value;
+    myTimeUsedRef.current = elapsedSec;
+    setPhase("waiting");
 
-  const finalDenom = (downloadPayload?.total ?? scoredCount) || 1;
+    s.emit("answer:input", {
+      pin,
+      studentId: me.studentId,
+      questionIndex: q.questionIndex,
+      value,
+      timeUsed: elapsedSec,
+    });
+  }
 
-  if (!mounted) return null;
-  if (!pin) return <div className="p-6">Missing PIN.</div>;
-  if (!student) return null;
+  async function attemptMatch(leftIndex: number, rightIndex: number): Promise<{ correct: boolean }> {
+    if (!pin || !me?.studentId || !q) return { correct: false };
+    if (myTimeUsedRef.current === null) myTimeUsedRef.current = elapsedSec;
+
+    return await new Promise((resolve) => {
+      s.emit(
+        "match:attempt",
+        {
+          pin,
+          studentId: me.studentId,
+          questionIndex: q.questionIndex,
+          leftIndex,
+          rightIndex,
+          timeUsed: elapsedSec,
+        },
+        (resp: any) => {
+          const ok = Boolean(resp?.correct);
+          if (ok) matchedPairsRef.current.set(leftIndex, rightIndex);
+          resolve({ correct: ok });
+        }
+      );
+    });
+  }
+
+  if (!pin) return null;
 
   return (
-    <div className="min-h-screen app-surface app-bg">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
-      <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
-        {/* TOP header */}
+      <div className="mx-auto max-w-4xl px-4 py-6">
+        {/* header */}
         <GlassCard className="mb-5">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                {titleText}
+                PIN {pin} • Q{Number(q?.number ?? 0) || "-"} / {Number(q?.total ?? 0) || "-"}
               </div>
-              <div className="mt-1 flex items-center gap-2">
-                <span
-                  className={`${caesar.className} text-2xl tracking-wide text-slate-900 dark:text-slate-50`}
-                >
-                  GAMORAX
-                </span>
-                <span
-                  className="
-                    rounded-full border border-slate-200/70 bg-white/70 px-3 py-1 text-xs font-semibold
-                    text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200
-                  "
-                >
-                  PIN <span className="font-mono tracking-wider">{pin}</span>
-                </span>
-              </div>
+              <h1 className="mt-1 text-lg font-extrabold text-slate-900 dark:text-slate-50">
+                {q?.text ?? "Waiting for question..."}
+              </h1>
             </div>
 
-            <div
-              className="
-                hidden sm:flex items-center gap-3
-                rounded-2xl border border-slate-200/70 bg-white/70 px-3 py-2
-                dark:border-slate-800/70 dark:bg-slate-950/45
-              "
-            >
-              <div className="h-10 w-10 overflow-hidden rounded-full bg-white/80 dark:bg-slate-950/40">
-                <img src={avatarSrc} alt="Avatar" className="h-10 w-10 object-cover" />
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-                  {student.name}
+            {/* ✅ timer only during question phase */}
+            {phase === "question" ? (
+              <div className="w-full sm:w-[360px]">
+                <div className="flex items-center justify-between">
+                  <div className="inline-flex items-center gap-2">
+                    <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      Time remaining
+                    </span>
+                  </div>
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    {q?.startAt ? `${timeLeft}s` : "-"}
+                  </span>
                 </div>
-                <div className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  {student.studentId}
+
+                <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
+                  <div
+                    className="h-full transition-[width] duration-100"
+                    style={{
+                      width: q?.startAt && maxSec > 0 ? `${(timeLeft / maxSec) * 100}%` : "0%",
+                      background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
+                    }}
+                  />
                 </div>
               </div>
+            ) : (
+              <div className="w-full sm:w-[360px]" />
+            )}
+          </div>
+
+          {/* status + last result (single place, no duplicates) */}
+          <div className="mt-4">
+            {phase === "waiting" ? (
+              <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
+                Waiting for lecturer to reveal…
+              </p>
+            ) : phase === "answer" && lastWasCorrect === true ? (
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
+                <CheckCircle2 className="h-4 w-4" />
+                Correct! +{lastEarnedPoints} points
+              </div>
+            ) : phase === "answer" && lastWasCorrect === false ? (
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
+                <XCircle className="h-4 w-4" />
+                Incorrect · +0 points
+              </div>
+            ) : phase === "answer" ? (
+              <p className="text-sm font-semibold text-sky-600 dark:text-sky-300">
+                {revealText ?? "Answer revealed"}
+              </p>
+            ) : phase === "final" ? (
+              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Quiz finished</p>
+            ) : (
+              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">Answer now</p>
+            )}
+
+            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Total correct: <span className="font-semibold">{correctCount}</span> • Total points:{" "}
+              <span className="font-semibold">{totalPoints}</span>
             </div>
           </div>
         </GlassCard>
 
-        {/* WAITING */}
-        {phase === "waiting" && (
-          <GlassCard className="text-center">
-            <div className="flex flex-col items-center gap-5 py-6">
-              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
-                <Sparkles className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
-              </div>
-
-              <div className="space-y-2">
-                <h1 className={`${caesar.className} text-3xl sm:text-4xl text-slate-900 dark:text-slate-50`}>
-                  BE READY TO ANSWER!
-                </h1>
-                <h2 className={`${caesar.className} text-2xl sm:text-3xl text-slate-700 dark:text-slate-200`}>
-                  GOOD LUCK!
-                </h2>
-              </div>
-
-              <div className="flex flex-col items-center gap-3">
-                <div
-                  className="
-                    h-20 w-20 overflow-hidden rounded-full
-                    border border-slate-200/70 bg-white/80 shadow-sm
-                    dark:border-slate-800/70 dark:bg-slate-950/45
-                  "
-                >
-                  <img src={avatarSrc} alt="Avatar" className="h-full w-full object-cover" />
-                </div>
-
-                <div className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-                  <span className="font-semibold">{student.studentId}</span> • {student.name}
-                </div>
-              </div>
-
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Waiting for host to start…
-              </div>
-            </div>
-          </GlassCard>
-        )}
-
-        {/* QUESTION */}
-        {phase === "question" && question && (
-          <>
-            {/* Question header + timer */}
-            <GlassCard className="mb-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div
-                  className="
-                    inline-flex items-center gap-2 rounded-2xl
-                    border border-slate-200/70 bg-white/70 px-3 py-2 shadow-sm
-                    dark:border-slate-800/70 dark:bg-slate-950/45
-                  "
-                >
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Question
-                  </span>
-                  <span className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
-                    {question.number}/{question.total}
-                  </span>
-                </div>
-
-                <div className="w-full sm:w-[360px]">
-                  <div className="flex items-center justify-between">
-                    <div className="inline-flex items-center gap-2">
-                      <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                        Time remaining
-                      </span>
-                    </div>
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                      {remainingSec}s
-                    </span>
-                  </div>
-
-                  <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                    <div
-                      className="h-full transition-[width] duration-100"
-                      style={{
-                        width: `${pctRemaining}%`,
-                        background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-            </GlassCard>
-
-
-            {/* Answers */}
-            <div className="flex justify-center">
-              <AnswerGrid
-                selectedIndex={selectedIndex}
-                disabled={disableButtons}
-                onPick={pick}
-                labelClassName={caesar.className}
-              />
-            </div>
-
-            <div className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">
-              Tap one choice. You can’t change after picking.
-            </div>
-          </>
-        )}
-
-        {/* RESULT */}
-        {phase === "result" && (
-          <GlassCard>
-            <div className="flex flex-col items-center gap-4 py-4 text-center">
-              <div
-                className="
-                  rounded-3xl border border-slate-200/70 bg-white/70 p-4
-                  dark:border-slate-800/70 dark:bg-slate-950/45
-                "
-              >
-                <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
-              </div>
-
-              <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
-                Result
-              </div>
-
-              {lastWasCorrect === true && (
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Correct! +{lastEarnedPoints} points
-                </div>
-              )}
-
-              {lastWasCorrect === false && (
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
-                  <XCircle className="h-4 w-4" />
-                  Incorrect · +0 points
-                </div>
-              )}
-
-              {lastWasCorrect === null && (
-                <div className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                  Waiting for host reveal…
-                </div>
-              )}
-
-              <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-                Total correct
-              </div>
-              <div className={`${caesar.className} text-6xl text-slate-900 dark:text-slate-50`}>
-                {correctCount}/{Math.max(1, scoredCount)}
-              </div>
-
-              <div className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                Total points{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-50">
-                  {totalPoints}
-                </span>
-              </div>
-
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Waiting for the next question…
-              </div>
-            </div>
-          </GlassCard>
-        )}
-
-        {/* FINAL */}
-        {phase === "final" && (
-          <GlassCard>
+        {/* ✅ final card OUTSIDE header */}
+        {phase === "final" ? (
+          <GlassCard className="mb-6">
             <div className="flex flex-col items-center gap-4 py-5 text-center">
-              <div
-                className="
-                  rounded-3xl border border-slate-200/70 bg-white/70 p-4
-                  dark:border-slate-800/70 dark:bg-slate-950/45
-                "
-              >
+              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
                 <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
               </div>
 
-              <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
-                Final Score
-              </div>
+              <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">Final Score</div>
 
-              <div className={`${caesar.className} text-7xl text-slate-900 dark:text-slate-50`}>
-                {correctCount}/{finalDenom}
+              <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
+                {correctCount}/{Number(q?.total ?? scoredCount ?? 1) || 1}
               </div>
 
               <div className="text-sm text-slate-600 dark:text-slate-300">
@@ -696,17 +533,47 @@ export default function StudentQuestionPage() {
                 </span>
               </div>
 
-              <PrimaryButton onClick={() => router.push("/me/reports")}>
-                Go to My Reports
-              </PrimaryButton>
+              <PrimaryButton onClick={() => router.push("/me/reports")}>Go to My Reports</PrimaryButton>
 
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 You can review your attempt anytime.
               </div>
             </div>
           </GlassCard>
-        )}
-      </main>
+        ) : null}
+
+        {/* grid (hide on final) */}
+        {phase !== "final" ? (
+          <div className="mt-6">
+            <AnswerGrid
+              q={q}
+              disabled={disabled}
+              onSubmitChoice={({ indices }) => submitChoice(indices)}
+              onSubmitInput={({ value }) => submitInput(value)}
+              onAttemptMatch={
+                q?.type === "matching"
+                  ? ({ leftIndex, rightIndex }) => attemptMatch(leftIndex, rightIndex)
+                  : undefined
+              }
+            />
+          </div>
+        ) : null}
+
+
+        {/* reveal detail for matching */}
+        {phase === "answer" && q?.type === "matching" && Array.isArray(reveal?.correctPairs) ? (
+          <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/35">
+            <p className="text-sm font-extrabold text-slate-900 dark:text-slate-50">Correct pairs</p>
+            <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
+              {reveal.correctPairs.map((p: any, i: number) => (
+                <li key={i}>
+                  • {String(p?.left ?? "")} — {String(p?.right ?? "")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
