@@ -47,29 +47,52 @@ function normalizeCorrectIndices(p: RevealProps) {
 
 /** Make bars for choice questions (MC/TF) */
 function ChoiceBars(props: RevealProps) {
-  const answers = (props.answersText ?? []).map((a) => String(a ?? ""));
-  const counts = (props.counts ?? []).map((c) => Math.max(0, safeNumber(c)));
+  const isTF = props.type === "true_false";
 
-  const optionCount = clamp(Math.max(answers.length, counts.length, 2), 2, 5);
+  // answers in display order
+  const answersRaw = (props.answersText ?? []).map((a) => String(a ?? ""));
 
-  const safeAnswers = [...Array(optionCount)].map((_, i) => String(answers[i] ?? ""));
-  const safeCounts = [...Array(optionCount)].map((_, i) => Math.max(0, safeNumber(counts[i] ?? 0)));
+  // counts may come longer (e.g. always 4), but we only want up to optionCount
+  const countsRaw = (props.counts ?? []).map((c) => Math.max(0, safeNumber(c)));
+
+  // ✅ Decide optionCount:
+  // - True/False: ALWAYS 2
+  // - Multiple choice: use answers length if available, otherwise fallback to counts length
+  const optionCount = isTF
+    ? 2
+    : clamp(
+        // prefer answers length (3/4/5), fallback to counts length
+        Math.max(answersRaw.length || 0, countsRaw.length || 0, 2),
+        2,
+        5
+      );
+
+  // ✅ Slice to optionCount so we don't render extra "ghost" options
+  const answers = [...Array(optionCount)].map((_, i) => String(answersRaw[i] ?? ""));
+  const counts = [...Array(optionCount)].map((_, i) => Math.max(0, safeNumber(countsRaw[i] ?? 0)));
 
   const correct = new Set(normalizeCorrectIndices(props));
   const hasCorrect = correct.size > 0;
 
-  const total = safeCounts.reduce((a, b) => a + b, 0);
-  const maxCount = Math.max(1, ...safeCounts);
+  const total = counts.reduce((a, b) => a + b, 0);
+  const maxCount = Math.max(1, ...counts);
 
   const maxBarPx = 220;
   const minBarPx = 10;
 
-  const isTF = props.type === "true_false";
+  // ✅ Layout:
+  // - TF: exactly 2 columns
+  // - MC: number of columns = optionCount (responsive)
+  const containerClass = isTF
+    ? "grid grid-cols-2 gap-3 sm:gap-5"
+    : `grid gap-3 sm:gap-5 grid-cols-2 ${optionCount >= 3 ? "md:grid-cols-3" : ""} ${
+        optionCount >= 4 ? "lg:grid-cols-4" : ""
+      } ${optionCount >= 5 ? "xl:grid-cols-5" : ""}`;
 
   return (
     <div className="w-full">
-      <div className="flex items-end justify-between gap-3 sm:gap-5">
-        {safeCounts.map((count, i) => {
+      <div className={containerClass}>
+        {counts.map((count, i) => {
           const percent = pct(count, total);
           const isCorrect = correct.has(i);
 
@@ -92,7 +115,7 @@ function ChoiceBars(props: RevealProps) {
           const label = isTF ? (i === 0 ? "T" : "F") : (MC_LABELS[i] ?? String(i + 1));
 
           return (
-            <div key={i} className={`flex w-full flex-col items-center ${itemDimClass}`}>
+            <div key={i} className={`flex flex-col items-center ${itemDimClass}`}>
               {/* Count pill */}
               <div
                 className={[
@@ -110,7 +133,7 @@ function ChoiceBars(props: RevealProps) {
               {/* Bar rail */}
               <div
                 className="
-                  relative flex h-[240px] w-full max-w-[82px] items-end justify-center
+                  relative flex h-[240px] w-full max-w-[140px] items-end justify-center
                   rounded-2xl border border-slate-200/70 bg-white/60 p-2
                   shadow-sm backdrop-blur
                   dark:border-slate-800/70 dark:bg-slate-950/35
@@ -150,16 +173,16 @@ function ChoiceBars(props: RevealProps) {
               </div>
 
               {/* Answer text */}
-              {safeAnswers[i] ? (
+              {answers[i] ? (
                 <div
                   className={[
-                    "mt-3 max-w-[150px] text-center text-sm sm:text-base font-semibold line-clamp-3 transition-opacity",
+                    "mt-3 max-w-[220px] text-center text-sm sm:text-base font-semibold line-clamp-3 transition-opacity",
                     isCorrect
                       ? "text-slate-900 dark:text-slate-50"
                       : "text-slate-500 dark:text-slate-400",
                   ].join(" ")}
                 >
-                  {safeAnswers[i]}
+                  {answers[i]}
                 </div>
               ) : (
                 <div className="mt-3 text-center text-sm sm:text-base font-semibold text-slate-400">
@@ -173,6 +196,7 @@ function ChoiceBars(props: RevealProps) {
     </div>
   );
 }
+
 
 /** Matching reveal */
 function MatchingReveal(props: RevealProps) {

@@ -51,7 +51,7 @@ export default function LecturerLiveLayout({
 
   joinedCount: number;
   answeredCount: number;
-  counts: [number, number, number, number];
+  counts: number[];
 
   ranked: any[];
 
@@ -59,15 +59,21 @@ export default function LecturerLiveLayout({
   onNext: () => void;
   onDisconnectAfterReportClick?: () => void;
 }) {
-  const correctIndex =
-    q.type === "multiple_choice" || q.type === "true_false"
-      ? (q.answers ?? []).findIndex((a: any) => a?.correct === true)
-      : 0;
+  // inside LecturerLiveLayout
 
-  const answersText =
-    q.type === "multiple_choice" || q.type === "true_false"
-      ? (q.answers ?? []).map((a: any) => a?.text ?? "")
-      : [];
+  const isChoice = q.type === "multiple_choice" || q.type === "true_false";
+
+  const correctIndices = isChoice
+    ? (q.answers ?? [])
+        .map((a: any, i: number) => (a?.correct ? i : -1))
+        .filter((i: number) => i >= 0)
+    : [];
+
+  const answersText = isChoice ? (q.answers ?? []).map((a: any) => a?.text ?? "") : [];
+
+  // IMPORTANT: slice counts to match option count
+  const optionCount = q.type === "true_false" ? 2 : Math.min(5, answersText.length || 0);
+  const safeCounts = Array.from({ length: optionCount }, (_, i) => Number((counts as any)?.[i] ?? 0));
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
@@ -267,13 +273,15 @@ export default function LecturerLiveLayout({
                     dark:border-slate-800/70 dark:bg-slate-950/55
                   "
                 >
-                  {(q.type === "multiple_choice" || q.type === "true_false") && (
+                  {isChoice && (
                     <AnswerReveal
-                      counts={counts}
-                      correctIndex={correctIndex}
+                      type={q.type}                    // ✅ TF vs MC
+                      counts={safeCounts}              // ✅ 2/3/4/5
+                      correctIndices={correctIndices}  // ✅ multi-correct
                       answersText={answersText}
                     />
                   )}
+
 
                   {q.type === "matching" && (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

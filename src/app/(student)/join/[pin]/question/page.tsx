@@ -119,6 +119,7 @@ export default function StudentQuestionPage() {
   // score state
   const [correctCount, setCorrectCount] = useState(0);
   const [totalPoints, setTotalPoints] = useState(0);
+  const totalPointsRef = useRef(0);
   const [scoredCount, setScoredCount] = useState(0);
 
   const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
@@ -178,6 +179,11 @@ export default function StudentQuestionPage() {
       setLastEarnedPoints(0);
 
       setNow(Date.now());
+      
+      if (question?.number === 1 || question?.questionIndex === 0) {
+        totalPointsRef.current = 0;
+      }
+
     };
 
     const onReveal = (payload: any) => {
@@ -195,15 +201,31 @@ export default function StudentQuestionPage() {
       if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
         const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
         const mine = myChoiceRef.current ?? [];
-        isCorrect = correct.length > 0 ? sameSet(correct, mine) : null;
-      } else if (payload?.type === "input") {
+
+        if (!correct.length) {
+          isCorrect = null;
+        } else {
+          const allowMultiple = Boolean(payload?.allowMultiple) || correct.length > 1;
+
+          // ✅ your rule: "either one is correct" (ANY match)
+          if (allowMultiple) {
+            isCorrect = mine.length > 0 ? mine.some((i) => correct.includes(i)) : false;
+          } else {
+            // single-correct: must match the one correct choice
+            isCorrect = sameSet(correct, mine);
+          }
+        }
+      }
+
+      if (payload?.type === "input") {
         const mine = (myInputRef.current ?? "").trim().toLowerCase();
         const accepted = Array.isArray(payload?.acceptedAnswers) ? payload.acceptedAnswers : [];
         const normAccepted = accepted
           .map((x: any) => String(x ?? "").trim().toLowerCase())
           .filter(Boolean);
         isCorrect = mine ? normAccepted.includes(mine) : false;
-      } else if (payload?.type === "matching") {
+      }
+     if (payload?.type === "matching") {
         const totalPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs.length : 0;
         isCorrect = totalPairs > 0 ? matchedPairsRef.current.size === totalPairs : null;
       }
@@ -223,14 +245,20 @@ export default function StudentQuestionPage() {
       setLastEarnedPoints(earned);
 
       if (isCorrect) setCorrectCount((p) => p + 1);
-      setTotalPoints((p) => p + earned);
+      setTotalPoints((p) => {
+        const next = p + earned;
+        totalPointsRef.current = next;
+        return next;
+      });
+
+      
     };
 
     const onFinal = () => {
       setPhase("final");
-      // safest: compute from current totalPoints via functional read
-      setFinalPoints((_) => totalPoints);
+      setFinalPoints(totalPointsRef.current);
     };
+
 
     s.on("question:show", onQuestion);
     s.on("answer:reveal", onReveal);

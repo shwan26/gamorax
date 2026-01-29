@@ -16,10 +16,7 @@ import {
   type LiveReportRow,
 } from "@/src/lib/liveStorage";
 
-import QuestionView from "@/src/components/live/QuestionView";
-import AnswerReveal from "@/src/components/live/AnswerReveal";
-import FinalBoard from "@/src/components/live/FinalBoard";
-import TimeBar from "@/src/components/live/TimerBar";
+import LecturerLiveLayout from "./LecturerLiveLayout";
 
 /* ---------------- helpers ---------------- */
 
@@ -235,7 +232,8 @@ export default function LecturerLiveFlow() {
   const s = socket;
 
   const [joinedCount, setJoinedCount] = useState(0);
-  const [counts, setCounts] = useState<[number, number, number, number]>([0, 0, 0, 0]);
+  const [counts, setCounts] = useState<number[]>([]);
+
   const [answeredCount, setAnsweredCount] = useState(0);
 
   // join room once per pin
@@ -279,25 +277,32 @@ export default function LecturerLiveFlow() {
       if (p.questionIndex !== qIndex) return;
       if (!Array.isArray(p.counts)) return;
 
-      const a0 = Number(p.counts[0] ?? 0);
-      const a1 = Number(p.counts[1] ?? 0);
-      const a2 = Number(p.counts[2] ?? 0);
-      const a3 = Number(p.counts[3] ?? 0);
+      const incoming = p.counts.map((x: any) => Math.max(0, Number(x ?? 0)));
 
-      // prevent pointless rerenders
+      // determine how many options THIS question has (so no ghost bars)
+      const optionCount =
+        q?.type === "true_false"
+          ? 2
+          : q?.type === "multiple_choice"
+          ? Math.min(5, (q.answers ?? []).length)
+          : incoming.length;
+
+      const next = incoming.slice(0, optionCount);
+
       setCounts((prev) => {
-        if (prev[0] === a0 && prev[1] === a1 && prev[2] === a2 && prev[3] === a3) return prev;
-        return [a0, a1, a2, a3];
+        if (prev.length === next.length && prev.every((v, i) => v === next[i])) return prev;
+        return next;
       });
 
-      setAnsweredCount(Math.max(0, a0 + a1 + a2 + a3));
+      setAnsweredCount(next.reduce((sum: number, v: number) => sum + v, 0));
     };
 
     s.on("answer:count", onCount);
     return () => {
       s.off("answer:count", onCount);
     };
-  }, [qIndex]);
+  }, [qIndex, q?.type, (q as any)?.answers?.length]);
+
 
   // ---------------- timer ----------------
 
@@ -326,7 +331,16 @@ export default function LecturerLiveFlow() {
     setNow(Date.now());
     autoRevealedRef.current = false;
 
-    setCounts([0, 0, 0, 0]);
+    const optionCount =
+      q.type === "true_false"
+        ? 2
+        : q.type === "multiple_choice"
+        ? Math.min(5, (q.answers ?? []).length)
+        : 0;
+
+    setCounts(Array.from({ length: optionCount }, () => 0));
+    setAnsweredCount(0);
+
     setAnsweredCount(0);
 
     const common = {
@@ -549,160 +563,32 @@ export default function LecturerLiveFlow() {
   const answersText = (q.answers ?? []).map((a: any) => a.text ?? "");
 
   return (
-    <div className="min-h-screen app-surface app-bg">
+  <div className="min-h-screen app-surface app-bg">
+    <LecturerLiveLayout
+      courseId={courseId}
+      gameId={gameId}
+      game={game}
+      course={course}
+      pin={pin}
+      status={status as any}
+      q={q as any}
+      qIndex={qIndex}
+      totalQuestions={questions.length}
+      startAt={startAt}
+      durationSec={durationSec}
+      joinedCount={joinedCount}
+      answeredCount={answeredCount}
+      counts={counts}
+      ranked={ranked}
+      onShowAnswer={() => showAnswer(false)}
+      onNext={next}
+      onDisconnectAfterReportClick={() => {
+        try {
+          s.disconnect();
+        } catch {}
+      }}
+    />
+  </div>
+);
 
-      <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
-        <div className="mt-6 grid gap-4">
-          <section
-            className="
-              relative overflow-hidden rounded-3xl
-              border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
-              dark:border-slate-800/70 dark:bg-slate-950/45
-            "
-          >
-            <div className="relative">
-              {status === "question" && (
-                <>
-                  {startAt ? (
-                    <div className="mb-5">
-                        <TimeBar mode="computed" duration={durationSec} startAt={startAt} />
-                    </div>
-                    ) : null}
-
-                  <div
-                    className="
-                      rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                      dark:border-slate-800/70 dark:bg-slate-950/55
-                    "
-                  >
-                    <QuestionView q={q} index={qIndex} total={questions.length} />
-                  </div>
-
-                  <div className="mt-5 flex justify-end">
-                    <button
-                      onClick={() => showAnswer(false)}
-                      className="
-                        inline-flex items-center justify-center rounded-full px-8 py-3 text-sm font-semibold text-white
-                        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-                        shadow-[0_10px_25px_rgba(37,99,235,0.18)]
-                        hover:opacity-95 active:scale-[0.99] transition
-                        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
-                      "
-                    >
-                      Show Answer
-                    </button>
-                  </div>
-
-                  <div
-                    className="
-                      mt-4 rounded-2xl border border-slate-200/70 bg-white/60 p-4 shadow-sm backdrop-blur
-                      dark:border-slate-800/70 dark:bg-slate-950/45
-                    "
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        Live room
-                      </p>
-
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="
-                            rounded-full border border-slate-200/70 bg-white/70
-                            px-2.5 py-1 text-[11px] font-semibold text-slate-600
-                            dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300
-                          "
-                        >
-                          Joined {joinedCount}
-                        </span>
-                        <span
-                          className="
-                            rounded-full border border-slate-200/70 bg-white/70
-                            px-2.5 py-1 text-[11px] font-semibold text-slate-600
-                            dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300
-                          "
-                        >
-                          Answered {answeredCount}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {status === "answer" && (
-                <>
-                  <div
-                    className="
-                      rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                      dark:border-slate-800/70 dark:bg-slate-950/55
-                    "
-                  >
-                    {q?.type === "multiple_choice" || q?.type === "true_false" ? (
-                        <AnswerReveal
-                            type={q.type}
-                            counts={counts} // counts in display order
-                            answersText={(q.answers ?? []).map((a: any) => a.text ?? "")}
-                            correctIndices={toCorrectIndices(q)} // your helper (supports multi-correct)
-                        />
-                        ) : q?.type === "matching" ? (
-                        <AnswerReveal
-                            type="matching"
-                            correctPairs={(q.matches ?? []).slice(0, 5)}
-                            matchingTotalPairs={(q.matches ?? []).slice(0, 5).length}
-                            // optional if you have solved count:
-                            // matchingSolvedCount={...}
-                        />
-                        ) : (
-                        <AnswerReveal
-                            type="input"
-                            acceptedAnswers={q.acceptedAnswers ?? []}
-                            // optional if you collect student answers:
-                            // studentAnswers={...}
-                        />
-                        )}
-
-                  </div>
-
-                  <div className="mt-6 flex justify-end">
-                    <button
-                      onClick={next}
-                      className="
-                        inline-flex items-center justify-center rounded-full px-10 py-3 text-sm font-semibold text-white
-                        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-                        shadow-[0_10px_25px_rgba(37,99,235,0.18)]
-                        hover:opacity-95 active:scale-[0.99] transition
-                        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
-                      "
-                    >
-                      Next
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {status === "final" && (
-                <div
-                  className="
-                    rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                    dark:border-slate-800/70 dark:bg-slate-950/55
-                  "
-                >
-                  <FinalBoard
-                    ranked={ranked}
-                    total={questions.length}
-                    reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
-                    onReportClick={() => {
-                      try {
-                        s.disconnect();
-                      } catch {}
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          </section>
-        </div>
-      </main>
-    </div>
-  );
 }
