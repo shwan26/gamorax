@@ -85,6 +85,8 @@ type Room = {
   scoredQuestions: Set<number>;
   scores: Map<string, Score>;
   durationByQuestion: Map<number, number>;
+  connections: Map<string, Set<string>>; // studentId -> socketIds
+
 };
 
 /* -------------------- Helpers -------------------- */
@@ -118,6 +120,7 @@ function getRoom(pin: string): Room {
       scoredQuestions: new Set(),
       scores: new Map(),
       durationByQuestion: new Map(),
+      connections: new Map(),
     });
   }
   return rooms.get(pin)!;
@@ -242,9 +245,16 @@ const io = new IOServer(httpServer, {
   transports: ["websocket"],
 });
 
-function emitRoomCount(pin: string, room: Room) {
-  io.to(pin).emit("room:count", { totalJoined: room.students.size });
+function emitRoomCount(pin: string, room?: Room) {
+  const r = room ?? rooms.get(pin) ?? getRoom(pin);
+
+  // ✅ count ONLY students (unique studentId currently connected)
+  const totalJoined = r.connections.size;
+
+  io.to(pin).emit("room:count", { totalJoined });
 }
+
+
 
 /* -------------------- Socket Logic -------------------- */
 
@@ -253,20 +263,35 @@ io.on("connection", (socket: Socket) => {
   socket.on("join", ({ pin, student }) => {
     if (!pin) return;
     socket.join(pin);
+    socket.data.pin = pin;
+    socket.data.studentId = student?.studentId;
+    socket.data.role = "student";
 
     const room = getRoom(pin);
 
     if (room.meta) socket.emit("session:meta", room.meta);
-    if (student?.studentId) {
-      room.students.set(student.studentId, student);
-      room.scores.set(
-        student.studentId,
-        room.scores.get(student.studentId) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] }
-      );
+    const sid = String(student?.studentId ?? "").trim();
+    const nm = String(student?.name ?? "").trim();
 
-      emitRoomCount(pin, room);
-      io.to(pin).emit("students:update", [...room.students.values()]);
+    if (!sid || !nm) {
+      // still joined the socket room, but not a valid student identity
+      // (optional) tell client why it wasn't counted
+      socket.emit("join:error", { message: "Missing studentId or name" });
+      return;
     }
+
+    room.students.set(sid, { ...student, studentId: sid, name: nm });
+    room.scores.set(
+      sid,
+      room.scores.get(sid) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] }
+    );
+
+    const set = room.connections.get(sid) ?? new Set<string>();
+    set.add(socket.id);
+    room.connections.set(sid, set);
+
+    emitRoomCount(pin, room);
+    io.to(pin).emit("students:update", [...room.students.values()]);
 
     const cur = room.current;
 
@@ -285,6 +310,31 @@ io.on("connection", (socket: Socket) => {
     }
 
   });
+
+  socket.on("lecturer:join", ({ pin }) => {
+    if (!pin) return;
+    socket.join(pin);
+    socket.data.pin = pin;
+    socket.data.role = "lecturer";
+
+    const room = getRoom(pin);
+
+    // send current view immediately
+    emitRoomCount(pin, room);
+    socket.emit("students:update", [...room.students.values()]);
+
+    if (room.meta) socket.emit("session:meta", room.meta);
+
+    const cur = room.current;
+    if (cur) {
+      socket.emit("question:show", topublicQuestion(cur));
+      const { counts, totalAnswers } = countsForRoom(room, cur.questionIndex);
+      socket.emit("answer:count", { questionIndex: cur.questionIndex, counts, totalAnswers });
+      socket.emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
+    }
+  });
+
+
 
   // META
   socket.on("meta:set", ({ pin, meta }) => {
@@ -612,13 +662,54 @@ io.on("connection", (socket: Socket) => {
   socket.on("leave", ({ pin, studentId }) => {
     if (!pin || !studentId) return;
     const room = getRoom(pin);
-    room.students.delete(studentId);
-    room.scores.delete(studentId);
-    for (const m of room.answers.values()) m.delete(studentId);
+
+    // remove socket from connection set
+    const set = room.connections.get(studentId);
+    if (set) {
+      set.delete(socket.id);
+      if (set.size === 0) room.connections.delete(studentId);
+    }
+
+    // remove student only if no more sockets for that student
+    if (!room.connections.has(studentId)) {
+      room.students.delete(studentId);
+      room.scores.delete(studentId); // keep or remove depending on your UX
+      for (const m of room.answers.values()) m.delete(studentId);
+    }
+
     socket.leave(pin);
     emitRoomCount(pin, room);
     io.to(pin).emit("students:update", [...room.students.values()]);
   });
+
+
+  socket.on("disconnecting", () => {
+    const pin = socket.data?.pin as string | undefined;
+    const studentId = socket.data?.studentId as string | undefined;
+    const role = socket.data?.role as string | undefined;
+
+    if (!pin || role !== "student" || !studentId) return;
+
+    const room = rooms.get(pin);
+    if (!room) return;
+
+    const set = room.connections.get(studentId);
+    if (set) {
+      set.delete(socket.id);
+      if (set.size === 0) {
+        room.connections.delete(studentId);
+        room.students.delete(studentId);
+
+        // IMPORTANT: don't delete scores here (so reconnect doesn't lose progress)
+        io.to(pin).emit("students:update", [...room.students.values()]);
+        emitRoomCount(pin, room);
+      } else {
+        room.connections.set(studentId, set);
+      }
+    }
+  });
+
+
 });
 
 /* -------------------- Boot -------------------- */

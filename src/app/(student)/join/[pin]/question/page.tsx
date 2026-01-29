@@ -13,6 +13,8 @@ import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
 import AnswerGrid from "@/src/components/live/AnswerGrid";
 
 import { Trophy, CheckCircle2, XCircle, Timer } from "lucide-react";
+import { getAvatarSrc } from "@/src/lib/studentAvatar";
+
 
 type Phase = "question" | "waiting" | "answer" | "final";
 
@@ -136,6 +138,8 @@ export default function StudentQuestionPage() {
 
   // reveal payload
   const [reveal, setReveal] = useState<any>(null);
+  const avatarSrc = useMemo(() => getAvatarSrc(me, 40), [me]);
+
   const onScore = (p: any) => {
     if (!p || !me?.studentId) return;
     if (p.studentId !== me.studentId) return;
@@ -438,83 +442,125 @@ export default function StudentQuestionPage() {
 
       <div className="mx-auto max-w-4xl px-4 py-6">
         {/* header */}
-        <GlassCard className="mb-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                PIN {pin} • Q{Number(q?.number ?? 0) || "-"} / {Number(q?.total ?? 0) || "-"}
-              </div>
-              <h1 className="mt-1 text-lg font-extrabold text-slate-900 dark:text-slate-50">
-                {q?.text ?? "Waiting for question..."}
-              </h1>
-            </div>
+        {phase !== "final" ? (
+          <GlassCard className="mb-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                {/* top row: avatar + pin + progress */}
+                <div className="flex items-center gap-3">
+                  {me ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+                        <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
+                          {me.name}
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          PIN {pin} • Q{Number(q?.number ?? 0) || "-"} / {Number(q?.total ?? 0) || "-"}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      PIN {pin} • Q{Number(q?.number ?? 0) || "-"} / {Number(q?.total ?? 0) || "-"}
+                    </div>
+                  )}
+                </div>
 
-            {/* ✅ timer only during question phase */}
-            {phase === "question" ? (
-              <div className="w-full sm:w-[360px]">
-                <div className="flex items-center justify-between">
-                  <div className="inline-flex items-center gap-2">
-                    <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      Time remaining
+                {/* question text */}
+                <h1 className="mt-3 text-lg font-extrabold text-slate-900 dark:text-slate-50">
+                  {q?.text ?? "Waiting for question..."}
+                </h1>
+              </div>
+
+              {/* timer only during question phase */}
+              {phase === "question" ? (
+                <div className="w-full sm:w-[360px]">
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-2">
+                      <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        Time remaining
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {q?.startAt ? `${timeLeft}s` : "-"}
                     </span>
                   </div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    {q?.startAt ? `${timeLeft}s` : "-"}
-                  </span>
+
+                  <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
+                    <div
+                      className="h-full transition-[width] duration-100"
+                      style={{
+                        width: q?.startAt && maxSec > 0 ? `${(timeLeft / maxSec) * 100}%` : "0%",
+                        background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
+                      }}
+                    />
+                  </div>
                 </div>
-
-                <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                  <div
-                    className="h-full transition-[width] duration-100"
-                    style={{
-                      width: q?.startAt && maxSec > 0 ? `${(timeLeft / maxSec) * 100}%` : "0%",
-                      background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="w-full sm:w-[360px]" />
-            )}
-          </div>
-
-          {/* status + last result (single place, no duplicates) */}
-          <div className="mt-4">
-            {phase === "waiting" ? (
-              <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
-                Waiting for lecturer to reveal…
-              </p>
-            ) : phase === "answer" && lastWasCorrect === true ? (
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
-                <CheckCircle2 className="h-4 w-4" />
-                Correct! +{lastEarnedPoints} points
-              </div>
-            ) : phase === "answer" && lastWasCorrect === false ? (
-              <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
-                <XCircle className="h-4 w-4" />
-                Incorrect · +0 points
-              </div>
-            ) : phase === "answer" ? (
-              <p className="text-sm font-semibold text-sky-600 dark:text-sky-300">
-                {revealText ?? "Answer revealed"}
-              </p>
-            ) : phase === "final" ? (
-              <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">Quiz finished</p>
-            ) : (
-              <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">Answer now</p>
-            )}
-
-            <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Total correct: <span className="font-semibold">{correctCount}</span> • Total points:{" "}
-              <span className="font-semibold">{totalPoints}</span>
+              ) : (
+                <div className="w-full sm:w-[360px]" />
+              )}
             </div>
-          </div>
-        </GlassCard>
+
+            {/* status + last result */}
+            <div className="mt-4">
+              {phase === "waiting" ? (
+                <p className="text-sm font-semibold text-amber-600 dark:text-amber-300">
+                  Waiting for lecturer to reveal…
+                </p>
+              ) : phase === "answer" && lastWasCorrect === true ? (
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Correct! +{lastEarnedPoints} points
+                </div>
+              ) : phase === "answer" && lastWasCorrect === false ? (
+                <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
+                  <XCircle className="h-4 w-4" />
+                  Incorrect · +0 points
+                </div>
+              ) : phase === "answer" ? (
+                <p className="text-sm font-semibold text-sky-600 dark:text-sky-300">
+                  {revealText ?? "Answer revealed"}
+                </p>
+              ) : (
+                <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">
+                  Answer now
+                </p>
+              )}
+
+              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                Total correct: <span className="font-semibold">{correctCount}</span> • Total points:{" "}
+                <span className="font-semibold">{totalPoints}</span>
+              </div>
+            </div>
+          </GlassCard>
+        ) : null}
 
         {/* ✅ final card OUTSIDE header */}
         {phase === "final" ? (
           <GlassCard className="mb-6">
+            {me ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+                        <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
+                          {me.name}
+                        </div>
+                        <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          PIN {pin} • {Number(q?.number ?? 0) || "-"} questions completed
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      PIN {pin} • {Number(q?.number ?? 0) || "-"} questions completed
+                    </div>
+                  )}
             <div className="flex flex-col items-center gap-4 py-5 text-center">
               <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
                 <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />

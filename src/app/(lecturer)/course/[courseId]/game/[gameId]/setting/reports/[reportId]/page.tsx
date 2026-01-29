@@ -5,8 +5,13 @@ import { useParams } from "next/navigation";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import { getLatestLiveReportByGame } from "@/src/lib/liveStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
+
+import {
+  getReportById,
+  computeLiveReportStats,
+  type LiveReport,
+} from "@/src/lib/liveStorage";
 
 import {
   Download,
@@ -16,9 +21,13 @@ import {
   HelpCircle,
   ArrowUpAZ,
   ArrowDownZA,
+  Users,
+  BarChart3,
+  Timer,
+  Coins,
 } from "lucide-react";
 
-type SortKey = "rank" | "studentId" | "name" | "score" | "points";
+type SortKey = "rank" | "studentId" | "name" | "score" | "points" | "timeSpent";
 type SortDir = "asc" | "desc";
 
 type Row = {
@@ -27,6 +36,7 @@ type Row = {
   name: string;
   score: number;
   points: number;
+  timeSpent: number;
 };
 
 function fmt(iso?: string) {
@@ -101,13 +111,14 @@ function medal(rank: number) {
   return null;
 }
 
-export default function ReportPage() {
-  const params = useParams<{ courseId?: string; gameId?: string }>();
+export default function ReportDetailPage() {
+  const params = useParams<{ courseId?: string; gameId?: string; reportId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
+  const reportId = (params?.reportId ?? "").toString();
 
-  const report = useMemo(
-    () => (gameId ? getLatestLiveReportByGame(gameId) : null),
-    [gameId]
+  const report = useMemo<LiveReport | null>(
+    () => (reportId ? getReportById(reportId) : null),
+    [reportId]
   );
 
   const game = useMemo<Game | null>(() => (gameId ? getGameById(gameId) : null), [gameId]);
@@ -118,8 +129,14 @@ export default function ReportPage() {
   }, [game?.courseId]);
 
   const questions = useMemo(() => (gameId ? getQuestions(gameId) : []), [gameId]);
+  const totalQ = questions.length || report?.totalQuestions || 0;
 
   const finishIso = report?.lastQuestionAt || report?.savedAt || "";
+
+  const stats = useMemo(() => {
+    if (!report) return null;
+    return report.stats ?? computeLiveReportStats(report.rows ?? []);
+  }, [report]);
 
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -127,21 +144,23 @@ export default function ReportPage() {
   const rankedRows: Row[] = useMemo(() => {
     if (!report) return [];
     const rows: Row[] = (report.rows ?? []).map((r) => ({
-      rank: 0,
-      studentId: String(r.studentId ?? ""),
-      name: String(r.name ?? ""),
-      score: Number(r.score ?? 0),
-      points: Number(r.points ?? 0),
+        rank: 0,
+        studentId: String(r.studentId ?? ""),
+        name: String(r.name ?? ""),
+        score: Number(r.score ?? 0),
+        points: Number(r.points ?? 0),
+        timeSpent: Number((r as any).totalTime ?? 0), // ✅ from storage
     }));
 
     rows.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      if (b.score !== a.score) return b.score - a.score;
-      return a.studentId.localeCompare(b.studentId);
+        if (b.points !== a.points) return b.points - a.points;
+        if (b.score !== a.score) return b.score - a.score;
+        return a.studentId.localeCompare(b.studentId);
     });
 
     return rows.map((r, i) => ({ ...r, rank: i + 1 }));
-  }, [report]);
+    }, [report]);
+
 
   const displayRows = useMemo(() => {
     const rows = [...rankedRows];
@@ -166,11 +185,15 @@ export default function ReportPage() {
 
   function downloadCSV() {
     if (!report) return;
+
     const quizTitle = game?.quizNumber ?? "";
-    const totalQ = questions.length || report.totalQuestions || 0;
+    const totalQuestions = questions.length || report.totalQuestions || 0;
+    const s = stats ?? computeLiveReportStats(report.rows ?? []);
 
     const meta: string[][] = [
-      ["Report Type", "Quiz Report"],
+      ["Report Type", "Quiz Report (Detail)"],
+      ["Report ID", report.id],
+      ["Saved At", report.savedAt ? fmt(report.savedAt) : "-"],
       ["Finished At", finishIso ? fmt(finishIso) : "-"],
     ];
 
@@ -185,18 +208,32 @@ export default function ReportPage() {
 
     meta.push(
       ["Quiz Title", quizTitle],
-      ["Total Questions", String(totalQ)],
+      ["PIN", report.pin],
+      ["Total Questions", String(totalQuestions)],
       ["Point Rule", "points += (correct answers * 100) + (10 * time bonus)"],
+      ["", ""],
+      ["STATISTICS", ""],
+      ["Students", String(s.students)],
+      ["Score Min", String(s.score.min)],
+      ["Score Max", String(s.score.max)],
+      ["Score Avg", String(s.score.avg)],
+      ["Points Min", String(s.points.min)],
+      ["Points Max", String(s.points.max)],
+      ["Points Avg", String(s.points.avg)],
+      ["Time Min (s)", String(s.timeSpent.min)],
+      ["Time Max (s)", String(s.timeSpent.max)],
+      ["Time Avg (s)", String(s.timeSpent.avg)],
       ["", ""]
     );
 
-    const header = ["Rank", "Student ID", "Name", `Score (${totalQ})`, "Points"];
+    const header = ["Rank", "Student ID", "Name", `Score (${totalQuestions})`, "Points", "Time Spent (s)"];
     const rows = rankedRows.map((r) => [
       String(r.rank),
       r.studentId,
       r.name,
       r.score.toString(),
       String(r.points),
+      String(r.timeSpent),
     ]);
 
     const csvLines = [
@@ -216,8 +253,6 @@ export default function ReportPage() {
     URL.revokeObjectURL(url);
   }
 
-  const totalQ = questions.length || report?.totalQuestions || 0;
-
   if (!gameId) {
     return (
       <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
@@ -229,7 +264,7 @@ export default function ReportPage() {
   if (!report) {
     return (
       <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
-        No report found yet.
+        No report found.
       </div>
     );
   }
@@ -272,6 +307,8 @@ export default function ReportPage() {
     );
   };
 
+  const s = stats ?? computeLiveReportStats(report.rows ?? []);
+
   return (
     <div>
       {/* dot pattern */}
@@ -296,10 +333,13 @@ export default function ReportPage() {
             </div>
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                Report
+                Report Detail
               </h3>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {game?.quizNumber ?? "-"} • {totalQ} questions
+                {game?.quizNumber ?? "-"} • {totalQ} questions • PIN {report.pin}
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Report ID: <span className="font-mono">{report.id}</span>
               </p>
             </div>
           </div>
@@ -353,6 +393,65 @@ export default function ReportPage() {
           </div>
         </div>
 
+        {/* statistics */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200">
+            <div className="flex items-start gap-3">
+              <Users className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Students
+                </div>
+                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50">
+                  {s.students}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200">
+            <div className="flex items-start gap-3">
+              <BarChart3 className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Score (min / avg / max)
+                </div>
+                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50 tabular-nums">
+                  {s.score.min} / {s.score.avg} / {s.score.max}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200">
+            <div className="flex items-start gap-3">
+              <Coins className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Points (min / avg / max)
+                </div>
+                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50 tabular-nums">
+                  {s.points.min} / {s.points.avg} / {s.points.max}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200 sm:col-span-3">
+            <div className="flex items-start gap-3">
+              <Timer className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  Time spent (seconds) — min / avg / max
+                </div>
+                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50 tabular-nums">
+                  {s.timeSpent.min} / {s.timeSpent.avg} / {s.timeSpent.max}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* table */}
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/60 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40">
           <div className="overflow-x-auto">
@@ -364,6 +463,7 @@ export default function ReportPage() {
                   <Th label="Name" sort="name" />
                   <Th label={`Score (${totalQ})`} sort="score" right />
                   <Th label="Points" sort="points" right />
+                  <Th label="Time Spent (s)" sort="timeSpent" right />
                 </tr>
               </thead>
 
@@ -401,6 +501,10 @@ export default function ReportPage() {
                       <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#2563EB] dark:text-[#A7F3FF]">
                         {r.points}
                       </td>
+
+                      <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#2563EB] dark:text-[#A7F3FF]">
+                        {r.timeSpent}
+                      </td>
                     </tr>
                   );
                 })}
@@ -408,7 +512,7 @@ export default function ReportPage() {
                 {displayRows.length === 0 && (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-4 py-8 text-center text-sm text-slate-600 dark:text-slate-300"
                     >
                       <span className="inline-flex items-center gap-2">
