@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
 import Link from "next/link";
@@ -8,6 +8,12 @@ import { useParams, usePathname } from "next/navigation";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
+import {
+  type Question,
+  getQuestions,
+  isQuestionComplete,
+} from "@/src/lib/questionStorage";
+
 import { Settings, FileUp, Timer, BarChart3 } from "lucide-react";
 
 export default function SettingLayout({
@@ -24,6 +30,10 @@ export default function SettingLayout({
   const [game, setGame] = useState<Game | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
 
+  // ✅ load questions for allGreen
+  const [questions, setQuestions] = useState<Question[]>([]);
+
+  // Load game + course
   useEffect(() => {
     if (!courseId || !gameId) return;
 
@@ -33,6 +43,31 @@ export default function SettingLayout({
     setGame(g);
     setCourse(c);
   }, [courseId, gameId]);
+
+  // ✅ Load questions
+  useEffect(() => {
+    if (!gameId) return;
+    const stored = getQuestions(gameId);
+    setQuestions(Array.isArray(stored) ? stored : []);
+  }, [gameId]);
+
+  // (optional) keep in sync if questions updated in another tab
+  useEffect(() => {
+    if (!gameId) return;
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key) return;
+      if (e.key === `gamorax_questions_${gameId}`) {
+        const stored = getQuestions(gameId);
+        setQuestions(Array.isArray(stored) ? stored : []);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [gameId]);
+
+  const allGreen = useMemo(() => {
+    return questions.length > 0 && questions.every((q) => isQuestionComplete(q));
+  }, [questions]);
 
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
   if (!game || !course) return <div className="p-6">Loading...</div>;
@@ -55,6 +90,8 @@ export default function SettingLayout({
         title={`${game.quizNumber} — ${course.courseCode}${
           course.section ? ` • Section ${course.section}` : ""
         }${course.semester ? ` • ${course.semester}` : ""}`}
+        canStartLive={allGreen}
+        liveBlockReason="Some questions are incomplete. Please fix the red/grey ones before going live."
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
