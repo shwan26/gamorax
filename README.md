@@ -1,4 +1,4 @@
-# Gamorax 🎮 Version 1.1⚡
+# Gamorax 🎮 Version 1.2⚡
 A real-time quiz game built for classroom live sessions with lobby PIN join, live questions, scoring, and downloadable reports.
 
 > Built with Next.js + Socket.IO. Designed to be simple to host, fast to join, and fun to play.
@@ -6,8 +6,14 @@ A real-time quiz game built for classroom live sessions with lobby PIN join, liv
 ---
 
 ## Key Features
+### Quiz Features
+- multiple choice
+- true/false
+- matching
+- answer input
+
 ### Live Game
-- ✅ Lecturer hosts a quiz → system generates a **PIN**
+- ✅ Lecturer hosts a quiz → system generates a **PIN** 
 - ✅ Students join via **/join/[pin]** (QR code supported)
 - ✅ Live lobby shows joined students (name + ID + avatar)
 - ✅ Lecturer starts the session → students receive questions in real time
@@ -27,7 +33,7 @@ A real-time quiz game built for classroom live sessions with lobby PIN join, liv
 
 ## Tech Stack
 - **Frontend:** Next.js (App Router), TypeScript
-- **Backend:** Node.js (`server.js`) + Socket.IO
+- **Backend:** Node.js + Socket.IO
 - **Storage (current):** `localStorage` for courses/games/live sessions/reports
 - **UI:** QR join, modern lobby/host view
 
