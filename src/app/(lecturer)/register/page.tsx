@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Navbar from "@/src/components/Navbar";
 import GradientButton from "@/src/components/GradientButton";
-import { fakeRegister } from "@/src/lib/fakeAuth";
+import { supabase } from "@/src/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, GraduationCap } from "lucide-react";
 
@@ -24,10 +24,44 @@ export default function LecturerRegister() {
 
   async function handleRegister() {
     try {
-      fakeRegister(form);
-      router.push("/dashboard");
+      const firstName = form.firstName.trim();
+      const lastName = form.lastName.trim();
+      const email = form.email.trim().toLowerCase();
+      const password = form.password;
+
+      if (!firstName || !lastName || !email || !password) {
+        alert("Please fill in all fields.");
+        return;
+      }
+
+      const emailRedirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback`
+          : undefined;
+
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo,
+          data: {
+            role: "lecturer",
+            first_name: firstName,
+            last_name: lastName,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      alert(
+        "✅ Register success! Please check your email and confirm your account, then login."
+      );
+
+      // When email confirmation is ON, user is not logged in yet.
+      router.push("/login");
     } catch (err: any) {
-      alert(err.message);
+      alert(err?.message ?? "Register failed");
     }
   }
 

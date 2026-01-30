@@ -3,9 +3,9 @@
 import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import { saveCourse } from "@/src/lib/courseStorage";
 import GradientButton from "@/src/components/GradientButton";
-import { BookOpen, PlusCircle } from "lucide-react";
+import { BookOpen } from "lucide-react";
+import { supabase } from "@/src/lib/supabaseClient";
 
 function Field({
   label,
@@ -63,27 +63,44 @@ export default function CreateCoursePage() {
     semester: "",
   });
 
+  const [saving, setSaving] = useState(false);
+
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  function handleCreate() {
-    if (!form.courseCode.trim() || !form.courseName.trim()) {
+  async function handleCreate() {
+    const courseCode = form.courseCode.trim();
+    const courseName = form.courseName.trim();
+    const section = form.section.trim();
+    const semester = form.semester.trim();
+
+    if (!courseCode || !courseName) {
       alert("Please fill in Course Code and Course Name.");
       return;
     }
 
-    const id = crypto.randomUUID();
+    setSaving(true);
 
-    saveCourse({
-      id,
-      courseCode: form.courseCode.trim(),
-      courseName: form.courseName.trim(),
-      section: form.section.trim() || undefined,
-      semester: form.semester.trim() || undefined,
-    });
+    const { data, error } = await supabase
+      .from("courses_api")
+      .insert({
+        courseCode,
+        courseName,
+        section: section || null,
+        semester: semester || null,
+      })
+      .select("id")
+      .single();
 
-    router.push(`/course/${id}`);
+    setSaving(false);
+
+    if (error) {
+      alert("Create course failed: " + error.message);
+      return;
+    }
+
+    router.push(`/course/${data.id}`);
   }
 
   return (
@@ -91,7 +108,6 @@ export default function CreateCoursePage() {
       <Navbar />
 
       <main className="mx-auto max-w-4xl px-4 pb-12 pt-8 sm:pt-12 sm:pb-16">
-        {/* header */}
         <div className="text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
             <span className="bg-gradient-to-r from-[#020024] to-[#00D4FF] bg-clip-text text-transparent dark:from-[#A7F3FF] dark:via-[#00D4FF] dark:to-[#7C3AED]">
@@ -104,7 +120,6 @@ export default function CreateCoursePage() {
           </p>
         </div>
 
-        {/* card */}
         <div
           className="
             relative mt-8 overflow-hidden rounded-3xl
@@ -113,7 +128,6 @@ export default function CreateCoursePage() {
             dark:border-slate-800/70 dark:bg-slate-950/55
           "
         >
-          {/* dot pattern like Landing cards */}
           <div
             className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
             style={{
@@ -122,12 +136,10 @@ export default function CreateCoursePage() {
               backgroundSize: "18px 18px",
             }}
           />
-          {/* glow blobs */}
           <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/20 blur-3xl" />
           <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#020024]/10 blur-3xl dark:bg-[#020024]/30" />
 
           <div className="relative">
-            {/* top row */}
             <div className="flex items-center gap-4">
               <div
                 className="
@@ -151,7 +163,6 @@ export default function CreateCoursePage() {
               </div>
             </div>
 
-            {/* form */}
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <Field
                 label="Course Code"
@@ -188,13 +199,9 @@ export default function CreateCoursePage() {
               />
             </div>
 
-            {/* actions */}
             <div className="mt-6 space-y-3">
-              <GradientButton
-                onClick={handleCreate}
-               
-              >
-                Create Course
+              <GradientButton onClick={handleCreate} disabled={saving}>
+                {saving ? "Creating..." : "Create Course"}
               </GradientButton>
 
               <p className="text-center text-xs text-slate-500 dark:text-slate-400">
