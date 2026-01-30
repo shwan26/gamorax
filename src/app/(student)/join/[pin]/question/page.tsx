@@ -12,8 +12,7 @@ import { Trophy, CheckCircle2, XCircle, Timer } from "lucide-react";
 import { getAvatarSrc } from "@/src/lib/studentAvatar";
 import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
 import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
-import { getLiveMeta } from "@/src/lib/liveStorage";
-
+import { getLiveMeta, saveLiveMeta } from "@/src/lib/liveStorage";
 
 type Phase = "question" | "waiting" | "answer" | "final";
 
@@ -182,8 +181,9 @@ export default function StudentQuestionPage() {
 
   const [phase, setPhase] = useState<Phase>("question");
   const [q, setQ] = useState<any>(null);
-  const qRef = useRef<any>(null);
+  const metaRef = useRef<any>(null);
 
+  const qRef = useRef<any>(null);
   const [now, setNow] = useState(Date.now());
 
   // score state
@@ -226,6 +226,10 @@ export default function StudentQuestionPage() {
     }
   };
 
+  const correctCountRef = useRef(0);
+  useEffect(() => { correctCountRef.current = correctCount; }, [correctCount]);
+
+
   // keep qRef synced (so onReveal always reads latest question, not stale closure)
   useEffect(() => {
     qRef.current = q;
@@ -251,6 +255,14 @@ export default function StudentQuestionPage() {
     const doJoin = () => s.emit("join", { pin, student: me });
     if (s.connected) doJoin();
     s.on("connect", doJoin);
+
+    const onSessionMeta = (meta: any) => {
+      if (!meta) return;
+      metaRef.current = meta;     
+      saveLiveMeta(pin, meta);    
+    };
+
+    s.on("session:meta", onSessionMeta);
 
     const onQuestion = (question: any) => {
       setQ(question);
@@ -363,7 +375,7 @@ export default function StudentQuestionPage() {
       const cur = getCurrentStudent(); // gives email + id (your auth student)
       if (!cur || !me) return;
 
-      const meta = getLiveMeta(pin);
+      const meta = metaRef.current ?? getLiveMeta(pin);
 
       const totalQuestions =
         Number(qRef.current?.total ?? 0) || Number(scoredCount ?? 0) || 0;
@@ -385,7 +397,7 @@ export default function StudentQuestionPage() {
         quizTitle: meta?.quizTitle,
 
         totalQuestions,
-        correct: Number(correctCount ?? 0),
+        correct: Number(correctCountRef.current ?? 0),
         points: Number(final ?? 0),
 
         finishedAt: new Date().toISOString(),
@@ -401,6 +413,7 @@ export default function StudentQuestionPage() {
       s.off("question:show", onQuestion);
       s.off("answer:reveal", onReveal);
       s.off("final_results", onFinal);
+      s.off("session:meta", onSessionMeta);
       // do NOT disconnect
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -758,24 +771,6 @@ export default function StudentQuestionPage() {
                       : undefined
                   }
                 />
-              </div>
-            ) : null}
-
-            {/* Matching reveal */}
-            {phase === "answer" &&
-            q?.type === "matching" &&
-            Array.isArray(reveal?.correctPairs) ? (
-              <div className="mt-6 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/35">
-                <p className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
-                  Correct pairs
-                </p>
-                <ul className="mt-2 space-y-1 text-sm text-slate-700 dark:text-slate-200">
-                  {reveal.correctPairs.map((p: any, i: number) => (
-                    <li key={i}>
-                      • {String(p?.left ?? "")} — {String(p?.right ?? "")}
-                    </li>
-                  ))}
-                </ul>
               </div>
             ) : null}
           </>

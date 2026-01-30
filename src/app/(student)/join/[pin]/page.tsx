@@ -12,6 +12,7 @@ import { getOrCreateLiveStudent, writeLiveStudent } from "@/src/lib/liveStudentS
 import { getAvatarSrc, toLiveStudent } from "@/src/lib/studentAvatar";
 import { randomSeed } from "@/src/lib/dicebear";
 import { deriveStudentIdFromEmail } from "@/src/lib/studentAuthStorage";
+import { saveLiveMeta } from "@/src/lib/liveStorage";
 
 function DotPattern() {
   return (
@@ -117,6 +118,7 @@ export default function LobbyPage() {
           courseCode: resp?.meta?.courseCode,
           courseName: resp?.meta?.courseName,
         });
+        saveLiveMeta(pin, resp.meta);
       });
     };
 

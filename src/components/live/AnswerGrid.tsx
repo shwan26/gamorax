@@ -249,7 +249,7 @@ export default function AnswerGrid({ q, disabled, onSubmitChoice, onAttemptMatch
   }
 
   if (type === "true_false") {
-    const tfLabels = ["A", "B"] as const;
+    const tfLabels = ["T", "F"] as const;
 
     return (
       <div className="w-full">
