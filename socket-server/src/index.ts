@@ -259,15 +259,51 @@ function emitRoomCount(pin: string, room?: Room) {
 /* -------------------- Socket Logic -------------------- */
 
 io.on("connection", (socket: Socket) => {
+  // ✅ PIN check (ACK)
+  socket.on("pin:check", ({ pin }: { pin: string }, ack?: (resp: any) => void) => {
+    const p = String(pin ?? "").trim();
+    if (!p) return ack?.({ exists: false });
+
+    // IMPORTANT: DO NOT call getRoom(p) here (it creates rooms for random pins)
+    const room = rooms.get(p);
+    if (!room) return ack?.({ exists: false });
+
+    // define "active/live"
+    const hasMeta = Boolean(room.meta && Object.keys(room.meta).length > 0);
+    const hasQuestion = Boolean(room.current);
+
+    const exists = hasMeta || hasQuestion; // ✅ treat as live only when real data exists
+    if (!exists) return ack?.({ exists: false });
+
+    // return info for lobby display
+    return ack?.({
+      exists: true,
+      meta: {
+        quizTitle: room.meta?.quizTitle,
+        courseCode: room.meta?.courseCode,
+        courseName: room.meta?.courseName,
+        section: room.meta?.section,
+        semester: room.meta?.semester,
+        gameId: room.meta?.gameId,
+      },
+      hasQuestion,
+      totalJoined: room.connections?.size ?? 0,
+    });
+  });
+
   // JOIN
   socket.on("join", ({ pin, student }) => {
     if (!pin) return;
+
+    const room = rooms.get(pin); // ✅ do not create
+    if (!room || (!room.meta && !room.current)) {
+      socket.emit("join:error", { message: "PIN not active" });
+      return;
+    }
     socket.join(pin);
     socket.data.pin = pin;
     socket.data.studentId = student?.studentId;
     socket.data.role = "student";
-
-    const room = getRoom(pin);
 
     if (room.meta) socket.emit("session:meta", room.meta);
     const sid = String(student?.studentId ?? "").trim();

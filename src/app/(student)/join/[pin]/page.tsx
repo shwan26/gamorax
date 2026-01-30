@@ -31,6 +31,15 @@ export default function LobbyPage() {
   const params = useParams<{ pin?: string }>();
   const pin = (params?.pin ?? "").trim();
 
+  type PinStatus = "checking" | "active" | "inactive" | "error";
+
+  const [pinStatus, setPinStatus] = useState<PinStatus>("checking");
+  const [liveMeta, setLiveMeta] = useState<{
+    quizTitle?: string;
+    courseCode?: string;
+    courseName?: string;
+  } | null>(null);
+
   const [mounted, setMounted] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -50,6 +59,26 @@ export default function LobbyPage() {
   const lockKey = useMemo(() => (pin ? `gamorax_lobby_locked_${pin}` : ""), [pin]);
   const [locked, setLocked] = useState(false);
 
+  const pinIsActive = pinStatus === "active";
+
+  const headerTitle =
+    pinStatus === "checking"
+      ? "Checking PIN…"
+      : pinStatus === "active"
+      ? (liveMeta?.quizTitle ? `Lobby: ${liveMeta.quizTitle}` : "Lobby ready")
+      : pinStatus === "inactive"
+      ? "No live session for this PIN"
+      : "Connection error";
+
+  const headerSubtitle =
+    pinStatus === "active"
+      ? `${liveMeta?.courseCode ?? ""}${liveMeta?.courseName ? " • " + liveMeta.courseName : ""}`
+      : pinStatus === "inactive"
+      ? "Ask your lecturer for the correct PIN, then try again."
+      : pinStatus === "error"
+      ? "Check your internet and try reconnecting."
+      : "Please wait…";
+
   const s = socket;
 
   useEffect(() => setMounted(true), []);
@@ -63,6 +92,48 @@ export default function LobbyPage() {
       setLocked(false);
     }
   }, [mounted, pin, lockKey]);
+
+  useEffect(() => {
+    if (!mounted || !pin || !ready) return;
+
+    s.connect();
+
+    const check = () => {
+      setPinStatus("checking");
+
+      // ✅ server should ACK with { exists: boolean, meta?: {...} }
+      s.emit("pin:check", { pin }, (resp: any) => {
+        const exists = Boolean(resp?.exists);
+
+        if (!exists) {
+          setPinStatus("inactive");
+          setLiveMeta(null);
+          return;
+        }
+
+        setPinStatus("active");
+        setLiveMeta({
+          quizTitle: resp?.meta?.quizTitle, 
+          courseCode: resp?.meta?.courseCode,
+          courseName: resp?.meta?.courseName,
+        });
+      });
+    };
+
+    if (s.connected) check();
+    s.on("connect", check);
+
+    const onErr = (err: any) => {
+      console.error("pin check connect_error:", err?.message ?? err);
+      setPinStatus("error");
+    };
+    s.on("connect_error", onErr);
+
+    return () => {
+      s.off("connect", check);
+      s.off("connect_error", onErr);
+    };
+  }, [mounted, pin, ready]);
 
   // load current student + session live student
   useEffect(() => {
@@ -120,6 +191,7 @@ export default function LobbyPage() {
 
       // keep session in sync so refresh/reconnect keeps the id
       writeLiveStudent(studentToJoin);
+      if (pinStatus !== "active") return;
 
       s.emit("join", { pin, student: studentToJoin });
       console.log("JOIN payload", { pin, studentToJoin });
@@ -142,7 +214,7 @@ export default function LobbyPage() {
       s.off("connect_error", onErr);
       // ❌ don't disconnect here because question page still needs socket
     };
-  }, [mounted, pin, ready, student, router, effectiveStudentId, name]);
+  }, [mounted, pin, ready, student, router, effectiveStudentId, name, pinStatus]);
 
 
   // ✅ Random avatar (disabled after save)
@@ -163,11 +235,17 @@ export default function LobbyPage() {
     writeLiveStudent(nextLive);
     setStudent(nextLive);
 
-    s.emit("join", { pin, student: nextLive });
+    if (pinStatus === "active") {
+      s.emit("join", { pin, student: nextLive });
+    }
   };
 
   // ✅ Save profile (name + studentId) then lock editing
   const handleSaveProfile = () => {
+    if (pinStatus !== "active") {
+      return alert("This PIN is not active right now. Please check with your lecturer.");
+    }
+
     if (locked) {
       // already saved -> go to lobby question waiting screen
       router.push(`/join/${encodeURIComponent(pin)}/question`);
@@ -240,8 +318,12 @@ export default function LobbyPage() {
 
           <div className="relative flex flex-col gap-2">
             <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50">
-              Waiting for host to start…
+              {headerTitle}
             </h2>
+
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {headerSubtitle}
+            </p>
 
             <div className="flex flex-wrap items-center gap-2">
               {/* ✅ bigger PIN */}
@@ -414,7 +496,7 @@ export default function LobbyPage() {
 
             <button
               onClick={handleSaveProfile}
-              disabled={locked}
+              disabled={locked || !pin}
               className={[
                 "w-full inline-flex items-center justify-center rounded-full px-6 py-3 text-sm font-semibold text-white",
                 "bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]",
@@ -424,7 +506,7 @@ export default function LobbyPage() {
               ].join(" ")}
               type="button"
             >
-              {locked ? "Continue" : "Save & Continue"}
+              {pinIsActive ? (locked ? "Continue" : "Save & Continue") : "PIN not active"}
             </button>
 
             <button

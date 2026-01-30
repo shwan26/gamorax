@@ -110,9 +110,10 @@ export default function LivePage() {
     };
 
     const doJoin = () => {
-      s.emit("join", { pin });
-      s.emit("meta:set", { pin, meta });
+      s.emit("lecturer:join", { pin }); 
+      s.emit("meta:set", { pin, meta }); 
     };
+
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
       setStudents(Array.isArray(list) ? list : []);

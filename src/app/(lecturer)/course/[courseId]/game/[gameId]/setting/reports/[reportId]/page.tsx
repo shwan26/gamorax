@@ -6,6 +6,9 @@ import { useParams } from "next/navigation";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+
 
 import {
   getReportById,
@@ -322,45 +325,67 @@ export default function ReportDetailPage() {
       />
       {/* glow */}
       <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#00D4FF]/12 blur-3xl" />
-      <div className="pointer-events-none absolute -right-24 -bottom-24 h-64 w-64 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+        <div className="pointer-events-none absolute -right-24 -bottom-24 h-64 w-64 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
-      <div className="relative">
-        {/* header row */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/55">
-              <Trophy className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">
-                Report Detail
-              </h3>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {game?.quizNumber ?? "-"} • {totalQ} questions • PIN {report.pin}
-              </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Report ID: <span className="font-mono">{report.id}</span>
-              </p>
-            </div>
-          </div>
+        <div className="relative">
 
-          <button
-            onClick={downloadCSV}
-            type="button"
-            className="
-              inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold
-              bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB] text-white
-              shadow-[0_10px_25px_rgba(37,99,235,0.18)]
-              hover:shadow-[0_0_0_1px_rgba(56,189,248,0.30),0_18px_55px_rgba(56,189,248,0.16)]
-              transition-all
-              focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40
-              w-full sm:w-auto
-            "
-          >
-            <Download className="h-4 w-4" />
-            Download CSV
-          </button>
+            {/* header row */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            {/* left */}
+            <div className="flex items-start gap-3">
+                <div className="flex flex-col gap-2">
+                <Link
+                    href={`../reports`}
+                    className="
+                    inline-flex w-fit items-center gap-2 rounded-2xl px-3 py-2 text-xs font-semibold
+                    bg-white/80 text-slate-700 border border-slate-200/70
+                    hover:bg-slate-50/70 transition
+                    dark:bg-slate-950/55 dark:text-slate-200 dark:border-slate-800/70 dark:hover:bg-slate-900/30
+                    "
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to History
+                </Link>
+
+                <div className="flex items-start gap-3">
+                    <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/55">
+                    <Trophy className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+                    </div>
+
+                    <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">
+                        Report Detail
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                        {game?.quizNumber ?? "-"} • {totalQ} questions • PIN {report.pin}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Report ID: <span className="font-mono">{report.id}</span>
+                    </p>
+                    </div>
+                </div>
+                </div>
+            </div>
+
+            {/* right */}
+            <button
+                onClick={downloadCSV}
+                type="button"
+                className="
+                inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold
+                bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB] text-white
+                shadow-[0_10px_25px_rgba(37,99,235,0.18)]
+                hover:shadow-[0_0_0_1px_rgba(56,189,248,0.30),0_18px_55px_rgba(56,189,248,0.16)]
+                transition-all
+                focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40
+                w-full sm:w-auto
+                "
+            >
+                <Download className="h-4 w-4" />
+                Download CSV
+            </button>
         </div>
+
 
         {/* meta */}
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
