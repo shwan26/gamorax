@@ -356,7 +356,7 @@ export default function LecturerLiveLayout({
                 <FinalBoard
                   ranked={ranked}
                   total={totalQuestions}
-                  reportHref={`/course/${courseId}/game/${gameId}/setting/report`}
+                  reportHref={`/course/${courseId}/game/${gameId}/setting/reports`}
                   onReportClick={() => onDisconnectAfterReportClick?.()}
                 />
               </div>
