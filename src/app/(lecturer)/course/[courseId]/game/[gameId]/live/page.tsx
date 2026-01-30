@@ -162,6 +162,8 @@ export default function LivePage() {
         title={`${game.quizNumber} — ${course.courseCode}${
           course.section ? ` • Section ${course.section}` : ""
         }${course.semester ? ` • ${course.semester}` : ""}`}
+        canStartLive = {true}
+        liveBlockReason = ""
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
