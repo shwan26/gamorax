@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { createLiveSession } from "@/src/lib/liveStorage";
 import { ArrowLeft, Settings, Radio } from "lucide-react";
+import { useState, useEffect } from "react";
 
-export default function GameSubNavbar({ title }: { title: string }) {
+export default function GameSubNavbar({ title, canStartLive, liveBlockReason, }:
+   { title: string, canStartLive: boolean, liveBlockReason?: string }) {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const router = useRouter();
 
@@ -17,8 +19,18 @@ export default function GameSubNavbar({ title }: { title: string }) {
 
   const isSetting = pathname.startsWith(`${base}/setting`);
   const isLive = pathname.startsWith(`${base}/live`);
+  const [liveErr, setLiveErr] = useState<string | null>(null);
 
   const onClickLive = () => {
+    if (!canStartLive) {
+      setLiveErr(
+        liveBlockReason ??
+          "You can’t start Live yet. Please complete all questions (turn them green) before going live."
+      );
+      return;
+    }
+
+    setLiveErr(null);
     const session = createLiveSession(gameId);
     const pin = session.pin;
     router.push(`${base}/live?pin=${encodeURIComponent(pin)}`);
@@ -57,7 +69,9 @@ export default function GameSubNavbar({ title }: { title: string }) {
     return (
       <button
         type="button"
-        className={`${common} ${active ? activeCls : inactiveCls}`}
+        className={`${common} ${active ? activeCls : inactiveCls} ${
+          !canStartLive ? "opacity-60" : ""
+        }`}
         onClick={onClickLive}
       >
         <Icon className="h-4 w-4" />
@@ -65,6 +79,11 @@ export default function GameSubNavbar({ title }: { title: string }) {
       </button>
     );
   };
+
+  useEffect(() => {
+    if (canStartLive) setLiveErr(null);
+  }, [canStartLive]);
+
 
   return (
     // ✅ same container as LecturerNavbar
@@ -127,6 +146,11 @@ export default function GameSubNavbar({ title }: { title: string }) {
           </div>
         </div>
       </div>
+      {liveErr ? (
+        <div className="mt-3 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-3 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
+          {liveErr}
+        </div>
+      ) : null}
     </div>
   );
 }
