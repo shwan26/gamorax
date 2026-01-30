@@ -3,17 +3,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-
 import Navbar from "@/src/components/Navbar";
 import { socket } from "@/src/lib/socket";
-
 import type { LiveStudent } from "@/src/lib/liveStorage";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
-
 import AnswerGrid from "@/src/components/live/AnswerGrid";
-
 import { Trophy, CheckCircle2, XCircle, Timer } from "lucide-react";
 import { getAvatarSrc } from "@/src/lib/studentAvatar";
+import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
+import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
+import { getLiveMeta } from "@/src/lib/liveStorage";
 
 
 type Phase = "question" | "waiting" | "answer" | "final";
@@ -290,6 +289,28 @@ export default function StudentQuestionPage() {
 
       let isCorrect: boolean | null = null;
 
+      // prevent double-scoring same question
+      const qIndex = Number(curQ?.questionIndex ?? -1);
+      if (qIndex >= 0 && qIndex < scoredCount) return;
+
+      const pointsEarned =
+        isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
+
+      if (typeof isCorrect === "boolean") {
+        setLastWasCorrect(isCorrect);
+        setLastEarnedPoints(pointsEarned);
+
+        setCorrectCount((c) => c + (isCorrect ? 1 : 0));
+        setTotalPoints((p) => {
+          const next = p + pointsEarned;
+          totalPointsRef.current = next;
+          return next;
+        });
+
+        setScoredCount(qIndex >= 0 ? qIndex + 1 : (x) => x + 1);
+      }
+
+
       if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
         const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
         const mine = myChoiceRef.current ?? [];
@@ -335,9 +356,41 @@ export default function StudentQuestionPage() {
 
     const onFinal = () => {
       setPhase("final");
-      setFinalPoints(totalPointsRef.current);
-    };
 
+      const final = totalPointsRef.current;
+      setFinalPoints(final);
+
+      const cur = getCurrentStudent(); // gives email + id (your auth student)
+      if (!cur || !me) return;
+
+      const meta = getLiveMeta(pin);
+
+      const totalQuestions =
+        Number(qRef.current?.total ?? 0) || Number(scoredCount ?? 0) || 0;
+
+      saveStudentAttempt({
+        id: crypto.randomUUID(),
+        studentEmail: cur.email,
+        studentId: me.studentId,
+        studentName: me.name,
+        avatarSrc,
+
+        pin,
+        gameId: meta?.gameId,
+
+        courseCode: meta?.courseCode,
+        courseName: meta?.courseName,
+        section: meta?.section,
+        semester: meta?.semester,
+        quizTitle: meta?.quizTitle,
+
+        totalQuestions,
+        correct: Number(correctCount ?? 0),
+        points: Number(final ?? 0),
+
+        finishedAt: new Date().toISOString(),
+      });
+    };
 
     s.on("question:show", onQuestion);
     s.on("answer:reveal", onReveal);

@@ -333,7 +333,7 @@ export default function MeReportsPage() {
               <AttemptRowCard
                 key={a.id}
                 a={a}
-                onOpen={() => router.push("/me/reports")}
+                onOpen={() => router.push(`/me/reports`)}
               />
             ))
           )}
