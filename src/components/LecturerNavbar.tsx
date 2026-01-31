@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurrentLecturer } from "@/src/lib/fakeAuth";
 import localFont from "next/font/local";
-import { UserRound } from "lucide-react";
+
+type Lecturer = {
+  firstName?: string | null;
+  email?: string | null;
+};
 
 const caesar = localFont({
   src: "../../public/fonts/CaesarDressing-Regular.ttf",
@@ -12,14 +17,24 @@ const caesar = localFont({
 
 export default function LecturerNavbar() {
   const router = useRouter();
-  const user = getCurrentLecturer();
 
-  const name = user?.firstName?.trim() || "Lecturer";
-  const initial =
-    (user?.firstName?.trim()?.charAt(0) ||
-      user?.email?.trim()?.charAt(0) ||
-      "L"
+  // ✅ Start null so SSR + first client render match
+  const [user, setUser] = useState<Lecturer | null>(null);
+
+  useEffect(() => {
+    setUser(getCurrentLecturer());
+  }, []);
+
+  const initial = useMemo(() => {
+    // ✅ placeholder shown on SSR + first client render
+    if (!user) return "L";
+
+    return (
+      (user.firstName?.trim()?.charAt(0) ||
+        user.email?.trim()?.charAt(0) ||
+        "L")
     ).toUpperCase();
+  }, [user]);
 
   return (
     <header
@@ -51,12 +66,10 @@ export default function LecturerNavbar() {
             aria-label="Open profile"
             type="button"
           >
-            {/* Visible initial */}
             <span className="absolute inset-0 flex items-center justify-center font-semibold text-slate-900 dark:text-slate-50">
               {initial}
             </span>
           </button>
-
         </div>
       </div>
     </header>

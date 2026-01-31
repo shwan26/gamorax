@@ -8,53 +8,76 @@ function redirectTo(req: NextRequest, pathname: string) {
   return NextResponse.redirect(url);
 }
 
-function redirectToStudentLogin(req: NextRequest) {
-  return redirectTo(req, "/auth/login");
-}
-
-function redirectToLecturerLogin(req: NextRequest) {
-  return redirectTo(req, "/login");
-}
-
-function redirectToHome(req: NextRequest) {
-  const url = req.nextUrl.clone();
-  url.pathname = "/";
-  url.searchParams.delete("next");
-  return NextResponse.redirect(url);
-}
-
-function redirectToStudentHome(req: NextRequest) {
-  const url = req.nextUrl.clone();
-  url.pathname = "/me";
-  url.searchParams.delete("next");
-  return NextResponse.redirect(url);
-}
-
-function redirectToLecturerHome(req: NextRequest) {
-  // adjust if your lecturer landing page is different
-  const url = req.nextUrl.clone();
-  url.pathname = "/course";
-  url.searchParams.delete("next");
-  return NextResponse.redirect(url);
-}
-
 export async function proxy(request: NextRequest) {
-  // response we can attach refreshed cookies to
+  const pathname = request.nextUrl.pathname;
+
+  // ✅ Public lecturer pages (no auth)
+  const isPublicLecturer =
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password";
+
+  // If it's a public page, we still may want to redirect logged-in lecturers away from /login
+  if (isPublicLecturer) {
+    // only for /login (keep register/forgot open)
+    if (pathname !== "/login") return NextResponse.next();
+
+    let response = NextResponse.next({ request });
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          },
+        },
+      }
+    );
+
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return response;
+
+    const { data: prof } = await supabase.from("my_profile_api").select("role").single();
+
+    if (prof?.role === "lecturer") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    return response;
+  }
+
+  // ✅ Lecturer-protected area
+  const isLecturerArea =
+    pathname === "/dashboard" ||
+    pathname.startsWith("/course");
+
+  // If not a lecturer route, don't block here
+  if (!isLecturerArea) return NextResponse.next();
+
+  // We need a response object to attach refreshed cookies
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, 
     {
       cookies: {
         getAll() {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Update request cookies so downstream sees them
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          // Update response cookies so browser stores them
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           );
@@ -63,76 +86,26 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  const pathname = request.nextUrl.pathname;
-
-  // -----------------------------
-  // 0) Public routes (no auth)
-  // -----------------------------
-  const isPublic =
-    pathname === "/" ||
-    pathname.startsWith("/api") ||
-    pathname.startsWith("/health") ||
-    pathname.startsWith("/auth") ||     // includes /auth/login, callbacks, etc.
-    pathname.startsWith("/login") ||    // lecturer login
-    pathname.startsWith("/signup");     // if you have it
-
-  if (isPublic) return response;
-
-  // -----------------------------
-  // 1) Areas
-  // -----------------------------
-  const isLecturerArea =
-    pathname.startsWith("/course") ||
-    pathname.startsWith("/lecturer");
-
-  const isStudentArea =
-    pathname.startsWith("/me") ||
-    pathname.startsWith("/student") ||
-    pathname.startsWith("/join") ||        // join by pin requires login
-    pathname.startsWith("/assignment");    // assignment links require login
-
-  // If it's not a protected area, just allow it (or change this to require auth globally)
-  if (!isLecturerArea && !isStudentArea) return response;
-
-  // -----------------------------
-  // 2) Require login
-  // -----------------------------
+  // ✅ Must be logged in
   const { data: userData } = await supabase.auth.getUser();
-  const user = userData.user;
-
-  if (!user) {
-    return isStudentArea ? redirectToStudentLogin(request) : redirectToLecturerLogin(request);
+  if (!userData.user) {
+    return redirectTo(request, "/login");
   }
 
-  // -----------------------------
-  // 3) Load role + enforce
-  // -----------------------------
+  // ✅ Must have lecturer role
   const { data: prof, error } = await supabase
     .from("my_profile_api")
     .select("role")
     .single();
 
-  if (error || !prof?.role) {
-    return redirectToHome(request);
-  }
-
-  const role = String(prof.role);
-
-  // If user tries to access the wrong area:
-  if (isLecturerArea && role !== "lecturer") {
-    // if student, send them to /me; otherwise /
-    return role === "student" ? redirectToStudentHome(request) : redirectToHome(request);
-  }
-
-  if (isStudentArea && role !== "student") {
-    // if lecturer, send them to /course; otherwise /
-    return role === "lecturer" ? redirectToLecturerHome(request) : redirectToHome(request);
+  if (error || prof?.role !== "lecturer") {
+    // you can also signOut here if you want, but proxy is server-side
+    return redirectTo(request, "/login");
   }
 
   return response;
 }
 
-// Run proxy on everything except static assets
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
