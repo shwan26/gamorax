@@ -57,19 +57,27 @@ function saveAll(list: StudentAttempt[]) {
 export function saveStudentAttempt(attempt: StudentAttempt) {
   const all = getAll();
 
-  // avoid duplicates if same id saved twice
-  if (all.some((a) => a.id === attempt.id)) return;
+  const normalized: StudentAttempt = {
+    ...attempt,
+    studentEmail: String(attempt.studentEmail ?? "").trim().toLowerCase(),
+    studentId: String(attempt.studentId ?? "").trim(),
+    studentName: String(attempt.studentName ?? "").trim(),
+  };
 
-  all.push(attempt);
-  // newest first
+  if (!normalized.studentEmail || !normalized.studentId) return;
+
+  if (all.some((a) => a.id === normalized.id)) return;
+
+  all.push(normalized);
   all.sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)));
   saveAll(all);
 }
 
 export function getAttemptsByStudent(email: string): StudentAttempt[] {
   const e = String(email || "").trim().toLowerCase();
-  return getAll().filter((a) => a.studentEmail === e);
+  return getAll().filter((a) => String(a.studentEmail ?? "").trim().toLowerCase() === e);
 }
+
 
 export function getAttemptById(id: string): StudentAttempt | null {
   return getAll().find((a) => a.id === id) ?? null;

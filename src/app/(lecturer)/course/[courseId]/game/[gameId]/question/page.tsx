@@ -6,6 +6,15 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
 
+import { getCourseById } from "@/src/lib/courseStorage";
+import { getGameById } from "@/src/lib/gameStorage";
+import {
+  type Question,
+  getQuestions,
+  saveQuestions,
+  isQuestionComplete
+} from "@/src/lib/questionStorage";
+
 import QuestionList from "@/src/components/question-edit/QuestionList";
 import QuestionEditorForm from "@/src/components/question-edit/QuestionEditorForm";
 import DeleteModal from "@/src/components/question-edit/DeleteModal";
@@ -120,6 +129,8 @@ export default function QuestionPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
+
+  const allGreen = questions.length > 0 && questions.every((q) => isQuestionComplete(q));
 
   // drag
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -460,11 +471,12 @@ export default function QuestionPage() {
       <Navbar />
 
       <GameSubNavbar
-  title={`${game.quizNumber} — ${course.courseCode}${
-    course.section ? ` • Section ${course.section}` : ""
-  }${course.semester ? ` • ${course.semester}` : ""}`}
-/>
-
+        title={`${game.quizNumber} — ${course.courseCode}${
+          course.section ? ` • Section ${course.section}` : ""
+        }${course.semester ? ` • ${course.semester}` : ""}`}
+        canStartLive = {allGreen}
+        liveBlockReason ="Some questions are incomplete. Please fix the red/grey ones before going live."
+      />
 
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
         <div

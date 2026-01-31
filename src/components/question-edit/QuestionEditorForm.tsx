@@ -195,14 +195,33 @@ export default function QuestionEditorForm({
 
             <input
               type="number"
-              min={1}
+              min={5}
+              max={600}
+              step={1}
               value={question.time ?? gameDefaultTime}
               onChange={(e) => {
-                const value = Number(e.target.value);
+                const raw = Number(e.target.value);
+
+                // clamp to 5..600 (and handle NaN)
+                const clamped = Number.isFinite(raw)
+                  ? Math.max(5, Math.min(600, raw))
+                  : Math.max(5, Math.min(600, gameDefaultTime));
+
                 onUpdate({
                   timeMode: "specific",
-                  time: Number.isFinite(value) ? value : gameDefaultTime,
+                  time: clamped,
                 });
+              }}
+              onBlur={(e) => {
+                // ensure empty / invalid becomes a valid value when leaving the field
+                const raw = Number(e.target.value);
+                const clamped = Number.isFinite(raw)
+                  ? Math.max(5, Math.min(600, raw))
+                  : Math.max(5, Math.min(600, gameDefaultTime));
+
+                if (String(clamped) !== e.target.value) {
+                  onUpdate({ timeMode: "specific", time: clamped });
+                }
               }}
               className="
                 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
@@ -212,6 +231,7 @@ export default function QuestionEditorForm({
                 sm:w-32
               "
             />
+
           </div>
         </div>
       </div>

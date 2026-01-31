@@ -93,3 +93,33 @@ export function updateAnswer(
 
   saveQuestions(gameId, next);
 }
+
+export function isQuestionComplete(q: Question): boolean {
+  const type = q.type ?? "multiple_choice";
+  const hasQuestion = !!q.text?.trim();
+
+  const mcAnswers = (q.answers ?? []).map((a) => String(a?.text ?? "").trim());
+  const mcNonEmpty = mcAnswers.filter(Boolean);
+  const mcHasCorrect = (q.answers ?? []).some((a) => !!a.correct);
+
+  const tfHasCorrect = (q.answers ?? []).some((a) => !!a.correct);
+
+  const pairs = q.matches ?? [];
+  const pairCompleteCount = pairs.filter(
+    (p) => !!String(p?.left ?? "").trim() && !!String(p?.right ?? "").trim()
+  ).length;
+  const pairHasBroken = pairs.some((p) => {
+    const L = !!String(p?.left ?? "").trim();
+    const R = !!String(p?.right ?? "").trim();
+    return (L && !R) || (!L && R);
+  });
+
+  const accepted = (q.acceptedAnswers ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+
+  if (type === "multiple_choice") return hasQuestion && mcNonEmpty.length >= 2 && mcHasCorrect;
+  if (type === "true_false") return hasQuestion && tfHasCorrect;
+  if (type === "matching") return hasQuestion && pairCompleteCount >= 2 && !pairHasBroken;
+  if (type === "input") return hasQuestion && accepted.length >= 1;
+
+  return false;
+}

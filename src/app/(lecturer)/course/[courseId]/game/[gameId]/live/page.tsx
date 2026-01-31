@@ -110,9 +110,10 @@ export default function LivePage() {
     };
 
     const doJoin = () => {
-      s.emit("join", { pin });
-      s.emit("meta:set", { pin, meta });
+      s.emit("lecturer:join", { pin }); 
+      s.emit("meta:set", { pin, meta }); 
     };
+
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
       setStudents(Array.isArray(list) ? list : []);
@@ -161,6 +162,8 @@ export default function LivePage() {
         title={`${game.quizNumber} — ${course.courseCode}${
           course.section ? ` • Section ${course.section}` : ""
         }${course.semester ? ` • ${course.semester}` : ""}`}
+        canStartLive = {true}
+        liveBlockReason = ""
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
