@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Link2, Trash2, Copy } from "lucide-react";
+import type { Question } from "@/src/lib/questionStorage";
 
 import { getGameById } from "@/src/lib/gameStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
@@ -39,13 +40,42 @@ export default function AssignmentSettingPage() {
   const gameId = String(params?.gameId ?? "");
 
   const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
-  const questions = useMemo(() => (gameId ? getQuestions(gameId) : []), [gameId]);
-
+ 
   const [title, setTitle] = useState(game?.quizNumber ? `Assignment — ${game.quizNumber}` : "Assignment");
   const [opensAt, setOpensAt] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [durationSec, setDurationSec] = useState(15 * 60);  
   const [passcode, setPasscode] = useState(""); 
+  
+  const [questions, setQuestions] = useState<Question[]>([]);
+    const [loadingQs, setLoadingQs] = useState(true);
+
+    useEffect(() => {
+      let cancelled = false;
+
+      (async () => {
+        if (!gameId) {
+          setQuestions([]);
+          setLoadingQs(false);
+          return;
+        }
+
+        try {
+          setLoadingQs(true);
+          const qs = await getQuestions(gameId);
+          if (!cancelled) setQuestions(qs);
+        } catch (e) {
+          console.error(e);
+          if (!cancelled) setQuestions([]);
+        } finally {
+          if (!cancelled) setLoadingQs(false);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [gameId]);
 
   const list = useMemo(() => listAssignmentsByGame(gameId), [gameId, title, opensAt, dueAt, durationSec]);
 
@@ -70,10 +100,10 @@ export default function AssignmentSettingPage() {
   }
 
   function buildLink(a: any) {
-    // ✅ Shareable today: includes assignment + questions in URL token
     const token = makeAssignmentShareToken({ assignment: a, questions });
     return `${window.location.origin}/assignment/${token}`;
   }
+
 
   async function copy(text: string) {
     try {

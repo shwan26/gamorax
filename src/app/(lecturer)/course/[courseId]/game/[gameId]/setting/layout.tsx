@@ -5,71 +5,76 @@ import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
+import { useQuestions } from "@/src/hooks/useQuestions";
+import { isQuestionComplete } from "@/src/lib/questionStorage";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import {
-  type Question,
-  getQuestions,
-  isQuestionComplete,
-} from "@/src/lib/questionStorage";
-
 import { Settings, FileUp, Timer, BarChart3, Link2 } from "lucide-react";
+import { supabase } from "@/src/lib/supabaseClient";
 
-export default function SettingLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function SettingLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
-
   const pathname = usePathname() ?? "";
 
-  const [game, setGame] = useState<Game | null>(null);
-  const [course, setCourse] = useState<Course | null>(null);
+  // ✅ INSTANT: local reads during render
+  const localGame = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
+  const localCourse = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
 
-  // ✅ load questions for allGreen
-  const [questions, setQuestions] = useState<Question[]>([]);
+  // ✅ optional: keep a "fresh" version from Supabase without blocking UI
+  const [game, setGame] = useState<Game | null>(localGame);
+  const [course, setCourse] = useState<Course | null>(localCourse);
 
-  // Load game + course
-  useEffect(() => {
-    if (!courseId || !gameId) return;
+  // keep state in sync when route changes
+  useEffect(() => setGame(localGame), [localGame]);
+  useEffect(() => setCourse(localCourse), [localCourse]);
 
-    const g = getGameById(gameId);
-    const c = getCourseById(courseId);
-
-    setGame(g);
-    setCourse(c);
-  }, [courseId, gameId]);
-
-  // ✅ Load questions
-  useEffect(() => {
-    if (!gameId) return;
-    const stored = getQuestions(gameId);
-    setQuestions(Array.isArray(stored) ? stored : []);
-  }, [gameId]);
-
-  // (optional) keep in sync if questions updated in another tab
-  useEffect(() => {
-    if (!gameId) return;
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key === `gamorax_questions_${gameId}`) {
-        const stored = getQuestions(gameId);
-        setQuestions(Array.isArray(stored) ? stored : []);
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [gameId]);
+  // ✅ load questions (don’t block layout)
+  const { questions, loading: qLoading, error: qError } = useQuestions(gameId);
 
   const allGreen = useMemo(() => {
-    return questions.length > 0 && questions.every((q) => isQuestionComplete(q));
-  }, [questions]);
+    if (qLoading) return false;
+    return questions.length > 0 && questions.every(isQuestionComplete);
+  }, [questions, qLoading]);
 
+  // ✅ Background refresh (optional)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!courseId || !gameId) return;
+
+      // If you want: only refresh if local missing (fastest)
+      // if (localGame && localCourse) return;
+
+      const [{ data: c, error: cErr }, { data: g, error: gErr }] = await Promise.all([
+        supabase
+          .from("courses_api")
+          .select("id, courseCode, courseName, section, semester")
+          .eq("id", courseId)
+          .single(),
+        supabase
+          .from("games_api")
+          .select("id, courseId, quizNumber, timer, shuffleQuestions, shuffleAnswers")
+          .eq("id", gameId)
+          .single(),
+      ]);
+
+      if (!alive) return;
+      if (!cErr && c) setCourse(c as any);
+      if (!gErr && g) setGame(g as any);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [courseId, gameId]); // no auth call here
+
+  if (qError) return <div className="p-6">Failed to load questions: {qError}</div>;
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
+
+  // ✅ only show Loading if BOTH local + remote are missing
   if (!game || !course) return <div className="p-6">Loading...</div>;
   if (game.courseId !== courseId) return <div className="p-6">Invalid course/game.</div>;
 
@@ -89,9 +94,7 @@ export default function SettingLayout({
       <Navbar />
 
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode}${
-          course.section ? ` • Section ${course.section}` : ""
-        }${course.semester ? ` • ${course.semester}` : ""}`}
+        title={`${game.quizNumber} — ${course.courseCode}${course.section ? ` • Section ${course.section}` : ""}${course.semester ? ` • ${course.semester}` : ""}`}
         canStartLive={allGreen}
         liveBlockReason="Some questions are incomplete. Please fix the red/grey ones before going live."
       />
@@ -105,26 +108,8 @@ export default function SettingLayout({
           "
           style={{ minHeight: "calc(100vh - 220px)" }}
         >
-          {/* dot pattern + glow */}
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
-              backgroundSize: "18px 18px",
-            }}
-          />
-          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/14 blur-3xl" />
-          <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
-
           <div className="relative flex h-full">
-            {/* LEFT MENU */}
-            <aside
-              className="
-                w-[180px] shrink-0 border-r border-slate-200/70 p-3
-                dark:border-slate-800/70
-              "
-            >
+            <aside className="w-[180px] shrink-0 border-r border-slate-200/70 p-3 dark:border-slate-800/70">
               <p className="px-2 pb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                 Settings
               </p>
@@ -133,11 +118,11 @@ export default function SettingLayout({
                 {menu.map((item) => {
                   const active = pathname.startsWith(item.href);
                   const Icon = item.icon;
-
                   return (
                     <Link
                       key={item.label}
                       href={item.href}
+                      prefetch
                       className={[
                         "group flex items-center gap-2 rounded-2xl px-3 py-2.5 text-sm font-semibold transition-all",
                         "focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40",
@@ -146,22 +131,6 @@ export default function SettingLayout({
                           : "border border-transparent text-slate-700 hover:bg-white/80 dark:text-slate-200 dark:hover:bg-slate-950/60",
                       ].join(" ")}
                     >
-                      <span
-                        className={[
-                          "inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm",
-                          active
-                            ? "border-[#00D4FF]/40 bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]"
-                            : "border-slate-200/80 bg-white/80 dark:border-slate-800/70 dark:bg-slate-950/60",
-                        ].join(" ")}
-                      >
-                        <Icon
-                          className={[
-                            "h-4 w-4",
-                            active ? "text-white" : "text-slate-700 dark:text-slate-200",
-                          ].join(" ")}
-                        />
-                      </span>
-
                       <span className="min-w-0 truncate">{item.label}</span>
                     </Link>
                   );
@@ -169,14 +138,8 @@ export default function SettingLayout({
               </nav>
             </aside>
 
-            {/* CONTENT */}
             <section className="flex-1 p-4 sm:p-6">
-              <div
-                className="
-                  rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
-                  dark:border-slate-800/70 dark:bg-slate-950/55
-                "
-              >
+              <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/55">
                 {children}
               </div>
             </section>

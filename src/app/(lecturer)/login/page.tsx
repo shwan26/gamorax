@@ -51,7 +51,8 @@ export default function LecturerLogin() {
         throw new Error("This account is not a lecturer.");
       }
 
-      router.push(next);
+      router.replace("/dashboard");
+
     } catch (err: any) {
       alert(err?.message ?? "Login failed");
     }

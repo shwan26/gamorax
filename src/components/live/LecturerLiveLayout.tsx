@@ -1,3 +1,4 @@
+// src/components/live/LecturerLiveLayout.tsx
 "use client";
 
 import type { Course } from "@/src/lib/courseStorage";
@@ -9,6 +10,28 @@ import QuestionView from "@/src/components/live/QuestionView";
 import AnswerReveal from "@/src/components/live/AnswerReveal";
 import FinalBoard from "@/src/components/live/FinalBoard";
 import TimerBar from "./TimerBar";
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function guessOptionCountForChoice(q: LiveDisplayQuestion) {
+  if (q.type === "true_false") return 2;
+
+  // For MC: prefer non-empty texts so we don't show ghost bars
+  const texts = (q as any)?.answers?.map((a: any) => String(a?.text ?? "")) ?? [];
+  const lastNonEmpty = [...texts].map((t) => t.trim()).lastIndexOf(
+    [...texts].map((t) => t.trim()).reverse().find((t) => t.length > 0) ?? ""
+  );
+
+  // fallback: use answers length (min 2, max 5)
+  const rawLen = texts.length || 0;
+
+  // If allGreen is enforced, texts should be filled anyway. This is just extra safety.
+  const byText = lastNonEmpty >= 0 ? lastNonEmpty + 1 : rawLen;
+
+  return clamp(byText || rawLen || 4, 2, 5);
+}
 
 export default function LecturerLiveLayout({
   courseId,
@@ -59,21 +82,22 @@ export default function LecturerLiveLayout({
   onNext: () => void;
   onDisconnectAfterReportClick?: () => void;
 }) {
-  // inside LecturerLiveLayout
-
   const isChoice = q.type === "multiple_choice" || q.type === "true_false";
 
   const correctIndices = isChoice
-    ? (q.answers ?? [])
-        .map((a: any, i: number) => (a?.correct ? i : -1))
-        .filter((i: number) => i >= 0)
+    ? (q as any).answers
+        ?.map((a: any, i: number) => (a?.correct ? i : -1))
+        .filter((i: number) => i >= 0) ?? []
     : [];
 
-  const answersText = isChoice ? (q.answers ?? []).map((a: any) => a?.text ?? "") : [];
+  const answersText = isChoice ? ((q as any).answers ?? []).map((a: any) => String(a?.text ?? "")) : [];
 
-  // IMPORTANT: slice counts to match option count
-  const optionCount = q.type === "true_false" ? 2 : Math.min(5, answersText.length || 0);
-  const safeCounts = Array.from({ length: optionCount }, (_, i) => Number((counts as any)?.[i] ?? 0));
+  const optionCount = isChoice ? guessOptionCountForChoice(q) : 0;
+
+  // slice counts exactly to optionCount
+  const safeCounts = isChoice
+    ? Array.from({ length: optionCount }, (_, i) => Number((counts as any)?.[i] ?? 0))
+    : [];
 
   return (
     <main className="mx-auto max-w-6xl px-4 pb-12 pt-6 sm:pt-8">
@@ -178,7 +202,6 @@ export default function LecturerLiveLayout({
                   </div>
                 ) : null}
 
-
                 <div
                   className="
                     rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
@@ -273,17 +296,16 @@ export default function LecturerLiveLayout({
                     dark:border-slate-800/70 dark:bg-slate-950/55
                   "
                 >
-                  {isChoice && (
+                  {isChoice ? (
                     <AnswerReveal
-                      type={q.type}                    // ✅ TF vs MC
-                      counts={safeCounts}              // ✅ 2/3/4/5
-                      correctIndices={correctIndices}  // ✅ multi-correct
-                      answersText={answersText}
+                      type={q.type}
+                      counts={safeCounts}
+                      correctIndices={correctIndices}
+                      answersText={answersText.slice(0, optionCount)}
                     />
-                  )}
+                  ) : null}
 
-
-                  {q.type === "matching" && (
+                  {q.type === "matching" ? (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {(q.matches ?? []).slice(0, 5).map((p: any, i: number) => (
                         <div
@@ -304,9 +326,9 @@ export default function LecturerLiveLayout({
                         </div>
                       ))}
                     </div>
-                  )}
+                  ) : null}
 
-                  {q.type === "input" && (
+                  {q.type === "input" ? (
                     <div className="space-y-2">
                       <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                         Accepted answers
@@ -326,7 +348,7 @@ export default function LecturerLiveLayout({
                         ))}
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="mt-6 flex justify-end">
