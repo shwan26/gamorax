@@ -6,21 +6,18 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
 
-import { getCourseById } from "@/src/lib/courseStorage";
-import { getGameById } from "@/src/lib/gameStorage";
 import {
   type Question,
-  getQuestions,
-  saveQuestions,
-  isQuestionComplete
+  type Answer,
+  isQuestionComplete,
 } from "@/src/lib/questionStorage";
+
 
 import QuestionList from "@/src/components/question-edit/QuestionList";
 import QuestionEditorForm from "@/src/components/question-edit/QuestionEditorForm";
 import DeleteModal from "@/src/components/question-edit/DeleteModal";
 
 import { supabase } from "@/src/lib/supabaseClient";
-import type { Question, Answer } from "@/src/lib/questionStorage";
 
 /* ------------------------------ helpers ------------------------------ */
 

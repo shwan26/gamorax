@@ -41,7 +41,11 @@ export default function AddFileSetting() {
   const defaultTime = game?.timer?.defaultTime ?? 60;
 
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId) {
+      alert("Missing gameId");
+      return;
+    }
+
     const raw = localStorage.getItem(metaKey(gameId));
     if (!raw) return;
     try {
@@ -79,8 +83,9 @@ export default function AddFileSetting() {
         return;
       }
 
-      const existing = getQuestions(gameId);
-      saveQuestions(gameId, [...existing, ...questions]);
+      const existing = await getQuestions(gameId);
+      await saveQuestions(gameId, [...existing, ...questions]);
+
 
       const meta: ImportMeta = {
         fileName: file.name,

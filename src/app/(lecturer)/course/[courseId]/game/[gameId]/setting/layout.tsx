@@ -5,15 +5,11 @@ import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
+import { useQuestions } from "@/src/hooks/useQuestions";
+import { isQuestionComplete } from "@/src/lib/questionStorage";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import {
-  type Question,
-  getQuestions,
-  isQuestionComplete,
-} from "@/src/lib/questionStorage";
-
 import { Settings, FileUp, Timer, BarChart3, Link2 } from "lucide-react";
 
 export default function SettingLayout({
@@ -31,7 +27,7 @@ export default function SettingLayout({
   const [course, setCourse] = useState<Course | null>(null);
 
   // ✅ load questions for allGreen
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const { questions, loading, error, refresh } = useQuestions(gameId);
 
   // Load game + course
   useEffect(() => {
@@ -44,30 +40,14 @@ export default function SettingLayout({
     setCourse(c);
   }, [courseId, gameId]);
 
-  // ✅ Load questions
-  useEffect(() => {
-    if (!gameId) return;
-    const stored = getQuestions(gameId);
-    setQuestions(Array.isArray(stored) ? stored : []);
-  }, [gameId]);
-
-  // (optional) keep in sync if questions updated in another tab
-  useEffect(() => {
-    if (!gameId) return;
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key) return;
-      if (e.key === `gamorax_questions_${gameId}`) {
-        const stored = getQuestions(gameId);
-        setQuestions(Array.isArray(stored) ? stored : []);
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, [gameId]);
 
   const allGreen = useMemo(() => {
-    return questions.length > 0 && questions.every((q) => isQuestionComplete(q));
+    return questions.length > 0 && questions.every(isQuestionComplete);
   }, [questions]);
+
+  if (error) {
+    return <div className="p-6">Failed to load questions: {error}</div>;
+  }
 
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
   if (!game || !course) return <div className="p-6">Loading...</div>;

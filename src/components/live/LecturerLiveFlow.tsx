@@ -93,9 +93,27 @@ export default function LecturerLiveFlow() {
   const [liveOrder, setLiveOrder] = useState<number[]>([]);
 
   useEffect(() => {
-    if (!valid) return;
-    setQuestions(getQuestions(gameId));
+    let alive = true;
+
+    (async () => {
+      if (!valid || !gameId) {
+        if (alive) setQuestions([]);
+        return;
+      }
+      try {
+        const qs = await getQuestions(gameId);
+        if (alive) setQuestions(qs ?? []);
+      } catch (e) {
+        console.error(e);
+        if (alive) setQuestions([]);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [valid, gameId]);
+
 
   // stable LIVE question order
   useEffect(() => {

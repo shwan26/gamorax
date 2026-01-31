@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import { getQuestions } from "@/src/lib/questionStorage";
+import { getQuestions, type Question } from "@/src/lib/questionStorage";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -131,8 +131,26 @@ export default function ReportDetailPage() {
     return getCourseById(game.courseId);
   }, [game?.courseId]);
 
-  const questions = useMemo(() => (gameId ? getQuestions(gameId) : []), [gameId]);
-  const totalQ = questions.length || report?.totalQuestions || 0;
+  const [questions, setQuestions] = useState<Question[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!gameId) {
+        if (alive) setQuestions([]);
+        return;
+      }
+      const qs = await getQuestions(gameId); // ✅ await promise
+      if (alive) setQuestions(qs ?? []);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
+const totalQ = questions.length || report?.totalQuestions || 0;
 
   const finishIso = report?.lastQuestionAt || report?.savedAt || "";
 

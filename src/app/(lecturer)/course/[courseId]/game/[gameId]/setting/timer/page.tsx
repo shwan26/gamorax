@@ -48,11 +48,16 @@ export default function TimerSettingPage() {
     return Math.max(5, Math.min(600, Math.floor(n)));
   }
 
-  function handleSave() {
+  async function handleSave() {
     const safeDefault = clampSeconds(defaultTime);
-    updateGameTimer(gameId, { mode, defaultTime: safeDefault });
 
-    const updated = getQuestions(gameId).map((q) => {
+    // keep your game timer update (local)
+    updateGameTimer(gameId, { mode, defaultTime: safeDefault });
+    
+    // ✅ await async questions fetch
+    const existing = await getQuestions(gameId);
+
+    const updated = existing.map((q) => {
       if (mode === "automatic") {
         return {
           ...q,
@@ -61,17 +66,20 @@ export default function TimerSettingPage() {
         };
       }
 
-      const t = Number(q.time);
-      return {
-        ...q,
-        timeMode: "specific" as const,
-        time: Number.isFinite(t) && t > 0 ? t : safeDefault,
-      };
-    });
+    const t = Number(q.time);
+    return {
+      ...q,
+      timeMode: "specific" as const,
+      time: Number.isFinite(t) && t > 0 ? t : safeDefault,
+    };
+  });
 
-    saveQuestions(gameId, updated);
-    alert("Timer setting saved");
-  }
+  // ✅ await async save
+  await saveQuestions(gameId, updated);
+
+  alert("Timer setting saved");
+}
+
 
   return (
     <div
