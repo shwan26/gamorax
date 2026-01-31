@@ -32,21 +32,23 @@ function formatCourseLabel(c?: Course | null) {
 export default function CreateGamePage() {
   const router = useRouter();
   const params = useParams<{ courseId?: string }>();
-  const courseId = (params?.courseId ?? "").toString();
+  const courseId = (params?.courseId ?? "").toString(); // ✅ target course (current page)
 
   const [mode, setMode] = useState<Mode>("new");
   const [quizNumber, setQuizNumber] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // copy-mode data
   const [loadingGames, setLoadingGames] = useState(false);
-  const [allGames, setAllGames] = useState<Game[]>([]);
-  const [sourceCourseId, setSourceCourseId] = useState<string>(courseId);
-  const [sourceGameId, setSourceGameId] = useState<string>(""); // ✅ game dropdown
-
-  // courses
   const [loadingCourses, setLoadingCourses] = useState(false);
+
+  const [allGames, setAllGames] = useState<Game[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+
+  // ✅ COPY MODE: only one dropdown for "course", and it shows games for that course below
+  const [sourceCourseId, setSourceCourseId] = useState<string>(""); // selects which course's games to show
+  const [sourceGameId, setSourceGameId] = useState<string>(""); // selected game from that course
+
+  const loadingAny = loadingGames || loadingCourses;
 
   async function requireUserOrRedirect(nextPath: string) {
     const { data } = await supabase.auth.getUser();
@@ -82,63 +84,40 @@ export default function CreateGamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId]);
 
-  // ✅ course list for "copy from" (only courses that actually have games)
+  // ✅ courses that have games (copy source choices)
   const copyCourses = useMemo(() => {
-    const gameCourseIds = new Set(allGames.map((g) => g.courseId));
-    const list = courses
-      .filter((c) => gameCourseIds.has(c.id))
+    const ids = new Set(allGames.map((g) => g.courseId));
+    return courses
+      .filter((c) => ids.has(c.id))
+      .slice()
       .sort((a, b) => formatCourseLabel(a).localeCompare(formatCourseLabel(b)));
-    return list;
   }, [courses, allGames]);
 
-  // ✅ when switching to copy mode: set default course (first available) and reset game
+  // ✅ default selected source course:
+  // prefer current courseId if it has games, else first available
   useEffect(() => {
     if (mode !== "copy") return;
 
-    const currentCourseIsCopyable = copyCourses.some((c) => c.id === courseId);
-    const selectedCourseIsCopyable = copyCourses.some((c) => c.id === sourceCourseId);
+    const currentOk = copyCourses.some((c) => c.id === courseId);
+    const next = currentOk ? courseId : (copyCourses[0]?.id ?? "");
 
-    // 1) Prefer current course if it has games
-    const preferredCourseId = currentCourseIsCopyable
-      ? courseId
-      : selectedCourseIsCopyable
-      ? sourceCourseId
-      : copyCourses[0]?.id ?? "";
+    setSourceCourseId(next);
+    setSourceGameId("");
+  }, [mode, copyCourses, courseId]);
 
-    // only update if needed (prevents re-renders)
-    if (preferredCourseId !== sourceCourseId) {
-      setSourceCourseId(preferredCourseId);
-      setSourceGameId("");
-      return;
-    }
-
-    // 2) If course is ok, ensure game belongs to it
-    setSourceGameId((prev) => {
-      const ok = allGames.some((g) => g.id === prev && g.courseId === preferredCourseId);
-      return ok ? prev : "";
-    });
-  }, [mode, copyCourses, courseId, sourceCourseId, allGames]);
-
-
-  // ✅ games under selected course
+  // ✅ games for the selected course
   const gamesInSelectedCourse = useMemo(() => {
     if (!sourceCourseId) return [];
     return allGames
       .filter((g) => g.courseId === sourceCourseId)
+      .slice()
       .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
   }, [allGames, sourceCourseId]);
 
-  // ✅ when course changes, clear game if it doesn’t belong
+  // if user switches course, clear game
   useEffect(() => {
-    if (!sourceCourseId) {
-      setSourceGameId("");
-      return;
-    }
-    setSourceGameId((prev) => {
-      const ok = gamesInSelectedCourse.some((g) => g.id === prev);
-      return ok ? prev : "";
-    });
-  }, [sourceCourseId, gamesInSelectedCourse]);
+    setSourceGameId("");
+  }, [sourceCourseId]);
 
   async function handleCreate() {
     if (!courseId) return;
@@ -167,7 +146,7 @@ export default function CreateGamePage() {
         return;
       }
 
-      // mode === "copy"
+      // copy mode
       if (!sourceCourseId) {
         alert("Please choose a course to copy from.");
         return;
@@ -179,7 +158,7 @@ export default function CreateGamePage() {
 
       const { newGameId } = await duplicateGameToCourse({
         sourceGameId,
-        targetCourseId: courseId,
+        targetCourseId: courseId, // ✅ always copy INTO current course
         newQuizNumber: title,
       });
 
@@ -192,8 +171,6 @@ export default function CreateGamePage() {
   }
 
   if (!courseId) return <div className="p-6">Missing course id.</div>;
-
-  const loadingAny = loadingGames || loadingCourses;
 
   return (
     <div className="min-h-screen app-surface app-bg">
@@ -234,7 +211,7 @@ export default function CreateGamePage() {
                     Create game
                   </h2>
                   <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                    Create a new game or copy from an existing one.
+                    Create a new game in this course, or copy from another course.
                   </p>
                 </div>
               </div>
@@ -290,10 +267,10 @@ export default function CreateGamePage() {
                   />
                 </div>
 
-                {/* COPY CONTROLS */}
+                {/* ✅ COPY MODE: 1 dropdown ONLY */}
                 {mode === "copy" && (
-                  <>
-                    {/* 1) Course dropdown */}
+                  <div className="space-y-3">
+                    {/* 1) course dropdown */}
                     <div>
                       <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
                         Copy from course
@@ -323,60 +300,71 @@ export default function CreateGamePage() {
                       </select>
 
                       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Pick the course where the source game lives.
+                        Pick a course, then choose a game from the list below.
                       </p>
                     </div>
 
-                    {/* 2) Game dropdown */}
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
-                        Copy from game
-                      </label>
+                    {/* games list shown below (not a dropdown) */}
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-3 text-sm dark:border-slate-800/70 dark:bg-slate-950/35">
+                      <div className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        Games in selected course
+                      </div>
 
-                      <select
-                        value={sourceGameId}
-                        onChange={(e) => setSourceGameId(e.target.value)}
-                        disabled={loadingAny || saving || !sourceCourseId}
-                        className="
-                          w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
-                          shadow-sm outline-none
-                          focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
-                          disabled:opacity-60 disabled:cursor-not-allowed
-                          dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
-                        "
-                      >
-                        <option value="">
-                          {!sourceCourseId
-                            ? "Select a course first..."
-                            : loadingAny
-                            ? "Loading games..."
-                            : gamesInSelectedCourse.length
-                            ? "-- Select a game --"
-                            : "No games in this course"}
-                        </option>
+                      {!sourceCourseId ? (
+                        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          Select a course above to see its games.
+                        </div>
+                      ) : gamesInSelectedCourse.length === 0 ? (
+                        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                          No games in this course.
+                        </div>
+                      ) : (
+                        <div className="mt-2 space-y-2">
+                          {gamesInSelectedCourse.map((g) => (
+                            <label
+                              key={g.id}
+                              className={[
+                                "flex items-center justify-between gap-3 rounded-xl border px-3 py-2 cursor-pointer",
+                                "border-slate-200/70 bg-white/70 hover:bg-white transition",
+                                "dark:border-slate-800/70 dark:bg-slate-950/35 dark:hover:bg-slate-950/55",
+                                sourceGameId === g.id
+                                  ? "ring-2 ring-[#00D4FF]/25 border-[#38BDF8]/60"
+                                  : "",
+                              ].join(" ")}
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">
+                                  {g.quizNumber}
+                                </div>
+                                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  {g.createdAt ? new Date(g.createdAt).toLocaleString() : ""}
+                                </div>
+                              </div>
 
-                        {gamesInSelectedCourse.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.quizNumber}
-                          </option>
-                        ))}
-                      </select>
-
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        This will copy all questions & answers.
-                      </p>
+                              <input
+                                type="radio"
+                                name="sourceGame"
+                                value={g.id}
+                                checked={sourceGameId === g.id}
+                                onChange={() => setSourceGameId(g.id)}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </>
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      This will copy all questions & answers into this course.
+                    </p>
+                  </div>
                 )}
 
                 {/* ACTION */}
                 <button
                   type="button"
                   onClick={handleCreate}
-                  disabled={
-                    saving ||
-                    (mode === "copy" && (!sourceCourseId || !sourceGameId))
-                  }
+                  disabled={saving || (mode === "copy" && (!sourceCourseId || !sourceGameId))}
                   className="
                     w-full rounded-xl py-3 text-sm font-semibold text-white
                     bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
