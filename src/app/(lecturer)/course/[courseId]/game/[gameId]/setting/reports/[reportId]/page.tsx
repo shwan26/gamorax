@@ -124,31 +124,51 @@ export default function ReportDetailPage() {
     [reportId]
   );
 
-  const game = useMemo<Game | null>(() => (gameId ? getGameById(gameId) : null), [gameId]);
-
-  const course = useMemo<Course | null>(() => {
-    if (!game?.courseId) return null;
-    return getCourseById(game.courseId);
-  }, [game?.courseId]);
-
   const [questions, setQuestions] = useState<Question[]>([]);
+
+  const [game, setGame] = useState<Game | null>(null);
+  const [course, setCourse] = useState<Course | null>(null);
+  const loadingMeta = !!gameId && game === null; 
+
 
   useEffect(() => {
     let alive = true;
 
     (async () => {
       if (!gameId) {
-        if (alive) setQuestions([]);
+        if (alive) {
+          setGame(null);
+          setCourse(null);
+        }
         return;
       }
-      const qs = await getQuestions(gameId); // ✅ await promise
-      if (alive) setQuestions(qs ?? []);
+
+      try {
+        const g = await getGameById(gameId);
+        if (!alive) return;
+
+        setGame(g);
+
+        if (g?.courseId) {
+          const c = await getCourseById(g.courseId);
+          if (alive) setCourse(c);
+        } else {
+          if (alive) setCourse(null);
+        }
+      } catch (e) {
+        console.error(e);
+        if (alive) {
+          setGame(null);
+          setCourse(null);
+        }
+      }
     })();
 
     return () => {
       alive = false;
     };
   }, [gameId]);
+
 
 const totalQ = questions.length || report?.totalQuestions || 0;
 

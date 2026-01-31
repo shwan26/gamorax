@@ -40,20 +40,26 @@ type HistoryRow = {
 export default function ReportHistoryPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
-
-  const game = useMemo<Game | null>(() => (gameId ? getGameById(gameId) : null), [gameId]);
   const [questions, setQuestions] = useState<Question[]>([]);
+
+  const [game, setGame] = useState<Game | null>(null);
 
   useEffect(() => {
     let alive = true;
 
     (async () => {
       if (!gameId) {
-        if (alive) setQuestions([]);
+        if (alive) setGame(null);
         return;
       }
-      const qs = await getQuestions(gameId);
-      if (alive) setQuestions(qs ?? []);
+
+      try {
+        const g = await getGameById(gameId);
+        if (alive) setGame(g);
+      } catch (e) {
+        console.error(e);
+        if (alive) setGame(null);
+      }
     })();
 
     return () => {

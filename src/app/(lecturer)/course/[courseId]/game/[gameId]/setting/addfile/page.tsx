@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { getGameById } from "@/src/lib/gameStorage";
+
+import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getQuestions, saveQuestions } from "@/src/lib/questionStorage";
 import { importQuestionsFromExcel } from "@/src/lib/importQuestionsFromExcel";
 import { UploadCloud, FileSpreadsheet, Info, CheckCircle2 } from "lucide-react";
@@ -37,14 +38,32 @@ export default function AddFileSetting() {
   const params = useParams<{ gameId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
 
-  const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
+  // ✅ async game fetch (Supabase)
+  const [game, setGame] = useState<Game | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!gameId) return;
+      try {
+        const g = await getGameById(gameId);
+        if (alive) setGame(g);
+      } catch {
+        if (alive) setGame(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
+  // ✅ defaultTime derived safely
   const defaultTime = game?.timer?.defaultTime ?? 60;
 
   useEffect(() => {
-    if (!gameId) {
-      alert("Missing gameId");
-      return;
-    }
+    if (!gameId) return;
 
     const raw = localStorage.getItem(metaKey(gameId));
     if (!raw) return;
@@ -64,6 +83,11 @@ export default function AddFileSetting() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!gameId) {
+      alert("Missing gameId");
+      return;
+    }
+
     if (!file.name.endsWith(".xlsx")) {
       alert("Please upload an Excel (.xlsx) file");
       return;
@@ -74,6 +98,7 @@ export default function AddFileSetting() {
     setNotice(null);
 
     try {
+      // ✅ uses defaultTime from game.timer, fallback 60
       const { questions, breakdown } = await importQuestionsFromExcel(file, defaultTime);
 
       if (questions.length === 0) {
@@ -85,7 +110,6 @@ export default function AddFileSetting() {
 
       const existing = await getQuestions(gameId);
       await saveQuestions(gameId, [...existing, ...questions]);
-
 
       const meta: ImportMeta = {
         fileName: file.name,
@@ -125,6 +149,9 @@ export default function AddFileSetting() {
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
               Upload an Excel file. It may contain any subset of these tabs:
               MultipleChoice, TrueFalse, Matching, AnswerInput.
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Default question time: <span className="font-semibold">{defaultTime}s</span>
             </p>
           </div>
         </div>

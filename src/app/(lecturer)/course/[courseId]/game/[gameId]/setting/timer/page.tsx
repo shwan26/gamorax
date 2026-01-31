@@ -15,17 +15,35 @@ export default function TimerSettingPage() {
   const [mode, setMode] = useState<"automatic" | "manual">("automatic");
   const [defaultTime, setDefaultTime] = useState<number>(60);
 
-  // load on client (localStorage safe)
+  // load on client (localStorage / supabase safe)
   useEffect(() => {
-    if (!gameId) return;
-    const g = getGameById(gameId);
-    setGame(g);
+    let alive = true;
 
-    if (g) {
-      setMode(g.timer.mode);
-      setDefaultTime(g.timer.defaultTime);
-    }
+    (async () => {
+      if (!gameId) return;
+
+      try {
+        const g = await getGameById(gameId); // ✅ await
+        if (!alive) return;
+
+        setGame(g);
+
+        if (g) {
+          setMode(g.timer.mode);
+          setDefaultTime(g.timer.defaultTime);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!alive) return;
+        setGame(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [gameId]);
+
 
   if (!gameId) {
     return (

@@ -1,37 +1,35 @@
+// src/app/(lecturer)/course/[courseId]/game/[gameId]/setting/layout.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useParams, usePathname, useRouter } from "next/navigation";
+
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
-import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
+
 import { useQuestions } from "@/src/hooks/useQuestions";
 import { isQuestionComplete } from "@/src/lib/questionStorage";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
+
 import { Settings, FileUp, Timer, BarChart3, Link2 } from "lucide-react";
 import { supabase } from "@/src/lib/supabaseClient";
 
 export default function SettingLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
   const pathname = usePathname() ?? "";
 
-  // ✅ INSTANT: local reads during render
-  const localGame = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
-  const localCourse = useMemo(() => (courseId ? getCourseById(courseId) : null), [courseId]);
+  const [game, setGame] = useState<Game | null>(null);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [metaError, setMetaError] = useState<string>("");
 
-  // ✅ optional: keep a "fresh" version from Supabase without blocking UI
-  const [game, setGame] = useState<Game | null>(localGame);
-  const [course, setCourse] = useState<Course | null>(localCourse);
-
-  // keep state in sync when route changes
-  useEffect(() => setGame(localGame), [localGame]);
-  useEffect(() => setCourse(localCourse), [localCourse]);
-
-  // ✅ load questions (don’t block layout)
+  // ✅ load questions (does not block nav)
   const { questions, loading: qLoading, error: qError } = useQuestions(gameId);
 
   const allGreen = useMemo(() => {
@@ -39,44 +37,53 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
     return questions.length > 0 && questions.every(isQuestionComplete);
   }, [questions, qLoading]);
 
-  // ✅ Background refresh (optional)
+  // ✅ auth + load supabase data
   useEffect(() => {
     let alive = true;
+
     (async () => {
       if (!courseId || !gameId) return;
 
-      // If you want: only refresh if local missing (fastest)
-      // if (localGame && localCourse) return;
+      setLoadingMeta(true);
+      setMetaError("");
 
-      const [{ data: c, error: cErr }, { data: g, error: gErr }] = await Promise.all([
-        supabase
-          .from("courses_api")
-          .select("id, courseCode, courseName, section, semester")
-          .eq("id", courseId)
-          .single(),
-        supabase
-          .from("games_api")
-          .select("id, courseId, quizNumber, timer, shuffleQuestions, shuffleAnswers")
-          .eq("id", gameId)
-          .single(),
-      ]);
+      // Require logged-in user (lecturer)
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) {
+        router.replace(`/login?next=${encodeURIComponent(`/course/${courseId}/game/${gameId}/setting/general`)}`);
+        return;
+      }
 
-      if (!alive) return;
-      if (!cErr && c) setCourse(c as any);
-      if (!gErr && g) setGame(g as any);
+      try {
+        const [c, g] = await Promise.all([getCourseById(courseId), getGameById(gameId)]);
+        if (!alive) return;
+
+        setCourse(c);
+        setGame(g);
+
+        if (!c) setMetaError("Course not found.");
+        else if (!g) setMetaError("Game not found.");
+        else if (g.courseId !== courseId) setMetaError("Invalid course/game.");
+      } catch (e: any) {
+        if (!alive) return;
+        setMetaError(e?.message ?? "Failed to load course/game.");
+      } finally {
+        if (!alive) return;
+        setLoadingMeta(false);
+      }
     })();
 
     return () => {
       alive = false;
     };
-  }, [courseId, gameId]); // no auth call here
+  }, [courseId, gameId, router]);
 
-  if (qError) return <div className="p-6">Failed to load questions: {qError}</div>;
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
+  if (qError) return <div className="p-6">Failed to load questions: {qError}</div>;
 
-  // ✅ only show Loading if BOTH local + remote are missing
-  if (!game || !course) return <div className="p-6">Loading...</div>;
-  if (game.courseId !== courseId) return <div className="p-6">Invalid course/game.</div>;
+  if (loadingMeta) return <div className="p-6">Loading...</div>;
+  if (metaError) return <div className="p-6">{metaError}</div>;
+  if (!game || !course) return <div className="p-6">Not found.</div>;
 
   const base = `/course/${courseId}/game/${gameId}`;
 
@@ -94,7 +101,9 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
       <Navbar />
 
       <GameSubNavbar
-        title={`${game.quizNumber} — ${course.courseCode}${course.section ? ` • Section ${course.section}` : ""}${course.semester ? ` • ${course.semester}` : ""}`}
+        title={`${game.quizNumber} — ${course.courseCode}${course.section ? ` • Section ${course.section}` : ""}${
+          course.semester ? ` • ${course.semester}` : ""
+        }`}
         canStartLive={allGreen}
         liveBlockReason="Some questions are incomplete. Please fix the red/grey ones before going live."
       />
@@ -117,7 +126,6 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
               <nav className="flex flex-col gap-2">
                 {menu.map((item) => {
                   const active = pathname.startsWith(item.href);
-                  const Icon = item.icon;
                   return (
                     <Link
                       key={item.label}
