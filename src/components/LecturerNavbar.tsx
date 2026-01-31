@@ -3,8 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCurrentLecturer } from "@/src/lib/fakeAuth";
 import localFont from "next/font/local";
+
+import { supabase } from "@/src/lib/supabaseClient";
+
+type LecturerProfile = {
+  id: string;
+  role: "lecturer" | "student" | null;
+  firstName?: string | null;
+  lastName?: string | null;
+};
 
 type Lecturer = {
   firstName?: string | null;
@@ -18,21 +26,72 @@ const caesar = localFont({
 export default function LecturerNavbar() {
   const router = useRouter();
 
-  // ✅ Start null so SSR + first client render match
+  // start null so SSR + first client render match
   const [user, setUser] = useState<Lecturer | null>(null);
 
   useEffect(() => {
-    setUser(getCurrentLecturer());
-  }, []);
+    let unsub: (() => void) | null = null;
+
+    const load = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      const authUser = data?.user;
+
+      if (error || !authUser) {
+        setUser(null);
+        // optional: redirect if not logged in
+        router.replace("/login");
+        return;
+      }
+
+      // Pull profile (role + name) via your view (RLS should allow select own)
+      const { data: prof, error: pErr } = await supabase
+        .from("my_profile_api")
+        .select("id, role, firstName, lastName")
+        .single();
+
+      if (pErr || !prof) {
+        // still show auth email initial if profile fetch fails
+        setUser({ firstName: null, email: authUser.email ?? null });
+        return;
+      }
+
+      // optional: if someone logs in but isn't lecturer, kick them out
+      if (prof.role !== "lecturer") {
+        setUser(null);
+        router.replace("/login");
+        return;
+      }
+
+      setUser({
+        firstName: (prof as LecturerProfile).firstName ?? null,
+        email: authUser.email ?? null,
+      });
+    };
+
+    load();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      // when login/logout happens, refresh user/profile
+      if (!session?.user) {
+        setUser(null);
+        return;
+      }
+      load();
+    });
+
+    unsub = () => sub.subscription.unsubscribe();
+
+    return () => {
+      unsub?.();
+    };
+  }, [router]);
 
   const initial = useMemo(() => {
-    // ✅ placeholder shown on SSR + first client render
     if (!user) return "L";
-
     return (
-      (user.firstName?.trim()?.charAt(0) ||
-        user.email?.trim()?.charAt(0) ||
-        "L")
+      user.firstName?.trim()?.charAt(0) ||
+      user.email?.trim()?.charAt(0) ||
+      "L"
     ).toUpperCase();
   }, [user]);
 
