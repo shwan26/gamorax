@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import { saveGame } from "@/src/lib/gameStorage";
 import Link from "next/link";
 import { ArrowLeft, Gamepad2 } from "lucide-react";
+import { supabase } from "@/src/lib/supabaseClient";
 
 export default function CreateGamePage() {
   const router = useRouter();
@@ -13,27 +13,48 @@ export default function CreateGamePage() {
   const courseId = (params?.courseId ?? "").toString();
 
   const [quizNumber, setQuizNumber] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  function handleCreate() {
+  async function handleCreate() {
     if (!courseId) return;
 
-    if (!quizNumber.trim()) {
+    const title = quizNumber.trim();
+    if (!title) {
       alert("Please fill quiz number/title.");
       return;
     }
 
-    const id = crypto.randomUUID();
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) {
+      router.replace(
+        `/login?next=${encodeURIComponent(`/course/${courseId}/game/create`)}`
+      );
+      return;
+    }
 
-    saveGame({
-      id,
-      courseId,
-      quizNumber: quizNumber.trim(),
-      timer: { mode: "automatic", defaultTime: 60 },
-      shuffleQuestions: false,
-      shuffleAnswers: false,
-    });
+    setSaving(true);
+    try {
+      const { data, error } = await supabase
+        .from("games_api")
+        .insert({
+          courseId,
+          quizNumber: title,
+          timer: { mode: "automatic", defaultTime: 60 },
+          shuffleQuestions: false,
+          shuffleAnswers: false,
+        })
+        .select("id")
+        .single();
 
-    router.push(`/course/${courseId}/game/${id}/question`);
+      if (error) {
+        alert("Create game failed: " + error.message);
+        return;
+      }
+
+      router.push(`/course/${courseId}/game/${data.id}/question`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -42,7 +63,6 @@ export default function CreateGamePage() {
 
       <main className="mx-auto flex max-w-6xl justify-center px-4 pb-12 pt-8 sm:pt-12 md:pt-14">
         <div className="w-full max-w-md">
-          {/* back */}
           <Link
             href={`/course/${courseId}`}
             className="inline-flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-colors dark:text-slate-300 dark:hover:text-slate-50"
@@ -51,7 +71,6 @@ export default function CreateGamePage() {
             Back to Course
           </Link>
 
-          {/* card shell */}
           <div
             className="
               mt-4 overflow-hidden rounded-3xl p-[1px]
@@ -60,7 +79,6 @@ export default function CreateGamePage() {
               dark:shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_18px_50px_rgba(56,189,248,0.10)]
             "
           >
-            {/* inner card */}
             <div
               className="
                 relative rounded-[23px] bg-white p-6 ring-1 ring-slate-200/70
@@ -68,7 +86,6 @@ export default function CreateGamePage() {
                 sm:p-7
               "
             >
-              {/* dots */}
               <div
                 className="pointer-events-none absolute inset-0 opacity-[0.05] dark:opacity-[0.10]"
                 style={{
@@ -78,7 +95,6 @@ export default function CreateGamePage() {
                 }}
               />
 
-              {/* header */}
               <div className="relative flex items-start gap-3">
                 <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-700/70 dark:bg-[#0B2447]">
                   <Gamepad2 className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
@@ -94,7 +110,6 @@ export default function CreateGamePage() {
                 </div>
               </div>
 
-              {/* form */}
               <div className="relative mt-6 space-y-4">
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-200">
@@ -118,15 +133,17 @@ export default function CreateGamePage() {
                 <button
                   type="button"
                   onClick={handleCreate}
+                  disabled={saving}
                   className="
                     w-full rounded-xl py-3 text-sm font-semibold text-white
                     bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
                     shadow-[0_10px_25px_rgba(37,99,235,0.18)]
                     hover:opacity-95 active:scale-[0.99] transition
                     focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
+                    disabled:opacity-60 disabled:cursor-not-allowed
                   "
                 >
-                  Create
+                  {saving ? "Creating..." : "Create"}
                 </button>
 
                 <p className="text-xs text-slate-500 dark:text-slate-400">
