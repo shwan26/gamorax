@@ -210,11 +210,9 @@ export default function QuestionPage() {
 
     const qRows = (qs ?? []) as QuestionApiRow[];
 
-    // if no questions, create first question in DB
     if (qRows.length === 0) {
       const first = createBlankQuestion((g as GameRow).timer?.defaultTime ?? 60);
 
-      // insert question
       const { data: newQ, error: insErr } = await supabase
         .from("questions_api")
         .insert({
@@ -232,7 +230,48 @@ export default function QuestionPage() {
         .select("id")
         .single();
 
+      // ✅ If duplicate position happens, someone already created it → just reload from DB
       if (insErr) {
+        const msg = insErr.message?.toLowerCase() ?? "";
+        if (msg.includes("questions_unique_position") || msg.includes("duplicate key")) {
+          // re-fetch questions and continue normally
+          const { data: qs2, error: qErr2 } = await supabase
+            .from("questions_api")
+            .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers")
+            .eq("gameId", gameId)
+            .order("position", { ascending: true });
+
+          if (qErr2) {
+            setLoading(false);
+            alert("Load questions error: " + qErr2.message);
+            return;
+          }
+
+          // continue with the normal flow:
+          const qRows2 = (qs2 ?? []) as QuestionApiRow[];
+          const qIds2 = qRows2.map((r) => r.id);
+
+          const { data: ans2, error: aErr2 } = await supabase
+            .from("answers_api")
+            .select("id, questionId, answerIndex, text, image, correct")
+            .in("questionId", qIds2)
+            .order("answerIndex", { ascending: true });
+
+          if (aErr2) {
+            setLoading(false);
+            alert("Load answers error: " + aErr2.message);
+            return;
+          }
+
+          const aRows2 = (ans2 ?? []) as AnswerApiRow[];
+          const built2 = qRows2.map((qr) => normalizeQuestion(qr, aRows2.filter((a) => a.questionId === qr.id)));
+
+          setQuestions(built2);
+          setActiveIndex(0);
+          setLoading(false);
+          return;
+        }
+
         setLoading(false);
         alert("Create first question error: " + insErr.message);
         return;
@@ -248,16 +287,14 @@ export default function QuestionPage() {
       }));
 
       const { error: aErr } = await supabase.from("answers_api").insert(payload);
-      if (aErr) {
-        // not fatal for loading UI, but report it
-        console.warn("Insert default answers error:", aErr.message);
-      }
+      if (aErr) console.warn("Insert default answers error:", aErr.message);
 
       setQuestions([first]);
       setActiveIndex(0);
       setLoading(false);
       return;
     }
+
 
     // load all answers for these questions (one query)
     const qIds = qRows.map((r) => r.id);
@@ -285,10 +322,16 @@ export default function QuestionPage() {
     setLoading(false);
   }
 
+  const didInit = useRef(false);
+
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseId, gameId]);
+
 
   // Debounced autosave to Supabase
   useEffect(() => {

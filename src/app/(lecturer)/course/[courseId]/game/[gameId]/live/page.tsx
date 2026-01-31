@@ -1,22 +1,53 @@
+// src/app/(lecturer)/course/[courseId]/game/[gameId]/live/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
-import { getGameById } from "@/src/lib/gameStorage";
-import { getCourseById } from "@/src/lib/courseStorage";
-import { createLiveSession, type LiveSession } from "@/src/lib/liveStorage";
+import GradientButton from "@/src/components/GradientButton";
+
+import { supabase } from "@/src/lib/supabaseClient";
 import QRCode from "react-qr-code";
 import { socket } from "@/src/lib/socket";
 import { Users, Play, Link2, KeyRound } from "lucide-react";
-import GradientButton from "@/src/components/GradientButton";
+
+/* ------------------------------ types ------------------------------ */
+
+type CourseRow = {
+  id: string;
+  courseCode: string;
+  courseName: string;
+  section?: string | null;
+  semester?: string | null;
+};
+
+type GameRow = {
+  id: string;
+  courseId: string;
+  quizNumber: string;
+  timer: { mode: "automatic" | "manual"; defaultTime: number };
+  shuffleQuestions: boolean;
+  shuffleAnswers: boolean;
+};
+
+type LiveSessionRow = {
+  id: string;
+  pin: string;
+  quiz_id?: string;
+  lecturer_id?: string;
+  is_active?: boolean;
+  status?: string;
+};
 
 type LiveStudent = {
   studentId: string;
   name: string;
-  avatarSrc?: string; // optional
+  avatarSrc?: string;
 };
+
+/* ------------------------------ helpers ------------------------------ */
 
 function initialsFromName(name: string) {
   const s = (name ?? "").trim();
@@ -27,13 +58,7 @@ function initialsFromName(name: string) {
   return (first + last).toUpperCase();
 }
 
-function StudentAvatar({
-  s,
-  size = 44,
-}: {
-  s: LiveStudent;
-  size?: number;
-}) {
+function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
   const initials = initialsFromName(s.name);
 
   return (
@@ -61,59 +86,158 @@ function StudentAvatar({
   );
 }
 
+/* ------------------------------ page ------------------------------ */
+
 export default function LivePage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const router = useRouter();
+  const sp = useSearchParams();
 
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
-  const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
-  const course = useMemo(
-    () => (courseId ? getCourseById(courseId) : null),
-    [courseId]
-  );
+  const pinFromUrl = (sp?.get("pin") ?? "").trim();
 
-  const valid = !!game && !!course && game.courseId === courseId;
+  const [loading, setLoading] = useState(true);
+  const [course, setCourse] = useState<CourseRow | null>(null);
+  const [game, setGame] = useState<GameRow | null>(null);
 
-  const [session, setSession] = useState<LiveSession | null>(null);
+  const [session, setSession] = useState<LiveSessionRow | null>(null);
   const [students, setStudents] = useState<LiveStudent[]>([]);
 
   // prevent double-create in dev (React strict mode)
   const createdRef = useRef(false);
 
+  const valid = !!course && !!game && game.courseId === courseId;
+
+  async function requireLecturerOrRedirect(nextPath: string) {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+      return false;
+    }
+
+    const { data: prof, error } = await supabase
+      .from("my_profile_api")
+      .select("role")
+      .single();
+
+    if (error || !prof || prof.role !== "lecturer") {
+      await supabase.auth.signOut();
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  // 1) load course + game (Supabase)
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!courseId || !gameId) return;
+
+      setLoading(true);
+
+      const ok = await requireLecturerOrRedirect(
+        `/course/${courseId}/game/${gameId}/live`
+      );
+      if (!ok) return;
+
+      const { data: c, error: cErr } = await supabase
+        .from("courses_api")
+        .select("id, courseCode, courseName, section, semester")
+        .eq("id", courseId)
+        .single();
+
+      if (!alive) return;
+      if (cErr) {
+        alert("Load course error: " + cErr.message);
+        setLoading(false);
+        return;
+      }
+
+      const { data: g, error: gErr } = await supabase
+        .from("games_api")
+        .select("id, courseId, quizNumber, timer, shuffleQuestions, shuffleAnswers")
+        .eq("id", gameId)
+        .single();
+
+      if (!alive) return;
+      if (gErr) {
+        alert("Load game error: " + gErr.message);
+        setLoading(false);
+        return;
+      }
+
+      setCourse(c as CourseRow);
+      setGame(g as GameRow);
+      setLoading(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [courseId, gameId, router]);
+
+  // 2) ensure live session exists (Supabase RPC)
   useEffect(() => {
     if (!valid) return;
+
+    // If URL already has pin, we can use it without creating new session
+    if (pinFromUrl) {
+      setSession((prev) => prev ?? ({ id: "", pin: pinFromUrl } as LiveSessionRow));
+      return;
+    }
+
     if (createdRef.current) return;
     createdRef.current = true;
 
-    const s = createLiveSession(gameId);
-    setSession(s);
-  }, [valid, gameId]);
+    (async () => {
+      const { data, error } = await supabase.rpc("create_live_session", {
+        p_quiz_id: gameId,
+      });
 
-  // connect + join room + receive students:update
+      if (error) {
+        alert("Create live session error: " + error.message);
+        return;
+      }
+
+      // RPC returns live_sessions row
+      setSession(data as LiveSessionRow);
+    })();
+  }, [valid, gameId, pinFromUrl]);
+
+  const pin = session?.pin ?? "";
+
+  const joinUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    if (!pin) return "";
+    return `${window.location.origin}/join/${pin}`;
+  }, [pin]);
+
+  // 3) socket: connect + join room + receive students:update
   useEffect(() => {
-    if (!session?.pin) return;
+    if (!pin) return;
+    if (!game || !course) return;
 
     const s = socket;
     s.connect();
 
-    const pin = session.pin;
-
     const meta = {
       gameId,
-      quizTitle: game?.quizNumber ?? "Quiz",
-      courseCode: course?.courseCode ?? "",
-      courseName: course?.courseName ?? "",
-      section: (course?.section ?? "").toString(),
-      semester: (course?.semester ?? "").toString(),
+      quizTitle: game.quizNumber ?? "Quiz",
+      courseCode: course.courseCode ?? "",
+      courseName: course.courseName ?? "",
+      section: (course.section ?? "").toString(),
+      semester: (course.semester ?? "").toString(),
     };
 
     const doJoin = () => {
-      s.emit("lecturer:join", { pin }); 
-      s.emit("meta:set", { pin, meta }); 
+      s.emit("lecturer:join", { pin });
+      s.emit("meta:set", { pin, meta });
     };
-
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
       setStudents(Array.isArray(list) ? list : []);
@@ -132,38 +256,33 @@ export default function LivePage() {
       s.off("connect", doJoin);
       s.off("students:update", onStudentsUpdate);
       s.off("connect_error", onErr);
-      // optional: don't disconnect globally if other pages use same socket
-      // s.disconnect();
     };
-  }, [session?.pin, gameId, game?.quizNumber, course?.courseCode, course?.courseName, course?.section, course?.semester]);
-
-  if (!valid || !game || !course || !session) return null;
-
-  const pin = session.pin;
-
-  const joinUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/join/${pin}` : "";
+  }, [pin, gameId, game, course]);
 
   const hasStudents = students.length > 0;
 
   function handleStart() {
     if (!hasStudents) return;
     router.push(
-      `/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(
-        pin
-      )}`
+      `/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(pin)}`
     );
   }
+
+  if (loading) return null;
+  if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
+  if (!valid || !course || !game) return <div className="p-6">Invalid course/game.</div>;
+  if (!pin) return <div className="p-6">Creating live session…</div>;
 
   return (
     <div className="min-h-screen app-surface app-bg">
       <Navbar />
+
       <GameSubNavbar
         title={`${game.quizNumber} — ${course.courseCode}${
           course.section ? ` • Section ${course.section}` : ""
         }${course.semester ? ` • ${course.semester}` : ""}`}
-        canStartLive = {true}
-        liveBlockReason = ""
+        canStartLive={true}
+        liveBlockReason=""
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
@@ -199,7 +318,7 @@ export default function LivePage() {
                   </p>
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 break-words">
                     <span className="font-mono">
-                      {joinUrl.replace(/^https?:\/\//, "")}
+                      {joinUrl ? joinUrl.replace(/^https?:\/\//, "") : ""}
                     </span>
                   </p>
                 </div>
@@ -213,7 +332,7 @@ export default function LivePage() {
                 "
               >
                 {/* QR code */}
-                <QRCode value={joinUrl} size={260} />
+                {joinUrl ? <QRCode value={joinUrl} size={260} /> : null}
               </div>
 
               <div className="flex items-start gap-3">
@@ -310,7 +429,6 @@ export default function LivePage() {
                     >
                       <div className="flex items-center gap-3">
                         <StudentAvatar s={s} />
-
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
                             {s.name || "Student"}

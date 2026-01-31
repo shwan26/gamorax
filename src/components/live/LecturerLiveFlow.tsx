@@ -1,8 +1,9 @@
+// src/components/live/LecturerLiveFlow.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import Navbar from "@/src/components/LecturerNavbar";
+
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById } from "@/src/lib/courseStorage";
 import { getQuestions, type Question } from "@/src/lib/questionStorage";
@@ -10,10 +11,10 @@ import { socket } from "@/src/lib/socket";
 
 import {
   setLastQuestionAt,
-  saveLiveReport,
   getLiveByPin,
   getCurrentLivePin,
   type LiveReportRow,
+  saveLiveReport,
 } from "@/src/lib/liveStorage";
 
 import LecturerLiveLayout from "./LecturerLiveLayout";
@@ -35,25 +36,11 @@ function shuffleArray<T>(arr: T[]) {
   return a;
 }
 
-function toCorrectIndex(q: any): number | null {
-  if (!q) return null;
-  if (Array.isArray(q.answers) && q.answers.length) {
-    const idx = q.answers.findIndex((a: any) => a?.correct === true);
-    if (idx >= 0) return idx;
-  }
-  return null;
-}
-
 function toCorrectIndices(q: any): number[] {
   if (!q) return [];
-  if (Array.isArray(q.answers) && q.answers.length) {
-    const idxs = q.answers
-      .map((a: any, i: number) => (a?.correct ? i : -1))
-      .filter((i: number) => i >= 0);
-    if (idxs.length) return idxs;
-  }
-  const one = toCorrectIndex(q);
-  return typeof one === "number" && one >= 0 ? [one] : [];
+  const ans = Array.isArray(q.answers) ? q.answers : [];
+  const idxs = ans.map((a: any, i: number) => (a?.correct ? i : -1)).filter((i: number) => i >= 0);
+  return idxs;
 }
 
 type GameWithShuffle = Game & {
@@ -61,30 +48,27 @@ type GameWithShuffle = Game & {
   shuffleAnswers?: boolean;
 };
 
-export default function LecturerLiveFlow() {
+export default function LecturerLiveFlow({
+  courseId,
+  gameId,
+  pin,
+  course,
+  game,
+}: {
+  courseId: string;
+  gameId: string;
+  pin: string;
+  course: any;
+  game: any;
+}) {
+  const valid = !!course && !!game && game.courseId === courseId;
+
+  if (!valid) return <div className="p-10">Invalid course/game.</div>;
+  if (!pin) return <div className="p-10">PIN missing. Go back to Live lobby.</div>;
+
   const params = useParams<{ courseId?: string; gameId?: string }>();
-  const courseId = (params?.courseId ?? "").toString();
-  const gameId = (params?.gameId ?? "").toString();
   const searchParams = useSearchParams();
 
-  const pin = useMemo(() => {
-    const fromQuery = (searchParams?.get("pin") ?? "").trim();
-    if (fromQuery) return fromQuery;
-    if (!gameId) return "";
-    return (getCurrentLivePin(gameId) ?? "").trim();
-  }, [searchParams, gameId]);
-
-  const game = useMemo(() => {
-    const g = gameId ? getGameById(gameId) : null;
-    return (g as GameWithShuffle | null) ?? null;
-  }, [gameId]);
-
-  const course = useMemo(
-    () => (courseId ? getCourseById(courseId) : null),
-    [courseId]
-  );
-
-  const valid = !!game && !!course && game.courseId === courseId;
 
   const shuffleQuestions = Boolean(game?.shuffleQuestions);
   const shuffleAnswers = Boolean(game?.shuffleAnswers);
@@ -94,7 +78,6 @@ export default function LecturerLiveFlow() {
 
   useEffect(() => {
     let alive = true;
-
     (async () => {
       if (!valid || !gameId) {
         if (alive) setQuestions([]);
@@ -103,17 +86,14 @@ export default function LecturerLiveFlow() {
       try {
         const qs = await getQuestions(gameId);
         if (alive) setQuestions(qs ?? []);
-      } catch (e) {
-        console.error(e);
+      } catch {
         if (alive) setQuestions([]);
       }
     })();
-
     return () => {
       alive = false;
     };
   }, [valid, gameId]);
-
 
   // stable LIVE question order
   useEffect(() => {
@@ -145,10 +125,8 @@ export default function LecturerLiveFlow() {
   const baseIndex = liveOrder[qIndex] ?? qIndex;
   const baseQ = questions[baseIndex];
 
-  // stable MC answer order
+  // stable answer order for MC
   const getOrCreateAnswerOrder = (liveQIndex: number, optionCount: number) => {
-    if (!pin || !gameId) return [...Array(optionCount)].map((_, i) => i);
-
     const key = `gamorax_live_aorder_${pin}_${gameId}_${liveQIndex}_${optionCount}`;
     const saved = sessionStorage.getItem(key);
     if (saved) {
@@ -157,24 +135,15 @@ export default function LecturerLiveFlow() {
         if (Array.isArray(parsed) && parsed.length === optionCount) return parsed as number[];
       } catch {}
     }
-
     const base = [...Array(optionCount)].map((_, i) => i);
     const order = shuffleAnswers ? shuffleArray(base) : base;
     sessionStorage.setItem(key, JSON.stringify(order));
     return order;
   };
 
-  // stable Matching orders (shuffle ONLY right side)
-  const getOrCreateMatchOrder = (
-    liveQIndex: number,
-    side: "L" | "R",
-    optionCount: number
-  ) => {
-    if (!pin || !gameId) return [...Array(optionCount)].map((_, i) => i);
-
-    // ✅ bump key version to avoid old saved non-shuffled orders
-    const key = `gamorax_live_match_v2_${side}_${pin}_${gameId}_${liveQIndex}_${optionCount}`;
-
+  // stable Matching orders (shuffle only right)
+  const getOrCreateMatchOrder = (liveQIndex: number, optionCount: number) => {
+    const key = `gamorax_live_match_v2_R_${pin}_${gameId}_${liveQIndex}_${optionCount}`;
     const saved = sessionStorage.getItem(key);
     if (saved) {
       try {
@@ -182,17 +151,12 @@ export default function LecturerLiveFlow() {
         if (Array.isArray(parsed) && parsed.length === optionCount) return parsed as number[];
       } catch {}
     }
-
     const base = [...Array(optionCount)].map((_, i) => i);
-
-    // ✅ shuffle ONLY right side (always)
-    const order = side === "R" ? shuffleArray(base) : base;
-
+    const order = shuffleArray(base);
     sessionStorage.setItem(key, JSON.stringify(order));
     return order;
   };
 
-  // DISPLAY question (important: memo depends on baseQ.id, not baseQ object)
   const q = useMemo(() => {
     if (!baseQ) return null;
 
@@ -201,15 +165,13 @@ export default function LecturerLiveFlow() {
       const options =
         baseQ.type === "true_false"
           ? [
-              { text: "True", correct: baseQ.answers?.[0]?.correct ?? true },
-              { text: "False", correct: baseQ.answers?.[1]?.correct ?? false },
+              { text: "True", correct: true },
+              { text: "False", correct: false },
             ]
           : (baseQ.answers ?? []).slice(0, 5);
 
       const order =
-        baseQ.type === "true_false"
-          ? [0, 1]
-          : getOrCreateAnswerOrder(qIndex, options.length);
+        baseQ.type === "true_false" ? [0, 1] : getOrCreateAnswerOrder(qIndex, options.length);
 
       const ordered = order.map((i) => options[i]).filter(Boolean);
 
@@ -227,34 +189,28 @@ export default function LecturerLiveFlow() {
       return { ...baseQ, answers: displayAnswers };
     }
 
-    // Matching 
+    // Matching
     if (baseQ.type === "matching") {
       const pairs = (baseQ.matches ?? []).slice(0, 5);
-
       const left = pairs.map((p: any) => String(p?.left ?? ""));
       const rightBase = pairs.map((p: any) => String(p?.right ?? ""));
-
-      const rightOrder = getOrCreateMatchOrder(qIndex, "R", rightBase.length);
+      const rightOrder = getOrCreateMatchOrder(qIndex, rightBase.length);
       const right = rightOrder.map((i) => rightBase[i]).filter(Boolean);
-
       return { ...baseQ, left, right, matches: pairs };
     }
 
     // Input
     return { ...baseQ };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseQ?.id, baseQ?.type, qIndex, pin, gameId, shuffleAnswers]);
 
-  // ---------------- socket + counts ----------------
+  /* ---------------- socket + counts ---------------- */
 
   const s = socket;
-
   const [joinedCount, setJoinedCount] = useState(0);
   const [counts, setCounts] = useState<number[]>([]);
-
   const [answeredCount, setAnsweredCount] = useState(0);
 
-  // join room once per pin
+  // join room once per pin (DO NOT disconnect globally here)
   useEffect(() => {
     if (!pin) return;
 
@@ -266,21 +222,17 @@ export default function LecturerLiveFlow() {
 
     return () => {
       s.off("connect", doJoin);
-      s.disconnect();
     };
   }, [pin]);
 
-  // joined count listener (stable handler + correct cleanup)
   useEffect(() => {
     const onJoined = (p: any) => {
       const n = Number(p?.totalJoined ?? p?.total ?? p?.count ?? 0);
       if (Number.isFinite(n) && n >= 0) setJoinedCount(n);
     };
-
     s.on("room:count", onJoined);
     s.on("join:count", onJoined);
     s.on("room:joined", onJoined);
-
     return () => {
       s.off("room:count", onJoined);
       s.off("join:count", onJoined);
@@ -288,7 +240,6 @@ export default function LecturerLiveFlow() {
     };
   }, []);
 
-  // answer counts listener (only update if questionIndex matches)
   useEffect(() => {
     const onCount = (p: any) => {
       if (!p) return;
@@ -297,23 +248,22 @@ export default function LecturerLiveFlow() {
 
       const incoming = p.counts.map((x: any) => Math.max(0, Number(x ?? 0)));
 
-      // determine how many options THIS question has (so no ghost bars)
       const optionCount =
         q?.type === "true_false"
           ? 2
           : q?.type === "multiple_choice"
-          ? Math.min(5, (q.answers ?? []).length)
+          ? Math.min(5, (q as any)?.answers?.length ?? incoming.length)
           : incoming.length;
 
       const next = incoming.slice(0, optionCount);
 
-      setCounts((prev) => {
-        if (prev.length === next.length && prev.every((v, i) => v === next[i])) return prev;
-        return next;
-      });
+      setCounts(next);
       const totalAnswers = Number(p.totalAnswers ?? 0);
-      setAnsweredCount(Number.isFinite(totalAnswers) ? totalAnswers : next.reduce((sum: number, v: number) => sum + v, 0));
-
+      setAnsweredCount(
+        Number.isFinite(totalAnswers) && totalAnswers >= 0
+          ? totalAnswers
+          : next.reduce((sum: number, v: number) => sum + v, 0)
+      );
     };
 
     s.on("answer:count", onCount);
@@ -322,22 +272,19 @@ export default function LecturerLiveFlow() {
     };
   }, [qIndex, q?.type, (q as any)?.answers?.length]);
 
-
-  // ---------------- timer ----------------
+  /* ---------------- timer + show question ---------------- */
 
   const [startAt, setStartAt] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState<number>(20);
   const [now, setNow] = useState<number>(() => Date.now());
   const autoRevealedRef = useRef(false);
-
-  // ✅ IMPORTANT: only initialize timing ONCE per question show
   const lastShowKeyRef = useRef<string>("");
 
   useEffect(() => {
     if (!pin || !q || status !== "question") return;
 
     const showKey = `${pin}|${gameId}|${qIndex}|${q?.id ?? ""}|${q?.type ?? ""}`;
-    if (lastShowKeyRef.current === showKey) return; // prevents loop
+    if (lastShowKeyRef.current === showKey) return;
     lastShowKeyRef.current = showKey;
 
     setLastQuestionAt(pin);
@@ -354,12 +301,10 @@ export default function LecturerLiveFlow() {
       q.type === "true_false"
         ? 2
         : q.type === "multiple_choice"
-        ? Math.min(5, (q.answers ?? []).length)
+        ? Math.min(5, ((q as any).answers ?? []).length)
         : 0;
 
     setCounts(Array.from({ length: optionCount }, () => 0));
-    setAnsweredCount(0);
-
     setAnsweredCount(0);
 
     const common = {
@@ -367,80 +312,49 @@ export default function LecturerLiveFlow() {
       number: qIndex + 1,
       total: questions.length,
       text: q.text ?? "",
-      image: q.image ?? null,
+      image: (q as any).image ?? null,
       type: q.type ?? "multiple_choice",
       startAt: sAt,
       durationSec: dur,
     };
 
     if (q.type === "multiple_choice" || q.type === "true_false") {
-      const answersText = (q.answers ?? []).map((a: any) => a.text ?? "");
+      const answersText = ((q as any).answers ?? []).map((a: any) => a.text ?? "");
       const correctIndices = toCorrectIndices(q);
-
       s.emit("question:show", {
         pin,
-        question: {
-          ...common,
-          answers: answersText,
-          allowMultiple: correctIndices.length > 1,
-          correctIndices,
-        },
+        question: { ...common, answers: answersText, allowMultiple: correctIndices.length > 1, correctIndices },
       });
       return;
     }
 
     if (q.type === "matching") {
-      const pairs = (q.matches ?? []).slice(0, 5);
-
-      const left = Array.isArray((q as any).left)
-        ? (q as any).left
-        : pairs.map((p: any) => String(p?.left ?? ""));
-
-      const right = Array.isArray((q as any).right)
-        ? (q as any).right
-        : pairs.map((p: any) => String(p?.right ?? ""));
-
-      s.emit("question:show", {
-        pin,
-        question: {
-          ...common,
-          left,
-          right,
-          correctPairs: pairs,
-        },
-      });
-
+      const pairs = ((q as any).matches ?? []).slice(0, 5);
+      const left = Array.isArray((q as any).left) ? (q as any).left : pairs.map((p: any) => String(p?.left ?? ""));
+      const right = Array.isArray((q as any).right) ? (q as any).right : pairs.map((p: any) => String(p?.right ?? ""));
+      s.emit("question:show", { pin, question: { ...common, left, right, correctPairs: pairs } });
       return;
     }
-
 
     // input
     s.emit("question:show", {
       pin,
-      question: {
-        ...common,
-        acceptedAnswers: (q.acceptedAnswers ?? []).filter(Boolean),
-      },
+      question: { ...common, acceptedAnswers: (((q as any).acceptedAnswers ?? []) as string[]).filter(Boolean) },
     });
   }, [pin, gameId, q?.id, q?.type, status, qIndex, questions.length]);
 
-  // tick
   useEffect(() => {
     if (status !== "question") return;
     if (!startAt) return;
-
     const t = window.setInterval(() => setNow(Date.now()), 100);
     return () => window.clearInterval(t);
   }, [status, startAt]);
 
-  // auto reveal
   useEffect(() => {
     if (status !== "question") return;
     if (!q || !startAt) return;
-
     const elapsedMs = now - startAt;
     const limitMs = durationSec * 1000;
-
     if (elapsedMs >= limitMs && !autoRevealedRef.current) {
       autoRevealedRef.current = true;
       showAnswer(true);
@@ -466,7 +380,7 @@ export default function LecturerLiveFlow() {
     }
 
     if (q.type === "matching") {
-      const pairs = (q.matches ?? []).slice(0, 5);
+      const pairs = ((q as any).matches ?? []).slice(0, 5);
       s.emit("reveal", { pin, questionIndex: qIndex, type: "matching", correctPairs: pairs });
       setStatus("answer");
       return;
@@ -476,7 +390,7 @@ export default function LecturerLiveFlow() {
       pin,
       questionIndex: qIndex,
       type: "input",
-      acceptedAnswers: (q.acceptedAnswers ?? []).filter(Boolean),
+      acceptedAnswers: (((q as any).acceptedAnswers ?? []) as string[]).filter(Boolean),
     });
     setStatus("answer");
   }
@@ -504,24 +418,8 @@ export default function LecturerLiveFlow() {
           totalTime: Number(r.totalTime ?? 0),
         }));
 
-
       const nowIso = new Date().toISOString();
       const live = pin ? getLiveByPin(pin) : null;
-
-      const scores = rows.map(r => r.score);
-      const times = rows.map(r => r.totalTime);
-
-      const stat = (arr: number[]) => {
-        if (!arr.length) return { min: 0, max: 0, avg: 0 };
-        const min = Math.min(...arr);
-        const max = Math.max(...arr);
-        const avg = arr.reduce((a,b)=>a+b,0) / arr.length;
-        return { min, max, avg: Math.round(avg * 100) / 100 };
-      };
-
-      const scoreStats = stat(scores);
-      const timeStats = stat(times);
-
 
       saveLiveReport({
         id: crypto.randomUUID(),
@@ -531,9 +429,8 @@ export default function LecturerLiveFlow() {
         startedAt: live?.startedAt,
         lastQuestionAt: live?.lastQuestionAt ?? nowIso,
         savedAt: nowIso,
-        rows
+        rows,
       });
-
     };
 
     s.on("leaderboard:update", onLb);
@@ -563,69 +460,55 @@ export default function LecturerLiveFlow() {
     s.emit("next", { pin });
   }
 
-  // guards
+  // guards (NO NAVBAR HERE)
   if (!valid || !game || !course) return null;
 
   if (!pin) {
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <div className="p-10">
-          <p className="font-semibold">PIN is missing.</p>
-          <p className="text-sm text-gray-600 mt-2">
-            Open Live page first (it creates a session), then click Start.
-          </p>
-        </div>
+      <div className="p-10">
+        <p className="font-semibold">PIN is missing.</p>
+        <p className="text-sm text-gray-600 mt-2">
+          Open Live lobby first (it creates a session), then click Start.
+        </p>
       </div>
     );
   }
 
   if (!q) {
     return (
-      <div className="min-h-screen bg-white">
-        <Navbar />
-        <p className="p-10">No questions found.</p>
+      <div className="p-10">
+        <p>No questions found.</p>
       </div>
     );
   }
 
-  // time UI
-  const elapsed = startAt ? Math.max(0, now - startAt) : 0;
-  const limit = durationSec * 1000;
-  const pctRemaining = startAt && limit > 0 ? Math.max(0, 100 - (elapsed / limit) * 100) : 0;
-  const remainingSec = startAt ? Math.max(0, Math.ceil((limit - elapsed) / 1000)) : 0;
-
-  // AnswerReveal props (MC/TF)
-  const correctIndex = toCorrectIndex(q) ?? 0;
-  const answersText = (q.answers ?? []).map((a: any) => a.text ?? "");
-
   return (
-  <div className="min-h-screen app-surface app-bg">
-    <LecturerLiveLayout
-      courseId={courseId}
-      gameId={gameId}
-      game={game}
-      course={course}
-      pin={pin}
-      status={status as any}
-      q={q as any}
-      qIndex={qIndex}
-      totalQuestions={questions.length}
-      startAt={startAt}
-      durationSec={durationSec}
-      joinedCount={joinedCount}
-      answeredCount={answeredCount}
-      counts={counts}
-      ranked={ranked}
-      onShowAnswer={() => showAnswer(false)}
-      onNext={next}
-      onDisconnectAfterReportClick={() => {
-        try {
-          s.disconnect();
-        } catch {}
-      }}
-    />
-  </div>
-);
-
+    <div className="min-h-screen app-surface app-bg">
+      <LecturerLiveLayout
+        courseId={courseId}
+        gameId={gameId}
+        game={game}
+        course={course}
+        pin={pin}
+        status={status as any}
+        q={q as any}
+        qIndex={qIndex}
+        totalQuestions={questions.length}
+        startAt={startAt}
+        durationSec={durationSec}
+        joinedCount={joinedCount}
+        answeredCount={answeredCount}
+        counts={counts}
+        ranked={ranked}
+        onShowAnswer={() => showAnswer(false)}
+        onNext={next}
+        onDisconnectAfterReportClick={() => {
+          try {
+            // optional: if you want to stop live entirely
+            s.disconnect();
+          } catch {}
+        }}
+      />
+    </div>
+  );
 }
