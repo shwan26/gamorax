@@ -14,7 +14,7 @@ import {
   isQuestionComplete,
 } from "@/src/lib/questionStorage";
 
-import { Settings, FileUp, Timer, BarChart3 } from "lucide-react";
+import { Settings, FileUp, Timer, BarChart3, Link2 } from "lucide-react";
 
 export default function SettingLayout({
   children,
@@ -80,6 +80,8 @@ export default function SettingLayout({
     { label: "Add File", href: `${base}/setting/addfile`, icon: FileUp },
     { label: "Timer", href: `${base}/setting/timer`, icon: Timer },
     { label: "Report", href: `${base}/setting/reports`, icon: BarChart3 },
+    { label: "Assignment", href: `${base}/setting/assignment`, icon: Link2 },
+    { label: "Assignment Report", href: `${base}/setting/assignment/report`, icon: BarChart3 },
   ];
 
   return (
