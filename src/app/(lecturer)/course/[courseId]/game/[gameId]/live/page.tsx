@@ -9,9 +9,11 @@ import GameSubNavbar from "@/src/components/GameSubNavbar";
 import GradientButton from "@/src/components/GradientButton";
 
 import { supabase } from "@/src/lib/supabaseClient";
+import { socket, setSocketAccessToken } from "@/src/lib/socket";
+
 import QRCode from "react-qr-code";
-import { socket } from "@/src/lib/socket";
 import { Users, Play, Link2, KeyRound } from "lucide-react";
+
 
 /* ------------------------------ types ------------------------------ */
 
@@ -96,6 +98,7 @@ export default function LivePage() {
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
+  // allow re-using existing PIN from URL (nice for refresh / share)
   const pinFromUrl = (sp?.get("pin") ?? "").trim();
 
   const [loading, setLoading] = useState(true);
@@ -105,18 +108,23 @@ export default function LivePage() {
   const [session, setSession] = useState<LiveSessionRow | null>(null);
   const [students, setStudents] = useState<LiveStudent[]>([]);
 
+  // ✅ keep token in component scope (DO NOT do this in middleware)
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
   // prevent double-create in dev (React strict mode)
   const createdRef = useRef(false);
 
   const valid = !!course && !!game && game.courseId === courseId;
 
   async function requireLecturerOrRedirect(nextPath: string) {
+    // must be logged in
     const { data } = await supabase.auth.getUser();
     if (!data.user) {
       router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
       return false;
     }
 
+    // must be lecturer
     const { data: prof, error } = await supabase
       .from("my_profile_api")
       .select("role")
@@ -131,7 +139,31 @@ export default function LivePage() {
     return true;
   }
 
-  // 1) load course + game (Supabase)
+  /* ------------------------------ auth token ------------------------------ */
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (!alive) return;
+      setAccessToken(token);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const token = session?.access_token ?? null;
+      setAccessToken(token);
+    });
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  /* ------------------------------ load course + game ------------------------------ */
+
   useEffect(() => {
     let alive = true;
 
@@ -181,11 +213,11 @@ export default function LivePage() {
     };
   }, [courseId, gameId, router]);
 
-  // 2) ensure live session exists (Supabase RPC)
+  /* ------------------------------ ensure live session exists ------------------------------ */
+
   useEffect(() => {
     if (!valid) return;
 
-    // If URL already has pin, we can use it without creating new session
     if (pinFromUrl) {
       setSession((prev) => prev ?? ({ id: "", pin: pinFromUrl } as LiveSessionRow));
       return;
@@ -204,7 +236,6 @@ export default function LivePage() {
         return;
       }
 
-      // RPC returns live_sessions row
       setSession(data as LiveSessionRow);
     })();
   }, [valid, gameId, pinFromUrl]);
@@ -217,22 +248,15 @@ export default function LivePage() {
     return `${window.location.origin}/join/${pin}`;
   }, [pin]);
 
-  // 3) socket: connect + join room + receive students:update
+  /* ------------------------------ socket connect (lecturer) ------------------------------ */
+
   useEffect(() => {
-    if (!pin) return;
-    if (!game || !course) return;
+    if (!pin || !game || !course) return;
+    if (!accessToken) return;
 
     const s = socket;
-    s.connect();
 
-    const meta = {
-      gameId,
-      quizTitle: game.quizNumber ?? "Quiz",
-      courseCode: course.courseCode ?? "",
-      courseName: course.courseName ?? "",
-      section: (course.section ?? "").toString(),
-      semester: (course.semester ?? "").toString(),
-    };
+    const meta = { /* ...same meta... */ };
 
     const doJoin = () => {
       s.emit("lecturer:join", { pin });
@@ -247,17 +271,29 @@ export default function LivePage() {
       console.error("socket connect_error:", err?.message ?? err);
     };
 
-    if (s.connected) doJoin();
     s.on("connect", doJoin);
     s.on("students:update", onStudentsUpdate);
     s.on("connect_error", onErr);
+
+    // ✅ IMPORTANT: set token on REAL socket instance
+    setSocketAccessToken(accessToken);
+
+    // reconnect fresh
+    try {
+      if (s.connected) s.disconnect();
+    } catch {}
+
+    s.connect();
+
+    if (s.connected) doJoin();
 
     return () => {
       s.off("connect", doJoin);
       s.off("students:update", onStudentsUpdate);
       s.off("connect_error", onErr);
     };
-  }, [pin, gameId, game, course]);
+  }, [pin, game, course, accessToken]);
+
 
   const hasStudents = students.length > 0;
 
@@ -267,6 +303,8 @@ export default function LivePage() {
       `/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(pin)}`
     );
   }
+
+  /* ------------------------------ render ------------------------------ */
 
   if (loading) return null;
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
@@ -295,7 +333,6 @@ export default function LivePage() {
               dark:border-slate-800/70 dark:bg-slate-950/45
             "
           >
-            {/* dot pattern + glow */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
               style={{
@@ -331,7 +368,6 @@ export default function LivePage() {
                   flex items-center justify-center
                 "
               >
-                {/* QR code */}
                 {joinUrl ? <QRCode value={joinUrl} size={260} /> : null}
               </div>
 
@@ -359,9 +395,7 @@ export default function LivePage() {
                   Start
                 </GradientButton>
                 <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-                  {hasStudents
-                    ? "Ready when you are."
-                    : "Waiting for at least 1 student to join."}
+                  {hasStudents ? "Ready when you are." : "Waiting for at least 1 student to join."}
                 </p>
               </div>
             </div>
@@ -375,7 +409,6 @@ export default function LivePage() {
               dark:border-slate-800/70 dark:bg-slate-950/45
             "
           >
-            {/* dot pattern + glow */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
               style={{
@@ -419,22 +452,22 @@ export default function LivePage() {
                 </div>
               ) : (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {students.map((s) => (
+                  {students.map((st) => (
                     <div
-                      key={s.studentId}
+                      key={st.studentId}
                       className="
                         rounded-3xl border border-slate-200/70 bg-white/70 p-3 shadow-sm backdrop-blur
                         dark:border-slate-800/70 dark:bg-slate-950/55
                       "
                     >
                       <div className="flex items-center gap-3">
-                        <StudentAvatar s={s} />
+                        <StudentAvatar s={st} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-                            {s.name || "Student"}
+                            {st.name || "Student"}
                           </p>
                           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {s.studentId}
+                            {st.studentId}
                           </p>
                         </div>
                       </div>

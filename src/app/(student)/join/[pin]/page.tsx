@@ -1,10 +1,11 @@
+// src/app/(student)/join/[pin]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import Navbar from "@/src/components/Navbar";
-import { socket } from "@/src/lib/socket";
+import { socket, setSocketAccessToken } from "@/src/lib/socket";
 
 import { getCurrentStudent, updateCurrentStudent } from "@/src/lib/studentAuthStorage";
 import type { LiveStudent } from "@/src/lib/liveStorage";
@@ -13,6 +14,7 @@ import { getAvatarSrc, toLiveStudent } from "@/src/lib/studentAvatar";
 import { randomSeed } from "@/src/lib/dicebear";
 import { deriveStudentIdFromEmail } from "@/src/lib/studentAuthStorage";
 import { saveLiveMeta } from "@/src/lib/liveStorage";
+import { supabase } from "@/src/lib/supabaseClient";
 
 function DotPattern() {
   return (
@@ -66,7 +68,9 @@ export default function LobbyPage() {
     pinStatus === "checking"
       ? "Checking PIN…"
       : pinStatus === "active"
-      ? (liveMeta?.quizTitle ? `Lobby: ${liveMeta.quizTitle}` : "Lobby ready")
+      ? liveMeta?.quizTitle
+        ? `Lobby: ${liveMeta.quizTitle}`
+        : "Lobby ready"
       : pinStatus === "inactive"
       ? "No live session for this PIN"
       : "Connection error";
@@ -82,6 +86,29 @@ export default function LobbyPage() {
 
   const s = socket;
 
+  // ✅ Supabase access token for socket auth
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (!alive) return;
+      setAccessToken(token);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAccessToken(session?.access_token ?? null);
+    });
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
   useEffect(() => setMounted(true), []);
 
   // load lock state
@@ -93,49 +120,6 @@ export default function LobbyPage() {
       setLocked(false);
     }
   }, [mounted, pin, lockKey]);
-
-  useEffect(() => {
-    if (!mounted || !pin || !ready) return;
-
-    s.connect();
-
-    const check = async () => {
-      setPinStatus("checking");
-
-      // ✅ server should ACK with { exists: boolean, meta?: {...} }
-      s.emit("pin:check", { pin }, (resp: any) => {
-        const exists = Boolean(resp?.exists);
-
-        if (!exists) {
-          setPinStatus("inactive");
-          setLiveMeta(null);
-          return;
-        }
-
-        setPinStatus("active");
-        setLiveMeta({
-          quizTitle: resp?.meta?.quizTitle, 
-          courseCode: resp?.meta?.courseCode,
-          courseName: resp?.meta?.courseName,
-        });
-        saveLiveMeta(pin, resp.meta);
-      });
-    };
-
-    if (s.connected) check();
-    s.on("connect", check);
-
-    const onErr = (err: any) => {
-      console.error("pin check connect_error:", err?.message ?? err);
-      setPinStatus("error");
-    };
-    s.on("connect_error", onErr);
-
-    return () => {
-      s.off("connect", check);
-      s.off("connect_error", onErr);
-    };
-  }, [mounted, pin, ready]);
 
   // load current student + session live student
   useEffect(() => {
@@ -153,17 +137,18 @@ export default function LobbyPage() {
       setName(me.name ?? "");
       setStudentIdManual(me.studentId ?? "");
 
-      // load live student from session or make one from account
       const live = await getOrCreateLiveStudent();
       if (!live) {
         router.replace(`/auth/login?next=${encodeURIComponent("/join/" + pin)}`);
         return;
       }
+
       setStudent(live);
       setReady(true);
     })();
   }, [mounted, pin, router]);
-// if AU email, default to derived
+
+  // if AU email, default to derived
   useEffect(() => {
     if (!mounted) return;
     if (canAutoDerive) setUseDerivedId(true);
@@ -178,29 +163,88 @@ export default function LobbyPage() {
   const effectiveStudentId = (useDerivedId && canAutoDerive ? derivedId : studentIdManual).trim();
   const avatarSrc = useMemo(() => getAvatarSrc(student, 96), [student]);
 
+  // ✅ Connect socket ONCE (with token) and keep it authenticated
+  useEffect(() => {
+    if (!mounted || !pin || !ready) return;
+    if (!accessToken) return;
+
+    // ✅ set token before connect
+    setSocketAccessToken(accessToken);
+
+    // clean reconnect to ensure auth handshake uses latest token
+    try {
+      if (s.connected) s.disconnect();
+    } catch {}
+
+    s.connect();
+
+    const onErr = (err: any) => {
+      console.error("socket connect_error:", err?.message ?? err);
+      setPinStatus("error");
+    };
+
+    s.on("connect_error", onErr);
+
+    return () => {
+      s.off("connect_error", onErr);
+      // ❌ do not disconnect here (question page needs socket)
+    };
+  }, [mounted, pin, ready, accessToken, s]);
+
+  // ✅ PIN check (runs after socket is connected)
+  useEffect(() => {
+    if (!mounted || !pin || !ready) return;
+    if (!accessToken) return;
+
+    const check = () => {
+      setPinStatus("checking");
+
+      s.emit("pin:check", { pin }, (resp: any) => {
+        const exists = Boolean(resp?.exists);
+
+        if (!exists) {
+          setPinStatus("inactive");
+          setLiveMeta(null);
+          return;
+        }
+
+        setPinStatus("active");
+        setLiveMeta({
+          quizTitle: resp?.meta?.quizTitle,
+          courseCode: resp?.meta?.courseCode,
+          courseName: resp?.meta?.courseName,
+        });
+
+        if (resp?.meta) saveLiveMeta(pin, resp.meta);
+      });
+    };
+
+    if (s.connected) check();
+    s.on("connect", check);
+
+    return () => {
+      s.off("connect", check);
+    };
+  }, [mounted, pin, ready, accessToken, s]);
+
   // ✅ join socket + redirect when lecturer starts
   useEffect(() => {
     if (!mounted || !pin || !ready || !student) return;
+    if (!accessToken) return;
+    if (pinStatus !== "active") return;
 
-    s.connect(); // ✅ connect in lobby
-
-    const doJoin = async () => {
-      const sid = effectiveStudentId || student.studentId; // must exist
+    const doJoin = () => {
+      const sid = (effectiveStudentId || student.studentId || "").trim();
       const nm = (name.trim() || student.name || "").trim();
-
-      if (!sid || !nm) return; // don't join until we have both
+      if (!sid || !nm) return;
 
       const studentToJoin = { ...student, studentId: sid, name: nm };
 
-      // keep session in sync so refresh/reconnect keeps the id
+      // keep session in sync
       writeLiveStudent(studentToJoin);
-      if (pinStatus !== "active") return;
 
       s.emit("join", { pin, student: studentToJoin });
-      console.log("JOIN payload", { pin, studentToJoin });
-
     };
-
 
     if (s.connected) doJoin();
     s.on("connect", doJoin);
@@ -208,17 +252,11 @@ export default function LobbyPage() {
     const goQuestion = () => router.push(`/join/${encodeURIComponent(pin)}/question`);
     s.on("question:show", goQuestion);
 
-    const onErr = (err: any) => console.error("socket connect_error:", err?.message ?? err);
-    s.on("connect_error", onErr);
-
     return () => {
       s.off("connect", doJoin);
       s.off("question:show", goQuestion);
-      s.off("connect_error", onErr);
-      // ❌ don't disconnect here because question page still needs socket
     };
-  }, [mounted, pin, ready, student, router, effectiveStudentId, name, pinStatus]);
-
+  }, [mounted, pin, ready, student, accessToken, pinStatus, effectiveStudentId, name, router, s]);
 
   // ✅ Random avatar (disabled after save)
   const handleChangeAvatar = async () => {
@@ -228,7 +266,6 @@ export default function LobbyPage() {
     if (!me) return;
 
     const seed = randomSeed();
-
     await updateCurrentStudent({ avatarSeed: seed });
 
     const me2 = await getCurrentStudent();
@@ -250,7 +287,6 @@ export default function LobbyPage() {
     }
 
     if (locked) {
-      // already saved -> go to lobby question waiting screen
       router.push(`/join/${encodeURIComponent(pin)}/question`);
       return;
     }
@@ -274,14 +310,17 @@ export default function LobbyPage() {
     const nextLive = { ...toLiveStudent(me2, 96), studentId: sid, name: cleanName };
     writeLiveStudent(nextLive);
     setStudent(nextLive);
-    s.emit("join", { pin, student: nextLive });
+
+    // ensure join after save
+    if (pinStatus === "active") {
+      s.emit("join", { pin, student: nextLive });
+    }
 
     try {
       sessionStorage.setItem(lockKey, "1");
     } catch {}
     setLocked(true);
 
-    // ✅ go to question page (acts like “waiting room”)
     router.push(`/join/${encodeURIComponent(pin)}/question`);
   };
 
@@ -289,11 +328,12 @@ export default function LobbyPage() {
     try {
       s.disconnect(); // ✅ stops Railway usage when leaving live
     } catch {}
-    sessionStorage.removeItem("gamorax_live_student");
-    // optional: let them edit again next time they open lobby
+
     try {
+      sessionStorage.removeItem("gamorax_live_student");
       if (lockKey) sessionStorage.removeItem(lockKey);
     } catch {}
+
     router.push("/me");
   };
 
@@ -324,12 +364,9 @@ export default function LobbyPage() {
               {headerTitle}
             </h2>
 
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {headerSubtitle}
-            </p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">{headerSubtitle}</p>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* ✅ bigger PIN */}
               <span
                 className="
                   rounded-full border border-slate-200/70 bg-white/70
@@ -337,8 +374,7 @@ export default function LobbyPage() {
                   dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-50
                 "
               >
-                PIN:{" "}
-                <span className="font-mono tracking-widest text-base sm:text-lg">{pin}</span>
+                PIN: <span className="font-mono tracking-widest text-base sm:text-lg">{pin}</span>
               </span>
 
               {locked ? (
@@ -384,6 +420,7 @@ export default function LobbyPage() {
 
           <div className="relative flex items-center gap-4">
             <div className="h-20 w-20 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={avatarSrc} alt="Avatar" className="h-20 w-20" />
             </div>
 
@@ -499,7 +536,7 @@ export default function LobbyPage() {
 
             <button
               onClick={handleSaveProfile}
-              disabled={locked || !pin}
+              disabled={locked || !pin || pinStatus !== "active"}
               className={[
                 "w-full inline-flex items-center justify-center rounded-full px-6 py-3 text-sm font-semibold text-white",
                 "bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]",

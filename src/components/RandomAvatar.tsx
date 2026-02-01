@@ -2,17 +2,28 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
+import type { StudentAccount } from "@/src/lib/studentAuthStorage";
 import { getCurrentStudent, updateCurrentStudent } from "@/src/lib/studentAuthStorage";
 import { botttsUrl, randomSeed } from "@/src/lib/dicebear";
 
 export default function AvatarPicker() {
-  const [me, setMe] = useState<any>(null);
-  const [seed, setSeed] = useState("");
+  const [me, setMe] = useState<StudentAccount | null>(null);
+  const [seed, setSeed] = useState("student");
 
   useEffect(() => {
-    const s = getCurrentStudent();
-    setMe(s);
-    setSeed(s?.avatarSeed || s?.email || "student");
+    let alive = true;
+
+    (async () => {
+      const s = await getCurrentStudent();
+      if (!alive) return;
+
+      setMe(s);
+      setSeed((s?.avatarSeed || s?.email || "student").trim());
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const preview = useMemo(() => botttsUrl(seed, 160), [seed]);
@@ -21,7 +32,7 @@ export default function AvatarPicker() {
 
   return (
     <div className="space-y-3">
-      <div className="w-24 h-24 rounded-full overflow-hidden border bg-white">
+      <div className="h-24 w-24 overflow-hidden rounded-full border bg-white">
         <Image src={preview} alt="avatar" width={96} height={96} />
       </div>
 
@@ -29,18 +40,18 @@ export default function AvatarPicker() {
         <button
           type="button"
           onClick={() => setSeed(randomSeed())}
-          className="px-4 py-2 rounded-md border"
+          className="rounded-md border px-4 py-2"
         >
           Random
         </button>
 
         <button
           type="button"
-          onClick={() => {
-            updateCurrentStudent({ avatarSeed: seed });
-            setMe(getCurrentStudent());
+          onClick={async () => {
+            const updated = await updateCurrentStudent({ avatarSeed: seed });
+            setMe(updated);
           }}
-          className="px-4 py-2 rounded-md text-white bg-[#3B8ED6]"
+          className="rounded-md bg-[#3B8ED6] px-4 py-2 text-white"
         >
           Save
         </button>

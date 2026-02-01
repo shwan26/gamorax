@@ -1,33 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Link2, Trash2, Copy } from "lucide-react";
 
 import type { Question } from "@/src/lib/questionStorage";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
-import {
-  createAssignment,
-  deleteAssignment,
-  listAssignmentsByGame,
-  makeAssignmentShareToken,
-} from "@/src/lib/assignmentStorage";
+
+import { createAssignment, deleteAssignment, listAssignmentsByGame, type Assignment } from "@/src/lib/assignmentStorage";
 
 async function sha256Hex(input: string) {
   const data = new TextEncoder().encode(input);
   const hashBuf = await crypto.subtle.digest("SHA-256", data);
   const bytes = Array.from(new Uint8Array(hashBuf));
   return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function toLocalDatetimeValue(iso?: string) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
 }
 
 function fromLocalDatetimeValue(v: string) {
@@ -40,20 +27,25 @@ export default function AssignmentSettingPage() {
   const courseId = String(params?.courseId ?? "");
   const gameId = String(params?.gameId ?? "");
 
-  // ✅ async game fetch
   const [game, setGame] = useState<Game | null>(null);
 
-  // form state (start with safe defaults)
   const [title, setTitle] = useState("Assignment");
   const [opensAt, setOpensAt] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [durationSec, setDurationSec] = useState(15 * 60);
   const [passcode, setPasscode] = useState("");
 
-  // only auto-fill title if user hasn't edited it
   const titleTouchedRef = useRef(false);
 
-  // ✅ load game
+  // questions (optional: just to ensure quiz has questions)
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loadingQs, setLoadingQs] = useState(true);
+
+  // assignments list from DB
+  const [list, setList] = useState<Assignment[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
+
+  // load game
   useEffect(() => {
     let cancelled = false;
 
@@ -76,24 +68,18 @@ export default function AssignmentSettingPage() {
     };
   }, [gameId]);
 
-  // ✅ auto-title once game loads (but don't override user input)
+  // auto-title
   useEffect(() => {
     if (!game?.quizNumber) return;
     if (titleTouchedRef.current) return;
 
     setTitle((prev) => {
-      // if still default-ish, replace it
-      if (prev.trim() === "" || prev === "Assignment") {
-        return `Assignment — ${game.quizNumber}`;
-      }
+      if (prev.trim() === "" || prev === "Assignment") return `Assignment — ${game.quizNumber}`;
       return prev;
     });
   }, [game?.quizNumber]);
 
-  // questions
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loadingQs, setLoadingQs] = useState(true);
-
+  // load questions
   useEffect(() => {
     let cancelled = false;
 
@@ -121,32 +107,27 @@ export default function AssignmentSettingPage() {
     };
   }, [gameId]);
 
-  // existing assignments list (local storage based, so memo is fine)
-  const list = useMemo(() => listAssignmentsByGame(gameId), [gameId]);
-
-  async function handleCreate() {
-    if (!courseId || !gameId) return;
-
-    const raw = passcode.trim();
-    const passcodeHash = raw ? await sha256Hex(raw) : undefined;
-
-    createAssignment({
-      courseId,
-      gameId,
-      title: title.trim() || "Assignment",
-      opensAt: fromLocalDatetimeValue(opensAt),
-      dueAt: fromLocalDatetimeValue(dueAt),
-      durationSec: Math.max(30, Math.min(6 * 60 * 60, durationSec)),
-      passcodeHash,
-    });
-
-    setPasscode("");
-    alert("Assignment created.");
+  async function reloadList() {
+    if (!gameId) return;
+    setLoadingList(true);
+    try {
+      const rows = await listAssignmentsByGame(gameId);
+      setList(rows);
+    } catch (e) {
+      console.error(e);
+      setList([]);
+    } finally {
+      setLoadingList(false);
+    }
   }
 
-  function buildLink(a: any) {
-    const token = makeAssignmentShareToken({ assignment: a, questions });
-    return `${window.location.origin}/assignment/${token}`;
+  useEffect(() => {
+    void reloadList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
+
+  function buildLink(a: Assignment) {
+    return `${window.location.origin}/assignment/${a.publicToken}`;
   }
 
   async function copy(text: string) {
@@ -158,26 +139,62 @@ export default function AssignmentSettingPage() {
     }
   }
 
+  async function handleCreate() {
+    if (!courseId || !gameId) return;
+
+    if (!loadingQs && questions.length === 0) {
+      alert("This game has no questions yet.");
+      return;
+    }
+
+    const raw = passcode.trim();
+    const passcodeHash = raw ? await sha256Hex(raw) : undefined;
+
+    try {
+      await createAssignment({
+        courseId,
+        gameId,
+        title: title.trim() || "Assignment",
+        opensAt: fromLocalDatetimeValue(opensAt),
+        dueAt: fromLocalDatetimeValue(dueAt),
+        durationSec: Math.max(30, Math.min(6 * 60 * 60, durationSec)),
+        passcodeHash,
+      });
+
+      setPasscode("");
+      alert("Assignment created.");
+      await reloadList();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Create failed");
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteAssignment(id);
+      await reloadList();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Delete failed");
+    }
+  }
+
   if (!gameId) return <div>Missing gameId</div>;
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
-          Assignment
-        </h2>
+        <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-50">Assignment</h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">
           Create a timed assignment with open/expire dates and share the link to students.
         </p>
       </div>
 
-      {/* Create form */}
       <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/50">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-              Title
-            </label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Title</label>
             <input
               value={title}
               onChange={(e) => {
@@ -251,7 +268,7 @@ export default function AssignmentSettingPage() {
               type="button"
               onClick={handleCreate}
               disabled={loadingQs}
-              className="w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-bold shadow-sm hover:bg-white disabled:opacity-60 disabled:cursor-not-allowed dark:border-slate-800/70 dark:bg-slate-950/35 dark:hover:bg-slate-950/55"
+              className="w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-bold shadow-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35 dark:hover:bg-slate-950/55"
             >
               {loadingQs ? "Loading questions..." : "Create assignment"}
             </button>
@@ -259,11 +276,12 @@ export default function AssignmentSettingPage() {
         </div>
       </div>
 
-      {/* List */}
       <div className="space-y-3">
         <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-50">Existing</h3>
 
-        {list.length === 0 ? (
+        {loadingList ? (
+          <div className="text-sm text-slate-600 dark:text-slate-300">Loading...</div>
+        ) : list.length === 0 ? (
           <div className="text-sm text-slate-600 dark:text-slate-300">No assignments yet.</div>
         ) : (
           <div className="space-y-2">
@@ -279,6 +297,7 @@ export default function AssignmentSettingPage() {
                       <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
                         {a.title}
                       </div>
+
                       <div className="mt-1 text-xs text-slate-600 dark:text-slate-300">
                         Duration: {a.durationSec}s
                         {a.opensAt ? ` • Opens: ${new Date(a.opensAt).toLocaleString()}` : ""}
@@ -293,7 +312,7 @@ export default function AssignmentSettingPage() {
 
                         <button
                           type="button"
-                          onClick={() => copy(link)}
+                          onClick={() => void copy(link)}
                           className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
                         >
                           <Copy className="h-4 w-4" /> Copy
@@ -303,7 +322,7 @@ export default function AssignmentSettingPage() {
 
                     <button
                       type="button"
-                      onClick={() => deleteAssignment(a.id)}
+                      onClick={() => void handleDelete(a.id)}
                       className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200/80 bg-white/70 text-red-600 shadow-sm hover:bg-white dark:border-red-900/40 dark:bg-slate-950/40 dark:text-red-400"
                       title="Delete"
                     >

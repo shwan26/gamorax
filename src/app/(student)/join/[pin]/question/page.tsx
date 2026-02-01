@@ -238,13 +238,17 @@ export default function StudentQuestionPage() {
   // load student
   useEffect(() => {
     if (!pin) return;
-    const live = getOrCreateLiveStudent();
-    if (!live) {
-      router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}/question`)}`);
-      return;
-    }
-    setMe(live);
+
+    (async () => {
+      const live = await getOrCreateLiveStudent();
+      if (!live) {
+        router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}/question`)}`);
+        return;
+      }
+      setMe(live);
+    })();
   }, [pin, router]);
+
 
   // socket connect + listeners
   useEffect(() => {
@@ -290,134 +294,123 @@ export default function StudentQuestionPage() {
     };
 
     const onReveal = (payload: any) => {
-      setReveal(payload);
-      setPhase("answer");
+    setReveal(payload);
+    setPhase("answer");
 
-      const curQ = qRef.current;
+    const curQ = qRef.current;
 
-      // scoring
-      const maxTime = Number(curQ?.durationSec ?? payload?.maxTime ?? 0) || 0;
-      const timeUsed = myTimeUsedRef.current ?? maxTime;
+    const maxTime = Number(curQ?.durationSec ?? payload?.maxTime ?? 0) || 0;
+    const timeUsed = myTimeUsedRef.current ?? maxTime;
 
-      let isCorrect: boolean | null = null;
+    let isCorrect: boolean | null = null;
 
-      // prevent double-scoring same question
-      const qIndex = Number(curQ?.questionIndex ?? -1);
-      if (qIndex >= 0 && qIndex < scoredCount) return;
+    if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
+      const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
+      const mine = myChoiceRef.current ?? [];
 
-      const pointsEarned =
-        isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
+      if (!correct.length) {
+        isCorrect = null;
+      } else {
+        const allowMultiple = Boolean(payload?.allowMultiple) || correct.length > 1;
 
-      if (typeof isCorrect === "boolean") {
-        setLastWasCorrect(isCorrect);
-        setLastEarnedPoints(pointsEarned);
-
-        setCorrectCount((c) => c + (isCorrect ? 1 : 0));
-        setTotalPoints((p) => {
-          const next = p + pointsEarned;
-          totalPointsRef.current = next;
-          return next;
-        });
-
-        setScoredCount(qIndex >= 0 ? qIndex + 1 : (x) => x + 1);
-      }
-
-
-      if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
-        const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
-        const mine = myChoiceRef.current ?? [];
-
-        if (!correct.length) {
-          isCorrect = null;
+        if (allowMultiple) {
+          isCorrect = mine.length > 0 ? mine.some((i) => correct.includes(i)) : false;
         } else {
-          const allowMultiple = Boolean(payload?.allowMultiple) || correct.length > 1;
-
-          // ✅ your rule: "either one is correct" (ANY match)
-          if (allowMultiple) {
-            isCorrect = mine.length > 0 ? mine.some((i) => correct.includes(i)) : false;
-          } else {
-            // single-correct: must match the one correct choice
-            isCorrect = sameSet(correct, mine);
-          }
+          isCorrect = sameSet(correct, mine);
         }
       }
+    }
 
-      if (payload?.type === "input") {
-        const mine = (myInputRef.current ?? "").trim().toLowerCase();
-        const accepted = Array.isArray(payload?.acceptedAnswers) ? payload.acceptedAnswers : [];
-        const normAccepted = accepted
-          .map((x: any) => String(x ?? "").trim().toLowerCase())
-          .filter(Boolean);
-        isCorrect = mine ? normAccepted.includes(mine) : false;
-      }
-     if (payload?.type === "matching") {
-        const totalPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs.length : 0;
-        isCorrect = totalPairs > 0 ? matchedPairsRef.current.size === totalPairs : null;
-      }
+    if (payload?.type === "input") {
+      const mine = (myInputRef.current ?? "").trim().toLowerCase();
+      const accepted = Array.isArray(payload?.acceptedAnswers) ? payload.acceptedAnswers : [];
+      const normAccepted = accepted
+        .map((x: any) => String(x ?? "").trim().toLowerCase())
+        .filter(Boolean);
+      isCorrect = mine ? normAccepted.includes(mine) : false;
+    }
 
-      const qNumber = Number(curQ?.number ?? curQ?.questionIndex ?? 0) || 0;
-      setScoredCount((p) => Math.max(p, qNumber));
+    if (payload?.type === "matching") {
+      const totalPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs.length : 0;
+      isCorrect = totalPairs > 0 ? matchedPairsRef.current.size === totalPairs : null;
+    }
 
-      if (isCorrect === null) {
-        setLastWasCorrect(null);
-        setLastEarnedPoints(0);
-        return;
-      }
+    // ✅ now calculate points AFTER isCorrect is known
+    if (isCorrect === null) {
+      setLastWasCorrect(null);
+      setLastEarnedPoints(0);
+      return;
+    }
 
-    };
+    const pointsEarned = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
 
-    const onFinal = () => {
-      setPhase("final");
+    setLastWasCorrect(isCorrect);
+    setLastEarnedPoints(pointsEarned);
 
-      const final = totalPointsRef.current;
-      setFinalPoints(final);
+    setCorrectCount((c) => c + (isCorrect ? 1 : 0));
+    setTotalPoints((p) => {
+      const next = p + pointsEarned;
+      totalPointsRef.current = next;
+      return next;
+    });
 
-      const cur = getCurrentStudent(); // gives email + id (your auth student)
-      if (!cur || !me) return;
+    const qNumber = Number(curQ?.number ?? curQ?.questionIndex ?? 0) || 0;
+    setScoredCount((prev) => Math.max(prev, qNumber));
+  };
 
-      const meta = metaRef.current ?? getLiveMeta(pin);
+    const onFinal = async () => {
+    setPhase("final");
 
-      const totalQuestions =
-        Number(qRef.current?.total ?? 0) || Number(scoredCount ?? 0) || 0;
+    const final = totalPointsRef.current;
+    setFinalPoints(final);
 
-      saveStudentAttempt({
-        id: crypto.randomUUID(),
-        studentEmail: cur.email,
-        studentId: me.studentId,
-        studentName: me.name,
-        avatarSrc,
+    const cur = await getCurrentStudent(); // ✅ await
+    if (!cur || !me) return;
 
-        pin,
-        gameId: meta?.gameId,
+    const meta = metaRef.current ?? getLiveMeta(pin);
 
-        courseCode: meta?.courseCode,
-        courseName: meta?.courseName,
-        section: meta?.section,
-        semester: meta?.semester,
-        quizTitle: meta?.quizTitle,
+    const totalQuestions =
+      Number(qRef.current?.total ?? 0) || Number(scoredCount ?? 0) || 0;
 
-        totalQuestions,
-        correct: Number(correctCountRef.current ?? 0),
-        points: Number(final ?? 0),
+    saveStudentAttempt({
+      id: crypto.randomUUID(),
+      studentEmail: cur.email, // ✅ now valid
+      studentId: me.studentId,
+      studentName: me.name,
+      avatarSrc,
 
-        finishedAt: new Date().toISOString(),
-      });
-    };
+      pin,
+      gameId: meta?.gameId,
 
-    s.on("question:show", onQuestion);
-    s.on("answer:reveal", onReveal);
-    s.on("final_results", onFinal);
+      courseCode: meta?.courseCode,
+      courseName: meta?.courseName,
+      section: meta?.section,
+      semester: meta?.semester,
+      quizTitle: meta?.quizTitle,
 
-    return () => {
-      s.off("connect", doJoin);
-      s.off("question:show", onQuestion);
-      s.off("answer:reveal", onReveal);
-      s.off("final_results", onFinal);
-      s.off("session:meta", onSessionMeta);
-      // do NOT disconnect
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pin, me]);
+      totalQuestions,
+      correct: Number(correctCountRef.current ?? 0),
+      points: Number(final ?? 0),
+
+      finishedAt: new Date().toISOString(),
+    });
+  };
+
+
+      s.on("question:show", onQuestion);
+      s.on("answer:reveal", onReveal);
+      s.on("final_results", onFinal);
+
+      return () => {
+        s.off("connect", doJoin);
+        s.off("question:show", onQuestion);
+        s.off("answer:reveal", onReveal);
+        s.off("final_results", onFinal);
+        s.off("session:meta", onSessionMeta);
+        // do NOT disconnect
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pin, me]);
 
   useEffect(() => {
     if (!me?.studentId) return;

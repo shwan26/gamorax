@@ -1,4 +1,3 @@
-// src/app/(student)/assignment/[token]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -6,23 +5,28 @@ import { useParams, useRouter } from "next/navigation";
 
 import Navbar from "@/src/components/Navbar";
 import AnswerGrid from "@/src/components/live/AnswerGrid";
-import { Trophy, CheckCircle2, XCircle, Timer, Lock } from "lucide-react";
+import { Trophy, Timer, Lock } from "lucide-react";
 
-import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
-import { getAvatarSrc } from "@/src/lib/studentAvatar";
-import type { LiveStudent } from "@/src/lib/liveStorage";
+import { supabase } from "@/src/lib/supabaseClient";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
+import { getAvatarSrc } from "@/src/lib/studentAvatar";
 
-import { readAssignmentShareToken } from "@/src/lib/assignmentStorage";
-import { saveAssignmentAttempt, listAttemptsByAssignment } from "@/src/lib/assignmentAttemptStorage";
+import {
+  getAssignmentMeta,
+  getAssignmentPayload,
+  submitAssignmentAttempt,
+  type AssignmentMeta,
+  type AssignmentPayload,
+} from "@/src/lib/assignmentStorage";
 
-type Phase = "gate" | "intro" | "question" | "answer" | "final";
+import { hasAttempted } from "@/src/lib/assignmentAttemptStorage";
+
+type Phase = "gate" | "intro" | "question" | "final";
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
-/* ------------------------------ UI helpers (same style) ------------------------------ */
 function DotPattern() {
   return (
     <div
@@ -85,117 +89,54 @@ function PrimaryButton({
   );
 }
 
-/* ------------------------------ grading helpers ------------------------------ */
-function norm(s: any) {
-  return String(s ?? "").trim().toLowerCase();
-}
-
-function gradeQuestion(q: any, studentAnswer: any): boolean {
-  const type = (q?.type ?? "multiple_choice") as string;
-
-  if (type === "multiple_choice" || type === "true_false") {
-    const idx = Array.isArray(studentAnswer?.indices) ? studentAnswer.indices[0] : studentAnswer?.index;
-    const i = Number(idx);
-    if (!Number.isFinite(i)) return false;
-    return Boolean(q?.answers?.[i]?.correct);
-  }
-
-  if (type === "input") {
-    const mine = norm(studentAnswer?.value);
-    if (!mine) return false;
-    const accepted = (q?.acceptedAnswers ?? []).map(norm).filter(Boolean);
-    return accepted.includes(mine);
-  }
-
-  if (type === "matching") {
-    const matchedCount = Number(studentAnswer?.matchedCount ?? 0);
-    const totalPairs = Number(studentAnswer?.totalPairs ?? 0);
-    return totalPairs > 0 && matchedCount === totalPairs;
-  }
-
-  return false;
-}
-
 export default function AssignmentEntryPage() {
   const router = useRouter();
   const params = useParams<{ token?: string }>();
   const token = (params?.token ?? "").trim();
 
-  const [meLive, setMeLive] = useState<LiveStudent | null>(null);
+  const [phase, setPhase] = useState<Phase>("gate");
+
+  const [meta, setMeta] = useState<AssignmentMeta | null>(null);
+  const [payload, setPayload] = useState<AssignmentPayload | null>(null);
+
+  const [meLive, setMeLive] = useState<any>(null);
   const avatarSrc = useMemo(() => getAvatarSrc(meLive, 40), [meLive]);
 
-  // decode token
-  const decoded = useMemo(() => (token ? readAssignmentShareToken(token) : null), [token]);
-  const assignment = decoded?.assignment ?? null;
-  const rawQuestions = decoded?.questions ?? [];
-
-  // map questions to AnswerGrid shape
-  const questions = useMemo(() => {
-    return rawQuestions.map((qq: any, idx: number) => {
-      const type = qq?.type ?? "multiple_choice";
-
-      if (type === "true_false") {
-        // safety: ensure answers exist
-        const ans = Array.isArray(qq?.answers) && qq.answers.length >= 2
-          ? qq.answers
-          : [{ text: "True" }, { text: "False" }];
-
-        return { ...qq, answers: ans, questionIndex: idx, number: idx + 1, total: rawQuestions.length };
-      }
-
-      if (type === "matching") {
-        const pairs = Array.isArray(qq?.matches) ? qq.matches : [];
-        return {
-          ...qq,
-          questionIndex: idx,
-          number: idx + 1,
-          total: rawQuestions.length,
-          left: pairs.map((p: any) => String(p?.left ?? "")),
-          right: pairs.map((p: any) => String(p?.right ?? "")),
-        };
-      }
-
-      return { ...qq, questionIndex: idx, number: idx + 1, total: rawQuestions.length };
-    });
-  }, [rawQuestions]);
-
-  // phase + timing
-  const [phase, setPhase] = useState<Phase>("gate");
-  const [now, setNow] = useState(Date.now());
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [qIndex, setQIndex] = useState(0);
-
-  // scoring
-  const [correctCount, setCorrectCount] = useState(0);
-  const [totalPoints, setTotalPoints] = useState(0);
-  const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
-  const [lastEarnedPoints, setLastEarnedPoints] = useState(0);
-
-  const answersRef = useRef<Record<string, any>>({});
-  const matchedPairsRef = useRef<Map<number, number>>(new Map());
-
-  // passcode gate
   const [passcode, setPasscode] = useState("");
   const [gateError, setGateError] = useState<string | null>(null);
 
+  const [alreadyAttempted, setAlreadyAttempted] = useState(false);
+
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [qIndex, setQIndex] = useState(0);
+
+  const [result, setResult] = useState<{
+    correct: number;
+    total: number;
+    points: number;
+    scorePct: number;
+  } | null>(null);
+
+  const answersRef = useRef<Record<string, any>>({});
+
   useEffect(() => {
-    // timer tick
     const t = window.setInterval(() => setNow(Date.now()), 250);
     return () => window.clearInterval(t);
   }, []);
 
-  // require login (like live)
+  // require login
   useEffect(() => {
     if (!token) return;
     (async () => {
-      const me = await getCurrentStudent();
-      if (!me) {
+      const { data } = await supabase.auth.getUser();
+      if (!data.user) {
         router.replace(`/auth/login?next=${encodeURIComponent(`/assignment/${token}`)}`);
       }
     })();
   }, [token, router]);
 
-  // load live student (avatar/name)
+  // load live student for avatar/name
   useEffect(() => {
     (async () => {
       const live = await getOrCreateLiveStudent();
@@ -203,32 +144,106 @@ export default function AssignmentEntryPage() {
     })();
   }, []);
 
+  // load meta
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!token) return;
+
+      try {
+        const m = await getAssignmentMeta(token);
+        if (!cancelled) setMeta(m);
+      } catch {
+        if (!cancelled) setMeta(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  // check already attempted (after meta + user)
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!meta?.id) {
+        if (!cancelled) setAlreadyAttempted(false);
+        return;
+      }
+
+      const { data } = await supabase.auth.getUser();
+      const uid = data.user?.id;
+      if (!uid) {
+        if (!cancelled) setAlreadyAttempted(false);
+        return;
+      }
+
+      try {
+        const yes = await hasAttempted(meta.id, uid);
+        if (!cancelled) setAlreadyAttempted(yes);
+      } catch {
+        if (!cancelled) setAlreadyAttempted(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [meta?.id]);
+
   const guard = useMemo(() => {
-    if (!assignment) return { ok: false, reason: "Invalid assignment link." };
+    if (!meta) return { ok: false, reason: "Invalid assignment link." };
+
     const n = Date.now();
-    if (assignment.opensAt && n < new Date(assignment.opensAt).getTime()) {
-      return { ok: false, reason: `Not open yet. Opens at ${new Date(assignment.opensAt).toLocaleString()}` };
+    if (meta.opens_at && n < new Date(meta.opens_at).getTime()) {
+      return { ok: false, reason: `Not open yet. Opens at ${new Date(meta.opens_at).toLocaleString()}` };
     }
-    if (assignment.dueAt && n > new Date(assignment.dueAt).getTime()) {
-      return { ok: false, reason: `Expired. Due at ${new Date(assignment.dueAt).toLocaleString()}` };
+    if (meta.due_at && n > new Date(meta.due_at).getTime()) {
+      return { ok: false, reason: `Expired. Due at ${new Date(meta.due_at).toLocaleString()}` };
     }
     return { ok: true, reason: "" };
-  }, [assignment]);
+  }, [meta]);
 
-  // one-attempt check (client-side)
-  const alreadyAttempted = useMemo(() => {
-    if (!assignment) return false;
-    const me = await getCurrentStudent();
-    if (!me?.email) return false;
-    const email = String(me.email).toLowerCase();
-    const attempts = listAttemptsByAssignment(assignment.id);
-    return attempts.some((a) => String(a.studentEmail).toLowerCase() === email);
-  }, [assignment]);
+  const questions = useMemo(() => {
+    const raw =
+      (payload as any)?.questions ??
+      (payload as any)?.payload?.questions ??   // ✅ if your API wraps it
+      (payload as any)?.data?.questions ??      // ✅ if your storage wraps it
+      [];
+
+    return (Array.isArray(raw) ? raw : []).map((qq: any, idx: number) => {
+      const type = qq?.type ?? "multiple_choice";
+
+      if (type === "matching") {
+        const left = Array.isArray(qq.left) ? qq.left : [];
+        const right = Array.isArray(qq.right) ? qq.right : [];
+        return {
+          ...qq,
+          questionIndex: idx,
+          number: idx + 1,
+          total: raw.length,
+          left,
+          right,
+        };
+      }
+
+      return {
+        ...qq,
+        questionIndex: idx,
+        number: idx + 1,
+        total: raw.length,
+      };
+    });
+  }, [payload]);
+
 
   const endAt = useMemo(() => {
-    if (!startedAt || !assignment) return null;
-    return startedAt + Number(assignment.durationSec ?? 0) * 1000;
-  }, [startedAt, assignment]);
+    if (!startedAt || !meta) return null;
+    return startedAt + Number(meta.duration_sec ?? 0) * 1000;
+  }, [startedAt, meta]);
 
   const timeLeft = useMemo(() => {
     if (!endAt) return null;
@@ -246,6 +261,24 @@ export default function AssignmentEntryPage() {
   const q = questions[qIndex];
   const disabled = phase !== "question" || isTimeUp;
 
+  async function verifyAndLoad() {
+    setGateError(null);
+    if (!guard.ok) return;
+
+    try {
+      const p = await getAssignmentPayload(token, meta?.has_passcode ? passcode : undefined);
+      setPayload(p);
+      setPhase("intro");
+      console.log("PAYLOAD RAW:", p);
+      console.log("keys:", Object.keys(p as any));
+      console.log("questions direct:", (p as any).questions);
+      console.log("questions nested:", (p as any)?.payload?.questions, (p as any)?.data?.questions);
+
+    } catch (e: any) {
+      setGateError(e?.message ?? "Cannot open assignment.");
+    }
+  }
+
   function start() {
     if (!guard.ok) return;
     setStartedAt(Date.now());
@@ -258,106 +291,74 @@ export default function AssignmentEntryPage() {
       setPhase("final");
       return;
     }
-    matchedPairsRef.current = new Map();
     setQIndex(next);
-    setPhase("question");
   }
-
-  async function finalizeAndSave() {
-    if (!assignment) return;
-    const studentAuth = await getCurrentStudent();
-    const live = meLive;
-
-    const studentEmail = String(studentAuth?.email ?? "").toLowerCase();
-    const studentId = String(live?.studentId ?? studentAuth?.studentId ?? "");
-    const studentName = String(live?.name ?? studentAuth?.name ?? "Student");
-
-    const total = questions.length;
-    const correct = correctCount;
-    const scorePct = total > 0 ? Math.round((correct / total) * 100) : 0;
-
-    saveAssignmentAttempt({
-      id: crypto.randomUUID(),
-      assignmentId: assignment.id,
-      studentEmail,
-      studentId,
-      studentName,
-      startedAt: new Date(startedAt ?? Date.now()).toISOString(),
-      submittedAt: new Date().toISOString(),
-      totalQuestions: total,
-      correct,
-      scorePct,
-      answers: answersRef.current,
-    });
-  }
-
-  const finalSavedRef = useRef(false);
-  useEffect(() => {
-    if (phase !== "final") return;
-    if (finalSavedRef.current) return;
-    finalSavedRef.current = true;
-    finalizeAndSave();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
 
   function submitChoice(indices: number[]) {
     if (!q) return;
     const qid = String(q.id ?? q.questionIndex);
-    answersRef.current[qid] = { indices };
-
-    const isCorrect = gradeQuestion(q, { indices });
-    const pointsEarned = isCorrect ? 100 : 0;
-
-    setLastWasCorrect(isCorrect);
-    setLastEarnedPoints(pointsEarned);
-    setCorrectCount((c) => c + (isCorrect ? 1 : 0));
-    setTotalPoints((p) => p + pointsEarned);
-
-    setPhase("answer");
-    window.setTimeout(() => nextQuestionOrFinal(), 650);
+    const idx = Array.isArray(indices) ? indices[0] : undefined;
+    answersRef.current[qid] = { index: idx };
+    nextQuestionOrFinal();
   }
 
   function submitInput(value: string) {
     if (!q) return;
     const qid = String(q.id ?? q.questionIndex);
     answersRef.current[qid] = { value };
-
-    const isCorrect = gradeQuestion(q, { value });
-    const pointsEarned = isCorrect ? 100 : 0;
-
-    setLastWasCorrect(isCorrect);
-    setLastEarnedPoints(pointsEarned);
-    setCorrectCount((c) => c + (isCorrect ? 1 : 0));
-    setTotalPoints((p) => p + pointsEarned);
-
-    setPhase("answer");
-    window.setTimeout(() => nextQuestionOrFinal(), 650);
+    nextQuestionOrFinal();
   }
 
   async function attemptMatch(leftIndex: number, rightIndex: number): Promise<{ correct: boolean }> {
-    const correct = leftIndex === rightIndex;
-    if (correct) matchedPairsRef.current.set(leftIndex, rightIndex);
+    const left = Array.isArray(q?.left) ? q.left : [];
+    const right = Array.isArray(q?.right) ? q.right : [];
+    const l = String(left[leftIndex] ?? "");
+    const r = String(right[rightIndex] ?? "");
+    if (!l || !r) return { correct: false };
 
-    const totalPairs = Array.isArray(q?.left) ? q.left.length : 0;
+    const qid = String(q.id ?? q.questionIndex);
+    const prev = answersRef.current[qid]?.pairs ?? [];
+    const nextPairs = [...prev.filter((p: any) => p.left !== l), { left: l, right: r }];
+    answersRef.current[qid] = { pairs: nextPairs };
 
-    if (correct && matchedPairsRef.current.size === totalPairs) {
-      const qid = String(q.id ?? q.questionIndex);
-      answersRef.current[qid] = { matchedCount: matchedPairsRef.current.size, totalPairs };
-
-      const isCorrect = gradeQuestion(q, { matchedCount: matchedPairsRef.current.size, totalPairs });
-      const pointsEarned = isCorrect ? 100 : 0;
-
-      setLastWasCorrect(isCorrect);
-      setLastEarnedPoints(pointsEarned);
-      setCorrectCount((c) => c + (isCorrect ? 1 : 0));
-      setTotalPoints((p) => p + pointsEarned);
-
-      setPhase("answer");
-      window.setTimeout(() => nextQuestionOrFinal(), 650);
-    }
-
-    return { correct };
+    return { correct: true };
   }
+
+  const finalSavedRef = useRef(false);
+  useEffect(() => {
+    finalSavedRef.current = false;
+    answersRef.current = {};     // (optional but recommended)
+    setResult(null);             // (optional)
+    setStartedAt(null);          // (optional)
+    setQIndex(0);                // (optional)
+    setPhase("gate");            // (optional: forces fresh flow)
+  }, [token]);
+
+  useEffect(() => {
+    if (phase !== "final") return;
+    if (finalSavedRef.current) return;
+    finalSavedRef.current = true;
+
+    (async () => {
+      try {
+        const startedAtISO = new Date(startedAt ?? Date.now()).toISOString();
+        const res = await submitAssignmentAttempt({
+          token,
+          startedAtISO,
+          answers: answersRef.current,
+        });
+
+        setResult({
+          correct: res.correct,
+          total: res.totalQuestions,
+          points: res.points,
+          scorePct: res.scorePct,
+        });
+      } catch (e: any) {
+        setGateError(e?.message ?? "Submit failed");
+      }
+    })();
+  }, [phase, token, startedAt]);
 
   // ---------- render guards ----------
   if (!token) {
@@ -371,7 +372,7 @@ export default function AssignmentEntryPage() {
     );
   }
 
-  if (!assignment) {
+  if (!meta) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
         <Navbar />
@@ -411,62 +412,63 @@ export default function AssignmentEntryPage() {
     );
   }
 
-  // ---------- PASSCODE GATE ----------
-  // (MVP) expects assignment.passcode to exist in the token payload (not secure, but works for demo)
-  const requiredPasscode = (assignment as any)?.passcode ? String((assignment as any).passcode) : "";
-
-  function verifyPasscode() {
-    setGateError(null);
-    if (!requiredPasscode) {
-      // no passcode set -> allow
-      setPhase("intro");
-      return;
-    }
-    if (passcode.trim() !== requiredPasscode.trim()) {
-      setGateError("Incorrect passcode.");
-      return;
-    }
-    setPhase("intro");
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
       <div className="mx-auto max-w-4xl px-3 sm:px-4 py-5 sm:py-6">
+        {/* Gate */}
         {phase === "gate" ? (
           <GlassCard className="mb-6">
             <div className="flex items-center gap-2 text-slate-900 dark:text-slate-50">
               <Lock className="h-4 w-4" />
-              <div className="text-sm font-extrabold">Enter passcode</div>
+              <div className="text-sm font-extrabold">{meta.has_passcode ? "Enter passcode" : "Ready"}</div>
             </div>
 
             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              {assignment.title} • {questions.length} questions
+              {meta.title} • Duration {meta.duration_sec}s
             </div>
 
-            <div className="mt-4 space-y-3 max-w-md">
-              <input
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
-                placeholder="Passcode"
-                className="
-                  w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-base
-                  font-semibold text-slate-800 shadow-sm outline-none
-                  focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
-                  dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
-                "
-              />
-              {gateError ? (
-                <div className="text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>
-              ) : null}
+            {meta.has_passcode ? (
+              <div className="mt-4 space-y-3 max-w-md">
+                <input
+                  value={passcode}
+                  onChange={(e) => setPasscode(e.target.value)}
+                  placeholder="Passcode"
+                  className="
+                    w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-base
+                    font-semibold text-slate-800 shadow-sm outline-none
+                    focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
+                    dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
+                  "
+                />
 
-              <PrimaryButton onClick={verifyPasscode}>Continue</PrimaryButton>
+                {gateError ? (
+                  <div className="text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>
+                ) : null}
+
+                <PrimaryButton onClick={verifyAndLoad}>Continue</PrimaryButton>
+              </div>
+            ) : (
+              <div className="mt-4">
+                {gateError ? (
+                  <div className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>
+                ) : null}
+                <PrimaryButton onClick={verifyAndLoad}>Continue</PrimaryButton>
+              </div>
+            )}
+          </GlassCard>
+        ) : null}
+
+        {/* Intro */}
+        {phase === "intro" && questions.length === 0 ? (
+          <GlassCard className="mb-6">
+            <div className="text-sm font-semibold text-rose-600">
+              This assignment has no questions (payload returned empty).
             </div>
           </GlassCard>
         ) : null}
 
-        {/* intro */}
         {phase === "intro" ? (
           <GlassCard className="mb-6">
             <div className="flex items-center gap-3">
@@ -483,16 +485,14 @@ export default function AssignmentEntryPage() {
               </div>
             </div>
 
-            <h1 className="mt-4 text-lg font-extrabold text-slate-900 dark:text-slate-50">
-              {assignment.title}
-            </h1>
+            <h1 className="mt-4 text-lg font-extrabold text-slate-900 dark:text-slate-50">{meta.title}</h1>
 
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              Duration: <span className="font-semibold">{assignment.durationSec}s</span>
-              {assignment.dueAt ? (
+              Duration: <span className="font-semibold">{meta.duration_sec}s</span>
+              {meta.due_at ? (
                 <>
                   {" "}
-                  • Due: <span className="font-semibold">{new Date(assignment.dueAt).toLocaleString()}</span>
+                  • Due: <span className="font-semibold">{new Date(meta.due_at).toLocaleString()}</span>
                 </>
               ) : null}
             </div>
@@ -503,78 +503,34 @@ export default function AssignmentEntryPage() {
           </GlassCard>
         ) : null}
 
-        {/* header */}
-        {phase !== "gate" && phase !== "intro" && phase !== "final" ? (
+        {/* Header + Timer */}
+        {phase === "question" ? (
           <GlassCard className="mb-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
-                    <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
-                      {meLive?.name ?? "Student"}
-                    </div>
-                    <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                      Q{qIndex + 1} / {questions.length}
-                    </div>
-                  </div>
-                </div>
-
-                <h1 className="mt-3 text-lg font-extrabold text-slate-900 dark:text-slate-50">
-                  {q?.text ?? "Question"}
-                </h1>
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
+                Q{qIndex + 1} / {questions.length}
               </div>
 
-              <div className="w-full sm:w-[360px] sm:shrink-0">
-                <div className="flex items-center justify-between">
-                  <div className="inline-flex items-center gap-2">
-                    <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      Time remaining
-                    </span>
-                  </div>
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    {timeLeft ?? "-"}s
-                  </span>
-                </div>
-
-                <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                  <div
-                    className="h-full transition-[width] duration-100"
-                    style={{
-                      width:
-                        startedAt && endAt && assignment.durationSec > 0
-                          ? `${(clamp((endAt - now) / 1000, 0, assignment.durationSec) / assignment.durationSec) * 100}%`
-                          : "0%",
-                      background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                    }}
-                  />
-                </div>
+              <div className="inline-flex items-center gap-2">
+                <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{timeLeft ?? "-"}s</span>
               </div>
             </div>
 
-            <div className="mt-4">
-              {phase === "answer" && lastWasCorrect === true ? (
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-4 py-2 text-sm font-semibold text-emerald-800 dark:border-emerald-900/40 dark:bg-emerald-950/25 dark:text-emerald-200">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Correct! +{lastEarnedPoints} points
-                </div>
-              ) : phase === "answer" && lastWasCorrect === false ? (
-                <div className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-2 text-sm font-semibold text-rose-800 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-200">
-                  <XCircle className="h-4 w-4" />
-                  Incorrect · +0 points
-                </div>
-              ) : (
-                <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-300">Answer now</p>
-              )}
-
-              <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                Total correct: <span className="font-semibold">{correctCount}</span> • Total points:{" "}
-                <span className="font-semibold">{totalPoints}</span>
-              </div>
+            <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
+              <div
+                className="h-full transition-[width] duration-100"
+                style={{
+                  width:
+                    startedAt && endAt && meta.duration_sec > 0
+                      ? `${(clamp((endAt - now) / 1000, 0, meta.duration_sec) / meta.duration_sec) * 100}%`
+                      : "0%",
+                  background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
+                }}
+              />
             </div>
+
+            <h1 className="mt-4 text-lg font-extrabold text-slate-900 dark:text-slate-50">{q?.text ?? "Question"}</h1>
           </GlassCard>
         ) : null}
 
@@ -589,13 +545,16 @@ export default function AssignmentEntryPage() {
               <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">Final Score</div>
 
               <div className="text-5xl sm:text-7xl font-extrabold text-slate-900 dark:text-slate-50">
-                {correctCount}/{questions.length || 1}
+                {result ? `${result.correct}/${result.total || 1}` : "Submitting..."}
               </div>
 
-              <div className="text-sm text-slate-600 dark:text-slate-300">
-                Points earned{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-50">{totalPoints}</span>
-              </div>
+              {result ? (
+                <div className="text-sm text-slate-600 dark:text-slate-300">
+                  Points <span className="font-semibold text-slate-900 dark:text-slate-50">{result.points}</span>
+                  {" • "}
+                  <span className="font-semibold">{result.scorePct}%</span>
+                </div>
+              ) : null}
 
               <PrimaryButton onClick={() => router.push("/me/reports")}>Go to My Reports</PrimaryButton>
             </div>
@@ -611,8 +570,22 @@ export default function AssignmentEntryPage() {
               mode="assignment"
               onSubmitChoice={({ indices }) => submitChoice(indices)}
               onSubmitInput={({ value }) => submitInput(value)}
-              onAttemptMatch={q?.type === "matching" ? ({ leftIndex, rightIndex }) => attemptMatch(leftIndex, rightIndex) : undefined}
+              onAttemptMatch={
+                q?.type === "matching"
+                  ? ({ leftIndex, rightIndex }) => attemptMatch(leftIndex, rightIndex)
+                  : undefined
+              }
+              onSubmitMatching={
+                q?.type === "matching"
+                  ? ({ pairs }) => {
+                      const qid = String(q.id ?? q.questionIndex);
+                      answersRef.current[qid] = { pairs };
+                      nextQuestionOrFinal();
+                    }
+                  : undefined
+              }
             />
+
           </div>
         ) : null}
       </div>
