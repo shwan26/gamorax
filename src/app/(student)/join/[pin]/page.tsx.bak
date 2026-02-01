@@ -99,7 +99,7 @@ export default function LobbyPage() {
 
     s.connect();
 
-    const check = async () => {
+    const check = () => {
       setPinStatus("checking");
 
       // ✅ server should ACK with { exists: boolean, meta?: {...} }
@@ -142,28 +142,27 @@ export default function LobbyPage() {
     if (!mounted) return;
     if (!pin) return;
 
-    (async () => {
-      const me = await getCurrentStudent();
-      if (!me) {
-        router.replace(`/auth/login?next=${encodeURIComponent("/join/" + pin)}`);
-        return;
-      }
+    const me = await getCurrentStudent();
+    if (!me) {
+      router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
+      return;
+    }
 
-      setMeEmail(me.email ?? "");
-      setName(me.name ?? "");
-      setStudentIdManual(me.studentId ?? "");
+    setMeEmail(me.email ?? "");
+    setName(me.name ?? "");
+    setStudentIdManual(me.studentId ?? "");
 
-      // load live student from session or make one from account
-      const live = await getOrCreateLiveStudent();
-      if (!live) {
-        router.replace(`/auth/login?next=${encodeURIComponent("/join/" + pin)}`);
-        return;
-      }
-      setStudent(live);
-      setReady(true);
-    })();
+    // load live student from session or make one from account
+    const live = getOrCreateLiveStudent();
+    if (!live) {
+      router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
+      return;
+    }
+    setStudent(live);
+    setReady(true);
   }, [mounted, pin, router]);
-// if AU email, default to derived
+
+  // if AU email, default to derived
   useEffect(() => {
     if (!mounted) return;
     if (canAutoDerive) setUseDerivedId(true);
@@ -184,7 +183,7 @@ export default function LobbyPage() {
 
     s.connect(); // ✅ connect in lobby
 
-    const doJoin = async () => {
+    const doJoin = () => {
       const sid = effectiveStudentId || student.studentId; // must exist
       const nm = (name.trim() || student.name || "").trim();
 
@@ -221,7 +220,7 @@ export default function LobbyPage() {
 
 
   // ✅ Random avatar (disabled after save)
-  const handleChangeAvatar = async () => {
+  const handleChangeAvatar = () => {
     if (locked) return;
 
     const me = await getCurrentStudent();
@@ -229,7 +228,7 @@ export default function LobbyPage() {
 
     const seed = randomSeed();
 
-    await updateCurrentStudent({ avatarSeed: seed });
+    updateCurrentStudent({ avatarSeed: seed });
 
     const me2 = await getCurrentStudent();
     if (!me2) return;
@@ -244,7 +243,7 @@ export default function LobbyPage() {
   };
 
   // ✅ Save profile (name + studentId) then lock editing
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = () => {
     if (pinStatus !== "active") {
       return alert("This PIN is not active right now. Please check with your lecturer.");
     }
@@ -263,7 +262,7 @@ export default function LobbyPage() {
       return alert("Please enter your Student ID (or use AU email like u5400000@au.edu).");
     }
 
-    await updateCurrentStudent({
+    updateCurrentStudent({
       name: cleanName,
       studentId: sid,
     });

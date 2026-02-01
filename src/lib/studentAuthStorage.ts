@@ -1,30 +1,22 @@
 // src/lib/studentAuthStorage.ts
+// ✅ Migrated from localStorage auth -> Supabase Auth + profiles (my_profile_api)
+
+import { supabase } from "@/src/lib/supabaseClient";
+
 export type StudentAccount = {
   id: string;
-  email: string;       // normalized (lowercase)
-  password: string;    // demo only (plain). If production, hash it server-side.
+  email: string;
   name: string;
-  studentId: string;
-
-  // legacy/local avatar (optional). You can keep it or ignore it once using DiceBear.
-  avatarSrc?: string;
-
-  // DiceBear Bottts seed (deterministic avatar)
-  avatarSeed?: string;
-
+  studentId: string | null;
+  avatarSeed: string | null;
   points: number;
-  createdAt: string;
 };
-
-const STUDENTS_KEY = "gamorax_students_v1";
-const CURRENT_EMAIL_KEY = "gamorax_current_student_email_v1";
 
 function normEmail(email: string) {
   return String(email ?? "").trim().toLowerCase();
 }
 
 function normPassword(pw: string) {
-  // avoid "space" mistakes
   return String(pw ?? "").trim();
 }
 
@@ -35,37 +27,40 @@ export function deriveStudentIdFromEmail(email: string) {
   return m ? m[2] : "";
 }
 
-function safeRandomSeed() {
-  // browser-safe random seed
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+async function fetchMyStudentProfile(): Promise<StudentAccount | null> {
+  const { data: u, error: uErr } = await supabase.auth.getUser();
+  const authUser = u?.user;
+
+  if (uErr || !authUser?.id) return null;
+
+  const { data: prof, error: pErr } = await supabase
+    .from("my_profile_api")
+    .select("id, role, fullName, studentId, avatarSeed, points")
+    .single();
+
+  if (pErr || !prof) return null;
+  if (prof.role !== "student") return null;
+
+  return {
+    id: prof.id,
+    email: authUser.email ?? "",
+    name: prof.fullName ?? "",
+    studentId: prof.studentId ?? null,
+    avatarSeed: prof.avatarSeed ?? null,
+    points: Number(prof.points ?? 0),
+  };
 }
 
-function getAllStudents(): StudentAccount[] {
-  if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(STUDENTS_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as StudentAccount[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAllStudents(list: StudentAccount[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STUDENTS_KEY, JSON.stringify(list));
-}
-
-export function registerStudent(args: {
+/**
+ * ✅ Register student (Supabase Auth)
+ * - writes metadata so your `handle_new_user()` trigger can populate profiles
+ * - your `enforce_student_email_and_id()` trigger enforces full_name + student_id rules
+ */
+export async function registerStudent(args: {
   email: string;
   password: string;
   name: string;
-  studentId?: string; // optional if AU email
-  avatarSrc?: string;
-
-  // optional: if you want to set seed explicitly
+  studentId?: string; // required if non-AU email (based on your trigger)
   avatarSeed?: string;
 }) {
   const email = normEmail(args.email);
@@ -75,167 +70,110 @@ export function registerStudent(args: {
   if (!email || !password || !name) {
     throw new Error("Please fill in email, password, and name.");
   }
-
-  // basic password rule (adjust if you want)
   if (password.length < 4) {
     throw new Error("Password must be at least 4 characters.");
   }
 
   const derived = deriveStudentIdFromEmail(email);
-  const studentId = derived || String(args.studentId ?? "").trim();
+  const studentId = derived || String(args.studentId ?? "").trim() || undefined;
 
-  if (!studentId) {
-    throw new Error("Student ID is required (or use AU email like u5400000@au.edu).");
-  }
+  const avatarSeed = ((args.avatarSeed ?? derived) || email).toString();
 
-  const list = getAllStudents();
-  const exists = list.find((s) => normEmail(s.email) === email);
-  if (exists) throw new Error("Account already exists for this email.");
-
-  // Prefer provided seed, otherwise use email (stable) or random seed
-  const avatarSeed = (args.avatarSeed ?? email ?? safeRandomSeed()).toString();
-
-  const account: StudentAccount = {
-    id: crypto.randomUUID(),
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    name,
-    studentId,
-    avatarSrc: args.avatarSrc ?? "/icons/student.png",
-    avatarSeed,
-    points: 0,
-    createdAt: new Date().toISOString(),
-  };
+    options: {
+      data: {
+        role: "student",
+        full_name: name,
+        // If AU email, student_id may be auto-derived by your trigger anyway.
+        // If non-AU email, your trigger requires student_id.
+        student_id: studentId,
+        avatar_seed: avatarSeed,
+      },
+    },
+  });
 
-  list.push(account);
-  saveAllStudents(list);
+  if (error) throw error;
 
-  // auto-login after register
-  localStorage.setItem(CURRENT_EMAIL_KEY, email);
-
-  return account;
+  // If email confirmations are enabled, session may be null here.
+  // We'll still return whatever profile exists (or null).
+  const me = await fetchMyStudentProfile();
+  return { auth: data.user, profile: me };
 }
 
-export function loginStudent(emailIn: string, passwordIn: string) {
+/**
+ * ✅ Login student (Supabase Auth)
+ */
+export async function loginStudent(emailIn: string, passwordIn: string) {
   const email = normEmail(emailIn);
   const password = normPassword(passwordIn);
 
-  const list = getAllStudents();
-  const account = list.find((s) => normEmail(s.email) === email);
+  if (!email || !password) throw new Error("Enter email and password.");
 
-  if (!account) throw new Error("Account not found. Please register first.");
-  if (normPassword(account.password) !== password) throw new Error("Incorrect password.");
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
 
-  // Backfill seed for older accounts that don't have it yet
-  if (!account.avatarSeed) {
-    const idx = list.findIndex((s) => s.id === account.id);
-    if (idx !== -1) {
-      list[idx] = { ...account, avatarSeed: account.email || safeRandomSeed() };
-      saveAllStudents(list);
-    }
-  }
-
-  localStorage.setItem(CURRENT_EMAIL_KEY, email);
-  return getCurrentStudent();
-}
-
-export function getCurrentStudent(): StudentAccount | null {
-  if (typeof window === "undefined") return null;
-
-  const email = normEmail(localStorage.getItem(CURRENT_EMAIL_KEY) ?? "");
-  if (!email) return null;
-
-  const list = getAllStudents();
-  const me = list.find((s) => normEmail(s.email) === email) ?? null;
-
-  // Backfill seed if missing
-  if (me && !me.avatarSeed) {
-    const idx = list.findIndex((s) => s.id === me.id);
-    if (idx !== -1) {
-      const next = { ...me, avatarSeed: me.email || safeRandomSeed() };
-      list[idx] = next;
-      saveAllStudents(list);
-      return next;
-    }
-  }
-
+  const me = await fetchMyStudentProfile();
+  if (!me) throw new Error("Logged in, but student profile/role not found.");
   return me;
 }
 
-export function logoutStudent() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(CURRENT_EMAIL_KEY);
+/**
+ * ✅ Get current student (Supabase session + my_profile_api)
+ */
+export async function getCurrentStudent(): Promise<StudentAccount | null> {
+  return await fetchMyStudentProfile();
 }
 
-export function updateCurrentStudent(
-  patch: Partial<
-    Omit<StudentAccount, "id" | "email" | "createdAt" | "points">
-  > & {
-    // allow updating password optional
-    password?: string;
-  }
-) {
-  const me = getCurrentStudent();
-  if (!me) throw new Error("Not logged in.");
-
-  const list = getAllStudents();
-  const idx = list.findIndex((s) => s.id === me.id);
-  if (idx === -1) throw new Error("Account not found.");
-
-  const next: StudentAccount = {
-    ...list[idx],
-    name: patch.name !== undefined ? String(patch.name).trim() : list[idx].name,
-    studentId:
-      patch.studentId !== undefined
-        ? String(patch.studentId).trim()
-        : list[idx].studentId,
-
-    avatarSrc: patch.avatarSrc !== undefined ? patch.avatarSrc : list[idx].avatarSrc,
-
-    // DiceBear seed update
-    avatarSeed:
-      patch.avatarSeed !== undefined
-        ? String(patch.avatarSeed).trim()
-        : (list[idx].avatarSeed ?? list[idx].email),
-
-    password:
-      patch.password !== undefined
-        ? normPassword(patch.password)
-        : list[idx].password,
-  };
-
-  list[idx] = next;
-  saveAllStudents(list);
-  return next;
+/**
+ * ✅ Logout student (Supabase)
+ */
+export async function logoutStudent() {
+  await supabase.auth.signOut();
 }
 
-export function addPointsToStudent(emailIn: string, pointsToAdd: number) {
-  const email = normEmail(emailIn);
-  const add = Number(pointsToAdd);
-  if (!Number.isFinite(add) || add <= 0) return;
+/**
+ * ✅ Update current student profile (my_profile_api view)
+ */
+export async function updateCurrentStudent(patch: Partial<{
+  name: string;
+  studentId: string;
+  avatarSeed: string;
+}>) {
+  const { data: u } = await supabase.auth.getUser();
+  const authUser = u?.user;
+  if (!authUser) throw new Error("Not logged in.");
 
-  const list = getAllStudents();
-  const idx = list.findIndex((s) => normEmail(s.email) === email);
-  if (idx === -1) return;
+  const payload: any = {};
+  if (patch.name !== undefined) payload.fullName = String(patch.name).trim();
+  if (patch.studentId !== undefined) payload.studentId = String(patch.studentId).trim();
+  if (patch.avatarSeed !== undefined) payload.avatarSeed = String(patch.avatarSeed).trim();
 
-  list[idx] = { ...list[idx], points: (list[idx].points ?? 0) + add };
-  saveAllStudents(list);
+  const { error } = await supabase
+    .from("my_profile_api")
+    .update(payload)
+    .eq("id", authUser.id);
+
+  if (error) throw error;
+
+  const me = await fetchMyStudentProfile();
+  if (!me) throw new Error("Profile updated, but failed to reload.");
+  return me;
 }
 
-// ✅ Delete current student account permanently (localStorage)
-export function deleteCurrentStudent() {
-  if (typeof window === "undefined") return;
+/**
+ * ⚠️ Legacy helper from localStorage era.
+ * Points should now be handled by DB (student_attempts trigger updates points_total).
+ */
+export function addPointsToStudent(_email: string, _points: number) {
+  // no-op (kept only so old imports won't explode)
+}
 
-  const me = getCurrentStudent();
-  if (!me) return;
-
-  // remove from students list
-  const raw = localStorage.getItem(STUDENTS_KEY);
-  const list = raw ? (JSON.parse(raw) as StudentAccount[]) : [];
-  const next = Array.isArray(list) ? list.filter((s) => s.id !== me.id) : [];
-
-  localStorage.setItem(STUDENTS_KEY, JSON.stringify(next));
-
-  // logout
-  localStorage.removeItem(CURRENT_EMAIL_KEY);
+/**
+ * ⚠️ You cannot delete auth.users from client safely.
+ * Keep this function for old UI calls, but it just logs out.
+ */
+export async function deleteCurrentStudent() {
+  await supabase.auth.signOut();
 }
