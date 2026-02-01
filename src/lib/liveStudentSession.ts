@@ -25,11 +25,11 @@ export function clearLiveStudent() {
   sessionStorage.removeItem(KEY);
 }
 
-export function getOrCreateLiveStudent(): LiveStudent | null {
+export async function getOrCreateLiveStudent(): Promise<LiveStudent | null> {
   const fromSession = readLiveStudent();
   if (fromSession) return fromSession;
 
-  const me = getCurrentStudent();
+  const me = await getCurrentStudent();
   if (!me) return null;
 
   const live = toLiveStudent(me, 96);

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/Navbar";
-import { loginStudent } from "@/src/lib/studentAuthStorage";
+import { supabase } from "@/src/lib/supabaseClient";
 import Link from "next/link";
 import GradientButton from "@/src/components/GradientButton";
 import { ArrowLeft, UserRound } from "lucide-react";
@@ -25,19 +25,24 @@ export default function StudentLoginClient() {
     setNext(getNextFromUrl());
   }, []);
 
-  function onLogin() {
+  async function onLogin() {
     if (!email.trim() || !password) {
       alert("Enter email and password.");
       return;
     }
-    try {
-      loginStudent(email, password);
-      router.push(next);
-    } catch (e: any) {
-      alert(e?.message ?? "Login failed");
-    }
-  }
 
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    router.push(next);
+  }
   return (
     <div className="min-h-screen app-surface app-bg">
       <Navbar />

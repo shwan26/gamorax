@@ -187,17 +187,20 @@ export default function AssignmentEntryPage() {
   // require login (like live)
   useEffect(() => {
     if (!token) return;
-    const me = getCurrentStudent();
-    if (!me) {
-      router.replace(`/auth/login?next=${encodeURIComponent(`/assignment/${token}`)}`);
-      return;
-    }
+    (async () => {
+      const me = await getCurrentStudent();
+      if (!me) {
+        router.replace(`/auth/login?next=${encodeURIComponent(`/assignment/${token}`)}`);
+      }
+    })();
   }, [token, router]);
 
   // load live student (avatar/name)
   useEffect(() => {
-    const live = getOrCreateLiveStudent();
-    if (live) setMeLive(live);
+    (async () => {
+      const live = await getOrCreateLiveStudent();
+      if (live) setMeLive(live);
+    })();
   }, []);
 
   const guard = useMemo(() => {
@@ -215,7 +218,7 @@ export default function AssignmentEntryPage() {
   // one-attempt check (client-side)
   const alreadyAttempted = useMemo(() => {
     if (!assignment) return false;
-    const me = getCurrentStudent();
+    const me = await getCurrentStudent();
     if (!me?.email) return false;
     const email = String(me.email).toLowerCase();
     const attempts = listAttemptsByAssignment(assignment.id);
@@ -260,9 +263,9 @@ export default function AssignmentEntryPage() {
     setPhase("question");
   }
 
-  function finalizeAndSave() {
+  async function finalizeAndSave() {
     if (!assignment) return;
-    const studentAuth = getCurrentStudent();
+    const studentAuth = await getCurrentStudent();
     const live = meLive;
 
     const studentEmail = String(studentAuth?.email ?? "").toLowerCase();

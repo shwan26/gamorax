@@ -39,9 +39,9 @@ export default function StudentRegisterClient() {
     if (derivedId) setStudentId(derivedId);
   }, [derivedId]);
 
-  function onRegister() {
+  async function onRegister() {
     try {
-      registerStudent({
+      await registerStudent({
         email,
         password,
         name,
