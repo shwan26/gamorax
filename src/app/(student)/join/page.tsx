@@ -11,28 +11,36 @@ import {
 import { botttsUrl } from "@/src/lib/dicebear";
 import { ArrowLeft, UserRound, LogOut } from "lucide-react";
 import Link from "next/link";
+import type { StudentAccount } from "@/src/lib/studentAuthStorage";
+
+
 
 export default function StudentJoin() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [code, setCode] = useState("");
 
-  const [me, setMe] = useState<ReturnType<typeof getCurrentStudent>>(null);
-
+  const [me, setMe] = useState<StudentAccount | null>(null);
   useEffect(() => {
     setMounted(true);
-    setMe(getCurrentStudent());
+
+    (async () => {
+      const s = await getCurrentStudent();
+      setMe(s);
+    })();
   }, []);
+
 
   const avatarUrl = useMemo(() => {
     const seed = me?.avatarSeed || me?.email || "student";
     return botttsUrl(seed, 96);
   }, [me?.avatarSeed, me?.email]);
 
-  const handleJoin = () => {
-    const meNow = getCurrentStudent();
+  const handleJoin = async () => {
     const pin = code.trim();
     if (!pin) return;
+
+    const meNow = await getCurrentStudent();
 
     if (!meNow) {
       router.push(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
@@ -42,15 +50,17 @@ export default function StudentJoin() {
     router.push(`/join/${encodeURIComponent(pin)}`);
   };
 
-  const handleLogout = () => {
+
+  const handleLogout = async () => {
     try {
-      logoutStudent();
+      await logoutStudent();
     } finally {
       setMe(null);
       setCode("");
-      router.refresh?.();
+      router.refresh();
     }
   };
+
 
   if (!mounted) return null;
 

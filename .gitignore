@@ -48,3 +48,4 @@ socket-server/dist/
 # env
 .env
 .env.local
+socket-server/.env

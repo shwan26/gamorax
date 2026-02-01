@@ -1,50 +1,76 @@
-// src/lib/assignmentAttemptStorage.ts
+// src/lib/assignmentAttempts.ts
+import { supabase } from "@/src/lib/supabaseClient";
+
 export type AssignmentAttempt = {
   id: string;
   assignmentId: string;
+  profileId: string;
 
-  studentEmail: string;
-  studentId: string;
-  studentName: string;
+  studentEmail: string | null;
+  studentId: string | null;
+  studentName: string | null;
 
-  startedAt: string;   // ISO
-  submittedAt: string; // ISO
+  startedAt: string;
+  submittedAt: string;
 
   totalQuestions: number;
   correct: number;
   scorePct: number;
+  points: number;
 
-  // store student answers for review
-  answers: Record<string, any>; // key = questionId
+  answers: Record<string, any>;
 };
 
-const KEY = "gamorax_assignment_attempts";
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  try {
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+function mapRow(r: any): AssignmentAttempt {
+  return {
+    id: r.id,
+    assignmentId: r.assignment_id,
+    profileId: r.profile_id,
+    studentEmail: r.student_email,
+    studentId: r.student_id,
+    studentName: r.student_name,
+    startedAt: r.started_at,
+    submittedAt: r.submitted_at,
+    totalQuestions: r.total_questions,
+    correct: r.correct,
+    scorePct: r.score_pct,
+    points: r.points,
+    answers: r.answers ?? {},
+  };
 }
 
-function getAll(): AssignmentAttempt[] {
-  if (typeof window === "undefined") return [];
-  return safeParse<AssignmentAttempt[]>(localStorage.getItem(KEY), []);
+/**
+ * Lecturer report: list attempts for an assignment.
+ * RLS policy should allow lecturer to SELECT attempts for assignments they own.
+ */
+export async function listAttemptsByAssignment(assignmentId: string): Promise<AssignmentAttempt[]> {
+  if (!assignmentId) return [];
+
+  const { data, error } = await supabase
+    .from("assignment_attempts")
+    .select(
+      "id, assignment_id, profile_id, student_email, student_id, student_name, started_at, submitted_at, total_questions, correct, score_pct, points, answers"
+    )
+    .eq("assignment_id", assignmentId)
+    .order("submitted_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []).map(mapRow);
 }
 
-function saveAll(list: AssignmentAttempt[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(list));
-}
 
-export function saveAssignmentAttempt(attempt: AssignmentAttempt) {
-  const all = getAll();
-  if (all.some((a) => a.id === attempt.id)) return;
-  all.unshift(attempt);
-  saveAll(all);
-}
+export async function hasAttempted(assignmentId: string, profileId: string): Promise<boolean> {
+  if (!assignmentId || !profileId) return false;
 
-export function listAttemptsByAssignment(assignmentId: string): AssignmentAttempt[] {
-  return getAll().filter((a) => a.assignmentId === assignmentId);
+  const { data, error } = await supabase
+    .from("assignment_attempts")
+    .select("id")
+    .eq("assignment_id", assignmentId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+
+  // maybeSingle returns "no rows" sometimes as PGRST116 depending on client/version
+  if (error && (error as any).code !== "PGRST116") throw error;
+
+  return !!data;
 }

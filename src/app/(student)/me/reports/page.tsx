@@ -16,6 +16,8 @@ import {
   Trophy,
   BookOpen,
 } from "lucide-react";
+import type { StudentAccount } from "@/src/lib/studentAuthStorage";
+
 
 function fmt(iso: string) {
   const d = new Date(iso);
@@ -159,26 +161,52 @@ function AttemptRowCard({
 export default function MeReportsPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [me, setMe] = useState<ReturnType<typeof getCurrentStudent>>(null);
+  const [me, setMe] = useState<StudentAccount | null>(null);
 
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("finishedAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
+  const [all, setAll] = useState<StudentAttempt[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!me) {
+        setAll([]);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const rows = await getAttemptsByStudent(me.email ?? "");
+        if (alive) setAll(rows);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [me]);
+
+
   useEffect(() => {
     setMounted(true);
-    const cur = getCurrentStudent();
-    if (!cur) {
-      router.push("/auth/login");
-      return;
-    }
-    setMe(cur);
+
+    (async () => {
+      const cur = await getCurrentStudent();
+      if (!cur) {
+        router.push("/auth/login");
+        return;
+      }
+      setMe(cur);
+    })();
   }, [router]);
 
-  const all = useMemo<StudentAttempt[]>(() => {
-    if (!me) return [];
-    return getAttemptsByStudent(me.email);
-  }, [me]);
 
   const filteredSorted = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -316,6 +344,12 @@ export default function MeReportsPage() {
             </div>
           </div>
         </div>
+
+        {loading && (
+          <div className="mt-6 text-sm text-slate-500 dark:text-slate-300">
+            Loading reports...
+          </div>
+        )}
 
         {/* list */}
         <div className="mt-6 space-y-3 sm:mt-8">

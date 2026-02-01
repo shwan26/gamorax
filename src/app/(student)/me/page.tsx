@@ -17,6 +17,7 @@ import {
   Trophy,
   Wallet,
 } from "lucide-react";
+import type { StudentAccount } from "@/src/lib/studentAuthStorage";
 
 function fmt(iso: string) {
   const d = new Date(iso);
@@ -121,7 +122,7 @@ function AttemptCard({
 export default function MePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [me, setMe] = useState<ReturnType<typeof getCurrentStudent>>(null);
+  const [me, setMe] = useState<StudentAccount | null>(null);
 
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("finishedAt");
@@ -129,18 +130,44 @@ export default function MePage() {
 
   useEffect(() => {
     setMounted(true);
-    const cur = getCurrentStudent();
-    if (!cur) {
-      router.push("/auth/login");
-      return;
-    }
-    setMe(cur);
+
+    (async () => {
+      const cur = await getCurrentStudent();
+      if (!cur) {
+        router.push("/auth/login");
+        return;
+      }
+      setMe(cur);
+    })();
   }, [router]);
 
-  const attempts: StudentAttempt[] = useMemo(() => {
-    if (!me) return [];
-    return getAttemptsByStudent(me.email);
+  // add state
+  const [attempts, setAttempts] = useState<StudentAttempt[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!me) {
+        setAttempts([]);
+        return;
+      }
+
+      setLoadingAttempts(true);
+      try {
+        const rows = await getAttemptsByStudent(me.email ?? "");
+        if (alive) setAttempts(rows);
+      } finally {
+        if (alive) setLoadingAttempts(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [me]);
+
 
   const filteredSorted = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -204,6 +231,7 @@ export default function MePage() {
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               {/* search */}
+              
               <div className="relative w-full sm:w-72">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -290,6 +318,12 @@ export default function MePage() {
           </div>
         </div>
 
+        {loadingAttempts && (
+          <div className="mt-6 text-sm text-slate-500 dark:text-slate-300">
+            Loading attempts...
+          </div>
+        )}
+
         {/* grid */}
         <div className="mt-6 grid items-start gap-4 sm:mt-8 sm:grid-cols-2 lg:grid-cols-2">
           {last.map((a) => (
@@ -300,6 +334,7 @@ export default function MePage() {
             />
           ))}
         </div>
+        
 
         {/* empty state */}
         {filteredSorted.length === 0 && (

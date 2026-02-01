@@ -1,92 +1,170 @@
-// src/lib/assignmentStorage.ts
-import type { Question } from "./questionStorage";
+// src/lib/assignment.ts
+import { supabase } from "@/src/lib/supabaseClient";
+import { getQuestions } from "@/src/lib/questionStorage";
+
+/* ======================
+   Types
+====================== */
 
 export type Assignment = {
   id: string;
   courseId: string;
-  gameId: string;
+  gameId: string; // quiz_id
+  lecturerId: string;
+
+  publicToken: string;
 
   title: string;
 
-  // availability
-  opensAt?: string; // ISO
-  dueAt?: string;   // ISO
+  opensAt: string | null;
+  dueAt: string | null;
 
-  // total duration for the attempt
   durationSec: number;
+  passcodeHash: string | null;
 
-  createdAt: string; // ISO
-  passcodeHash?: string;
+  createdAt: string;
 };
 
-const KEY = "gamorax_assignments";
+export type AssignmentMeta = {
+  id: string;
+  title: string;
+  opens_at: string | null;
+  due_at: string | null;
+  duration_sec: number;
+  has_passcode: boolean;
+};
 
-function safeParse<T>(raw: string | null, fallback: T): T {
-  try {
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function getAll(): Assignment[] {
-  if (typeof window === "undefined") return [];
-  return safeParse<Assignment[]>(localStorage.getItem(KEY), []);
-}
-
-function saveAll(list: Assignment[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(list));
-}
-
-export function listAssignmentsByGame(gameId: string): Assignment[] {
-  return getAll().filter((a) => a.gameId === gameId);
-}
-
-export function getAssignmentById(id: string): Assignment | null {
-  return getAll().find((a) => a.id === id) ?? null;
-}
-
-export function createAssignment(input: Omit<Assignment, "id" | "createdAt">): Assignment {
-  const next: Assignment = {
-    ...input,
-    id: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
+export type AssignmentPayload = {
+  assignment: {
+    id: string;
+    title: string;
+    opensAt: string | null;
+    dueAt: string | null;
+    durationSec: number;
+    quizId: string;
   };
-  const all = getAll();
-  all.unshift(next);
-  saveAll(all);
-  return next;
+  questions: any[];
+};
+
+function mapAssignmentRow(r: any): Assignment {
+  return {
+    id: r.id,
+    courseId: r.course_id,
+    gameId: r.quiz_id,
+    lecturerId: r.lecturer_id,
+    publicToken: r.public_token,
+    title: r.title,
+    opensAt: r.opens_at,
+    dueAt: r.due_at,
+    durationSec: r.duration_sec,
+    passcodeHash: r.passcode_hash,
+    createdAt: r.created_at,
+  };
 }
 
-export function updateAssignment(id: string, patch: Partial<Assignment>) {
-  const all = getAll();
-  const idx = all.findIndex((a) => a.id === id);
-  if (idx === -1) return;
-  all[idx] = { ...all[idx], ...patch };
-  saveAll(all);
+/* ======================
+   Lecturer: CRUD Assignments
+====================== */
+
+export async function createAssignment(input: {
+  courseId: string;
+  gameId: string; // quiz_id
+  title: string;
+  opensAt?: string;
+  dueAt?: string;
+  durationSec: number;
+  passcodeHash?: string;
+}): Promise<{ id: string; publicToken: string }> {
+  const { data: userRes, error: userErr } = await supabase.auth.getUser();
+  if (userErr) throw userErr;
+
+  const uid = userRes.user?.id;
+  if (!uid) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .insert({
+      course_id: input.courseId,
+      quiz_id: input.gameId,
+      lecturer_id: uid,
+      title: input.title,
+      opens_at: input.opensAt ?? null,
+      due_at: input.dueAt ?? null,
+      duration_sec: input.durationSec,
+      passcode_hash: input.passcodeHash ?? null,
+    })
+    .select("id, public_token")
+    .single();
+
+  if (error) throw error;
+
+  return { id: data.id, publicToken: data.public_token };
 }
 
-export function deleteAssignment(id: string) {
-  saveAll(getAll().filter((a) => a.id !== id));
+export async function listAssignmentsByGame(gameId: string): Promise<Assignment[]> {
+  if (!gameId) return [];
+
+  const { data, error } = await supabase
+    .from("assignments")
+    .select(
+      "id, course_id, quiz_id, lecturer_id, public_token, title, opens_at, due_at, duration_sec, passcode_hash, created_at"
+    )
+    .eq("quiz_id", gameId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []).map(mapAssignmentRow);
 }
 
-/**
- * Share token (optional): pack assignment + questions into the URL so it works even without DB.
- * This makes the link genuinely shareable today.
- */
-export function makeAssignmentShareToken(payload: { assignment: Assignment; questions: Question[] }) {
-  const json = JSON.stringify(payload);
-  const b64 = btoa(unescape(encodeURIComponent(json))); // safe base64 for unicode
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+export async function deleteAssignment(id: string): Promise<void> {
+  const { error } = await supabase.from("assignments").delete().eq("id", id);
+  if (error) throw error;
 }
 
-export function readAssignmentShareToken(token: string): { assignment: Assignment; questions: Question[] } | null {
-  try {
-    const b64 = token.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((token.length + 3) % 4);
-    const json = decodeURIComponent(escape(atob(b64)));
-    return JSON.parse(json);
-  } catch {
-    return null;
-  }
+/* ======================
+   Student: RPC / Flow
+====================== */
+
+export async function getAssignmentMeta(token: string): Promise<AssignmentMeta | null> {
+  const { data, error } = await supabase.rpc("get_assignment_meta", { p_token: token });
+  if (error) throw error;
+
+  const row = Array.isArray(data) ? data[0] : null;
+  return row ?? null;
+}
+
+export async function getAssignmentPayload(token: string, passcode?: string): Promise<AssignmentPayload> {
+  const { data, error } = await supabase.rpc("get_assignment_payload", {
+    p_token: token,
+    p_passcode: passcode ?? null,
+  });
+  if (error) throw error;
+  return data as AssignmentPayload;
+}
+
+export async function hasAttempted(assignmentId: string, profileId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("assignment_attempts")
+    .select("id")
+    .eq("assignment_id", assignmentId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+
+  if (error && (error as any).code !== "PGRST116") throw error;
+  return !!data;
+}
+
+export async function submitAssignmentAttempt(input: {
+  token: string;
+  startedAtISO: string;
+  answers: Record<string, any>;
+}): Promise<{ totalQuestions: number; correct: number; scorePct: number; points: number }> {
+  const { data, error } = await supabase.rpc("submit_assignment_attempt", {
+    p_token: input.token,
+    p_started_at: input.startedAtISO,
+    p_answers: input.answers,
+  });
+  if (error) throw error;
+
+  return data as { totalQuestions: number; correct: number; scorePct: number; points: number };
 }
