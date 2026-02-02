@@ -85,8 +85,8 @@ socket-server/.env :
 PORT=4000
 CORS_ORIGIN=http://localhost:3000
 
-SUPABASE_URL=your url
-SUPABASE_SERVICE_ROLE_KEY=your role
+SUPABASE_URL=your_supabase_url
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
 
 run app:
