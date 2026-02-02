@@ -86,7 +86,7 @@ PORT=4000
 CORS_ORIGIN=http://localhost:3000
 
 SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_keys
 ```
 
 run app:
