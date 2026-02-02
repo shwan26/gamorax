@@ -6,8 +6,14 @@ A real-time quiz game built for classroom live sessions with lobby PIN join, liv
 ---
 
 ## Key Features
+### Quiz Features
+- multiple choice
+- true/false
+- matching
+- answer input
+
 ### Live Game
-- ✅ Lecturer hosts a quiz → system generates a **PIN**
+- ✅ Lecturer hosts a quiz → system generates a **PIN** 
 - ✅ Students join via **/join/[pin]** (QR code supported)
 - ✅ Live lobby shows joined students (name + ID + avatar)
 - ✅ Lecturer starts the session → students receive questions in real time
