@@ -1,58 +1,127 @@
+// src/lib/courseStorage.ts
+import { supabase } from "@/src/lib/supabaseClient";
+
 export type Course = {
   id: string;
-  courseCode: string;        // ✅ required
-  courseName: string;        // ✅ required
-  section?: string;          // ✅ optional
-  semester?: string;         // ✅ optional
+  courseCode: string; // required
+  courseName: string; // required
+  section?: string; // optional
+  semester?: string; // optional
+  createdAt?: string;
+  updatedAt?: string;
+
+  // optional if you ever want it (exists in view)
+  lecturerId?: string;
 };
 
-const COURSE_KEY = "gamorax_courses";
+/* =======================
+   READ
+======================= */
 
-function normalizeCourse(c: any): Course {
-  return {
-    id: String(c?.id ?? crypto.randomUUID()),
-    courseCode: String(c?.courseCode ?? ""),
-    courseName: String(c?.courseName ?? ""),
-    section: c?.section ? String(c.section) : undefined,
-    semester: c?.semester ? String(c.semester) : undefined,
-  };
+export async function getCourses(): Promise<Course[]> {
+  const { data, error } = await supabase
+    .from("courses_api")
+    .select("id, lecturerId, courseCode, courseName, section, semester, createdAt, updatedAt")
+    .order("createdAt", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as Course[];
 }
 
-function getAllCourses(): Course[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(COURSE_KEY);
-  const raw = data ? JSON.parse(data) : [];
-  return Array.isArray(raw) ? raw.map(normalizeCourse) : [];
+export async function getCourseById(id: string): Promise<Course | null> {
+  const { data, error } = await supabase
+    .from("courses_api")
+    .select("id, lecturerId, courseCode, courseName, section, semester, createdAt, updatedAt")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    // PostgREST: "No rows" => return null
+    if ((error as any)?.code === "PGRST116") return null;
+    throw error;
+  }
+
+  return (data ?? null) as Course | null;
 }
 
-function saveAllCourses(courses: Course[]) {
-  localStorage.setItem(COURSE_KEY, JSON.stringify(courses));
+/* =======================
+   CREATE
+======================= */
+
+// Replaces saveCourse()
+export async function createCourse(input: {
+  courseCode: string;
+  courseName: string;
+  section?: string;
+  semester?: string;
+}): Promise<{ id: string }> {
+  const { data, error } = await supabase
+    .from("courses_api")
+    .insert({
+      courseCode: input.courseCode,
+      courseName: input.courseName,
+      section: input.section ?? null,
+      semester: input.semester ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+  return { id: data.id as string };
 }
 
-export function getCourses(): Course[] {
-  return getAllCourses();
+/* =======================
+   UPDATE
+======================= */
+
+// Replaces updateCourse()
+export async function updateCourse(
+  id: string,
+  data: Partial<Omit<Course, "id" | "lecturerId" | "createdAt" | "updatedAt">>
+) {
+  const patch: any = { ...data };
+
+  // normalize optional fields to null (so clearing works)
+  if ("section" in patch) patch.section = patch.section ?? null;
+  if ("semester" in patch) patch.semester = patch.semester ?? null;
+
+  const { error } = await supabase.from("courses_api").update(patch).eq("id", id);
+  if (error) throw error;
 }
 
-export function getCourseById(id: string): Course | null {
-  return getAllCourses().find((c) => c.id === id) || null;
+/* =======================
+   DELETE
+======================= */
+
+// Replaces deleteCourse()
+export async function deleteCourse(id: string) {
+  const { error } = await supabase.from("courses_api").delete().eq("id", id);
+  if (error) throw error;
 }
 
-export function saveCourse(course: Course) {
-  const courses = getAllCourses();
-  courses.push(normalizeCourse(course));
-  saveAllCourses(courses);
-}
+/* =======================
+   Backward-compat helpers (optional)
+   If your UI still calls saveCourse(course: Course)
+======================= */
 
-export function updateCourse(id: string, data: Partial<Omit<Course, "id">>) {
-  const courses = getAllCourses();
-  const idx = courses.findIndex((c) => c.id === id);
-  if (idx === -1) return;
+// Keep this ONLY if you already have many calls like saveCourse(course)
+export async function saveCourse(course: Course) {
+  // If it already has an id, treat as update
+  if (course?.id) {
+    await updateCourse(course.id, {
+      courseCode: course.courseCode,
+      courseName: course.courseName,
+      section: course.section,
+      semester: course.semester,
+    });
+    return;
+  }
 
-  courses[idx] = normalizeCourse({ ...courses[idx], ...data });
-  saveAllCourses(courses);
-}
-
-export function deleteCourse(id: string) {
-  const courses = getAllCourses().filter((c) => c.id !== id);
-  saveAllCourses(courses);
+  // else create
+  await createCourse({
+    courseCode: course.courseCode,
+    courseName: course.courseName,
+    section: course.section,
+    semester: course.semester,
+  });
 }

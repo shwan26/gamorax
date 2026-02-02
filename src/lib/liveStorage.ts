@@ -399,7 +399,6 @@ export function nextOrFinal(params: {
 }
 
 /* ---------- REPORT STORAGE ---------- */
-/* ---------- REPORT STORAGE ---------- */
 export type LiveReportRow = {
   rank: number;
   studentId: string;

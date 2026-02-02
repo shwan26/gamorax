@@ -1,35 +1,26 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import {
-  getGameById,
-  updateGame,
-  deleteGame,
-  type Game,
-} from "@/src/lib/gameStorage";
 import { useEffect, useRef, useState } from "react";
 import GradientButton from "@/src/components/GradientButton";
-import {
-  Settings,
-  Shuffle,
-  Trash2,
-  Hash,
-  Pencil,
-  Check,
-  X,
-} from "lucide-react";
+import { Settings, Shuffle, Trash2, Hash, Pencil, Check, X } from "lucide-react";
+import { supabase } from "@/src/lib/supabaseClient";
+
+/* ------------------------------ types ------------------------------ */
+
+type GameRow = {
+  id: string;
+  courseId: string;
+  quizNumber: string;
+  shuffleQuestions: boolean | null;
+  shuffleAnswers: boolean | null;
+};
 
 /* ------------------------------ UI bits ------------------------------ */
 
 function StatusPill({ text }: { text: string }) {
   return (
-    <span
-      className="
-        inline-flex items-center rounded-full border border-slate-200/70
-        bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-600
-        dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300
-      "
-    >
+    <span className="inline-flex items-center rounded-full border border-slate-200/70 bg-white/70 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-800/70 dark:bg-slate-950/50 dark:text-slate-300">
       {text}
     </span>
   );
@@ -62,9 +53,7 @@ function TitleField({
           "border-slate-200/80 bg-white/80 text-slate-900 placeholder:text-slate-400",
           "focus:ring-2 focus:ring-[#00D4FF]/40 focus:border-transparent",
           "dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-50 dark:placeholder:text-slate-500",
-          disabled
-            ? "opacity-80 cursor-not-allowed"
-            : "transition-shadow",
+          disabled ? "opacity-80 cursor-not-allowed" : "transition-shadow",
         ].join(" ")}
       />
     </div>
@@ -102,15 +91,12 @@ function ToggleRow({
     >
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-            {title}
-          </p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">{title}</p>
           {saving ? <StatusPill text="Saving..." /> : checked ? <StatusPill text="On" /> : <StatusPill text="Off" />}
         </div>
         <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{desc}</p>
       </div>
 
-      {/* Animated switch */}
       <span className="shrink-0 pt-0.5">
         <span
           className={[
@@ -140,29 +126,61 @@ export default function GeneralSettingPage() {
   const gameId = (params?.gameId ?? "").toString();
   const router = useRouter();
 
-  const [game, setGame] = useState<Game | null>(null);
+  const [loadingGame, setLoadingGame] = useState(true);
+  const [game, setGame] = useState<GameRow | null>(null);
 
-  // Name edit mode (save name ONLY)
   const [editingName, setEditingName] = useState(false);
   const [quizNumberDraft, setQuizNumberDraft] = useState("");
 
-  // Toggles (save immediately on click)
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [shuffleAnswers, setShuffleAnswers] = useState(false);
 
-  // UI feedback
   const [savingToggleKey, setSavingToggleKey] = useState<"q" | "a" | null>(null);
   const [nameSavedPing, setNameSavedPing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
   const pingTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!gameId) return;
-    const g = getGameById(gameId);
-    setGame(g);
+    let alive = true;
 
-    setQuizNumberDraft(g?.quizNumber ?? "");
-    setShuffleQuestions(!!g?.shuffleQuestions);
-    setShuffleAnswers(!!g?.shuffleAnswers);
+    (async () => {
+      if (!gameId) {
+        if (alive) {
+          setGame(null);
+          setLoadingGame(false);
+        }
+        return;
+      }
+
+      setLoadingGame(true);
+
+      const { data, error } = await supabase
+        .from("games_api")
+        .select("id, courseId, quizNumber, shuffleQuestions, shuffleAnswers")
+        .eq("id", gameId)
+        .single();
+
+      if (!alive) return;
+
+      if (error) {
+        console.error(error);
+        setGame(null);
+        setLoadingGame(false);
+        return;
+      }
+
+      const g = data as GameRow;
+      setGame(g);
+      setQuizNumberDraft(g.quizNumber ?? "");
+      setShuffleQuestions(!!g.shuffleQuestions);
+      setShuffleAnswers(!!g.shuffleAnswers);
+      setLoadingGame(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [gameId]);
 
   useEffect(() => {
@@ -172,7 +190,13 @@ export default function GeneralSettingPage() {
   }, []);
 
   if (!gameId) return <div className="p-6">Missing game id in URL.</div>;
+  if (loadingGame) return <div className="p-6">Loading...</div>;
   if (!game) return <div className="p-6">Game not found.</div>;
+
+  // optional safety: if game doesn't belong to this courseId
+  if (courseId && game.courseId !== courseId) {
+    return <div className="p-6">Invalid course/game.</div>;
+  }
 
   function pingNameSaved() {
     setNameSavedPing(true);
@@ -180,74 +204,104 @@ export default function GeneralSettingPage() {
     pingTimer.current = window.setTimeout(() => setNameSavedPing(false), 1200);
   }
 
-  function saveName() {
-    updateGame(gameId, { quizNumber: quizNumberDraft.trim() || "Untitled Game" });
-
-    // keep local state in sync
+  async function saveName() {
     const nextName = quizNumberDraft.trim() || "Untitled Game";
+
+    const { error } = await supabase
+      .from("games_api")
+      .update({ quizNumber: nextName })
+      .eq("id", gameId);
+
+    if (error) {
+      console.error(error);
+      alert(error.message || "Failed to save name.");
+      return;
+    }
+
     setGame((prev) => (prev ? { ...prev, quizNumber: nextName } : prev));
     setQuizNumberDraft(nextName);
-
     setEditingName(false);
     pingNameSaved();
   }
 
   function cancelNameEdit() {
-    setQuizNumberDraft(game?.quizNumber ?? "");
+    if (!game) return;
+    setQuizNumberDraft(game.quizNumber ?? "");
     setEditingName(false);
   }
 
-  function saveToggle(patch: Partial<Game>, key: "q" | "a") {
+
+  async function saveToggle(patch: Partial<GameRow>, key: "q" | "a") {
     setSavingToggleKey(key);
 
-    updateGame(gameId, patch);
-    setGame((prev) => (prev ? { ...prev, ...patch } : prev));
+    setGame((prev) => {
+      if (!prev) return prev;
+      if (key === "q") return { ...prev, shuffleQuestions: !Boolean(prev.shuffleQuestions) };
+      return { ...prev, shuffleAnswers: !Boolean(prev.shuffleAnswers) };
+    });
 
-    // instant save, so just clear soon
+    const { error } = await supabase.from("games_api").update(patch).eq("id", gameId);
+
+    if (error) {
+      console.error(error);
+      alert(error.message || "Failed to save toggle.");
+
+      // revert if failed
+      setGame((prev) => {
+        if (!prev) return prev;
+        if (key === "q") return { ...prev, shuffleQuestions: !prev.shuffleQuestions };
+        return { ...prev, shuffleAnswers: !prev.shuffleAnswers };
+      });
+    }
+
     window.setTimeout(() => setSavingToggleKey(null), 350);
   }
 
-  function handleDelete() {
-    if (!confirm("This will delete the entire quiz and all data. Continue?")) return;
-    deleteGame(gameId);
-    router.push(`/course/${courseId}`);
+  async function handleDelete() {
+    if (deleting) return;
+
+    const ok = confirm("This will delete the entire quiz and all data. Continue?");
+    if (!ok) return;
+
+    setDeleting(true);
+
+    try {
+      const { error } = await supabase.from("games_api").delete().eq("id", gameId);
+
+      if (error) {
+        console.error(error);
+        alert(error.message || "Failed to delete quiz on server.");
+        return;
+      }
+
+      router.push(`/course/${courseId}`);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message ?? "Unexpected error while deleting.");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
     <div className="space-y-6">
-      {/* header */}
       <div className="flex items-start gap-3">
-        <div
-          className="
-            rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm
-            dark:border-slate-800/70 dark:bg-slate-950/60
-          "
-        >
+        <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
           <Settings className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
         </div>
 
         <div className="min-w-0">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-            General
-          </h3>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">General</h3>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
             Edit the quiz title manually. Toggles save instantly.
           </p>
         </div>
       </div>
 
-      {/* Name card (edit + save name only) */}
-      <div
-        className="
-          rounded-3xl border border-slate-200/70 bg-white/70 p-5 shadow-sm backdrop-blur
-          dark:border-slate-800/70 dark:bg-slate-950/55
-        "
-      >
+      <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/55">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-              Quiz Number / Title
-            </p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Quiz Number / Title</p>
             <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
               This appears on the course page and live session screens.
             </p>
@@ -260,13 +314,7 @@ export default function GeneralSettingPage() {
               <button
                 type="button"
                 onClick={() => setEditingName(true)}
-                className="
-                  inline-flex items-center gap-2 rounded-2xl border border-slate-200/80
-                  bg-white/80 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm
-                  hover:bg-white transition-colors
-                  dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-950/80
-                  focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40
-                "
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white transition-colors dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-950/80 focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40"
               >
                 <Pencil className="h-4 w-4" />
                 Edit
@@ -276,13 +324,7 @@ export default function GeneralSettingPage() {
                 <button
                   type="button"
                   onClick={cancelNameEdit}
-                  className="
-                    inline-flex items-center gap-2 rounded-2xl border border-slate-200/80
-                    bg-white/80 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm
-                    hover:bg-white transition-colors
-                    dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-950/80
-                    focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40
-                  "
+                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-white transition-colors dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-950/80 focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/40"
                 >
                   <X className="h-4 w-4" />
                   Cancel
@@ -291,13 +333,7 @@ export default function GeneralSettingPage() {
                 <button
                   type="button"
                   onClick={saveName}
-                  className="
-                    inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold text-white
-                    bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-                    shadow-[0_10px_25px_rgba(37,99,235,0.18)]
-                    hover:opacity-95 active:scale-[0.99] transition
-                    focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
-                  "
+                  className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold text-white bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB] shadow-[0_10px_25px_rgba(37,99,235,0.18)] hover:opacity-95 active:scale-[0.99] transition focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50"
                 >
                   <Check className="h-4 w-4" />
                   Save
@@ -318,18 +354,10 @@ export default function GeneralSettingPage() {
         </div>
       </div>
 
-      {/* Shuffle card (toggles save immediately) */}
-      <div
-        className="
-          rounded-3xl border border-slate-200/70 bg-white/70 p-5 shadow-sm backdrop-blur
-          dark:border-slate-800/70 dark:bg-slate-950/55
-        "
-      >
+      <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/55">
         <div className="flex items-center gap-2">
           <Shuffle className="h-4 w-4 text-slate-400" />
-          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-            Shuffle in Live Mode
-          </p>
+          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Shuffle in Live Mode</p>
         </div>
 
         <div className="mt-4 space-y-3">
@@ -340,7 +368,7 @@ export default function GeneralSettingPage() {
             saving={savingToggleKey === "q"}
             onChange={(v) => {
               setShuffleQuestions(v);
-              saveToggle({ shuffleQuestions: v }, "q"); // ✅ save immediately
+              saveToggle({ shuffleQuestions: v }, "q");
             }}
           />
 
@@ -351,7 +379,7 @@ export default function GeneralSettingPage() {
             saving={savingToggleKey === "a"}
             onChange={(v) => {
               setShuffleAnswers(v);
-              saveToggle({ shuffleAnswers: v }, "a"); // ✅ save immediately
+              saveToggle({ shuffleAnswers: v }, "a");
             }}
           />
         </div>
@@ -361,14 +389,14 @@ export default function GeneralSettingPage() {
         </p>
       </div>
 
-      {/* Delete */}
       <div className="pt-1">
         <GradientButton
           variant="danger"
           onClick={handleDelete}
+          disabled={deleting}
           iconLeft={<Trash2 className="h-4 w-4" />}
         >
-          Delete Entire Quiz
+          {deleting ? "Deleting..." : "Delete Entire Quiz"}
         </GradientButton>
       </div>
     </div>

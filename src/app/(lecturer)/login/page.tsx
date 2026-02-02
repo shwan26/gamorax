@@ -4,7 +4,7 @@ import Link from "next/link";
 import Navbar from "../../../components/Navbar";
 import { useEffect, useState } from "react";
 import GradientButton from "@/src/components/GradientButton";
-import { fakeLogin } from "@/src/lib/fakeAuth";
+import { supabase } from "@/src/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import { GraduationCap, ArrowLeft } from "lucide-react";
 
@@ -25,10 +25,36 @@ export default function LecturerLogin() {
 
   async function handleLogin() {
     try {
-      fakeLogin(form.email, form.password);
-      router.push(next);
+      const email = form.email.trim().toLowerCase();
+      const password = form.password;
+
+      if (!email || !password) {
+        alert("Email and password required");
+        return;
+      }
+
+      const { error: e1 } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (e1) throw e1;
+
+      const { data: profile, error: e2 } = await supabase
+        .from("my_profile_api")
+        .select("*")
+        .single();
+
+      if (e2) throw e2;
+
+      if (profile?.role !== "lecturer") {
+        await supabase.auth.signOut();
+        throw new Error("This account is not a lecturer.");
+      }
+
+      router.replace("/dashboard");
+
     } catch (err: any) {
-      alert(err.message);
+      alert(err?.message ?? "Login failed");
     }
   }
 
@@ -55,7 +81,7 @@ export default function LecturerLogin() {
               shadow-[0_12px_30px_rgba(37,99,235,0.10)]
               dark:shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_18px_50px_rgba(56,189,248,0.10)]
             "
-    >
+          >
             <div
               className="
                 relative rounded-3xl bg-white/80 p-6 backdrop-blur
@@ -75,11 +101,12 @@ export default function LecturerLogin() {
 
               {/* header */}
               <div className="relative flex items-center gap-3">
-                <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm
-                                dark:border-slate-700/80 dark:bg-slate-950/70">
+                <div
+                  className="rounded-2xl border border-slate-200/80 bg-white/90 p-3 shadow-sm
+                                dark:border-slate-700/80 dark:bg-slate-950/70"
+                >
                   <GraduationCap className="h-6 w-6 text-[#020024] dark:text-[#00D4FF]" />
                 </div>
-
 
                 <div>
                   <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-50">
@@ -136,10 +163,7 @@ export default function LecturerLogin() {
                 </div>
 
                 {/* button */}
-                <GradientButton
-                  onClick={handleLogin}
-                  type="submit"
-                >
+                <GradientButton onClick={handleLogin} type="submit">
                   Login
                 </GradientButton>
 
@@ -159,8 +183,6 @@ export default function LecturerLogin() {
                   </Link>
                 </div>
               </div>
-
-             
             </div>
           </div>
         </div>

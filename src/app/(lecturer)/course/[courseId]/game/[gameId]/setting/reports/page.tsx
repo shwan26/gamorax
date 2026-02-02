@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getQuestions, type Question } from "@/src/lib/questionStorage";
+
 import { useParams } from "next/navigation";
-
 import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getQuestions } from "@/src/lib/questionStorage";
-
 import { getReportsByGame, type LiveReport } from "@/src/lib/liveStorage";
 
 import {
@@ -41,9 +40,33 @@ type HistoryRow = {
 export default function ReportHistoryPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
+  const [questions, setQuestions] = useState<Question[]>([]);
 
-  const game = useMemo<Game | null>(() => (gameId ? getGameById(gameId) : null), [gameId]);
-  const questions = useMemo(() => (gameId ? getQuestions(gameId) : []), [gameId]);
+  const [game, setGame] = useState<Game | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!gameId) {
+        if (alive) setGame(null);
+        return;
+      }
+
+      try {
+        const g = await getGameById(gameId);
+        if (alive) setGame(g);
+      } catch (e) {
+        console.error(e);
+        if (alive) setGame(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
   const totalQ = questions.length || 0;
 
   const reports = useMemo<LiveReport[]>(() => (gameId ? getReportsByGame(gameId) : []), [gameId]);

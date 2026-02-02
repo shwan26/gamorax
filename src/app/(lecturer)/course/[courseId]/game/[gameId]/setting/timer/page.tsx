@@ -15,17 +15,35 @@ export default function TimerSettingPage() {
   const [mode, setMode] = useState<"automatic" | "manual">("automatic");
   const [defaultTime, setDefaultTime] = useState<number>(60);
 
-  // load on client (localStorage safe)
+  // load on client (localStorage / supabase safe)
   useEffect(() => {
-    if (!gameId) return;
-    const g = getGameById(gameId);
-    setGame(g);
+    let alive = true;
 
-    if (g) {
-      setMode(g.timer.mode);
-      setDefaultTime(g.timer.defaultTime);
-    }
+    (async () => {
+      if (!gameId) return;
+
+      try {
+        const g = await getGameById(gameId); // ✅ await
+        if (!alive) return;
+
+        setGame(g);
+
+        if (g) {
+          setMode(g.timer.mode);
+          setDefaultTime(g.timer.defaultTime);
+        }
+      } catch (e) {
+        console.error(e);
+        if (!alive) return;
+        setGame(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [gameId]);
+
 
   if (!gameId) {
     return (
@@ -48,11 +66,16 @@ export default function TimerSettingPage() {
     return Math.max(5, Math.min(600, Math.floor(n)));
   }
 
-  function handleSave() {
+  async function handleSave() {
     const safeDefault = clampSeconds(defaultTime);
-    updateGameTimer(gameId, { mode, defaultTime: safeDefault });
 
-    const updated = getQuestions(gameId).map((q) => {
+    // keep your game timer update (local)
+    updateGameTimer(gameId, { mode, defaultTime: safeDefault });
+    
+    // ✅ await async questions fetch
+    const existing = await getQuestions(gameId);
+
+    const updated = existing.map((q) => {
       if (mode === "automatic") {
         return {
           ...q,
@@ -61,17 +84,20 @@ export default function TimerSettingPage() {
         };
       }
 
-      const t = Number(q.time);
-      return {
-        ...q,
-        timeMode: "specific" as const,
-        time: Number.isFinite(t) && t > 0 ? t : safeDefault,
-      };
-    });
+    const t = Number(q.time);
+    return {
+      ...q,
+      timeMode: "specific" as const,
+      time: Number.isFinite(t) && t > 0 ? t : safeDefault,
+    };
+  });
 
-    saveQuestions(gameId, updated);
-    alert("Timer setting saved");
-  }
+  // ✅ await async save
+  await saveQuestions(gameId, updated);
+
+  alert("Timer setting saved");
+}
+
 
   return (
     <div

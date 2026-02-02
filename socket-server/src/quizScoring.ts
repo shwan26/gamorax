@@ -1,16 +1,18 @@
-// src/lib/quizScoring.ts
-export function calcPoints(params: {
+export function calcPoints({
+  isCorrect,
+  maxTime,
+  timeUsed
+}: {
   isCorrect: boolean;
-  maxTime: number;   // seconds
-  timeUsed: number;  // seconds
-}) {
-  const maxTime = Math.max(0, Math.floor(params.maxTime || 0));
-  const timeUsed = Math.max(0, Math.floor(params.timeUsed || 0));
+  maxTime: number;
+  timeUsed: number;
+}): number {
+  if (!isCorrect) return 0;
 
-  if (!params.isCorrect) return 0;
+  const m = Math.max(0, Math.floor(maxTime));
+  const t = Math.max(0, Math.floor(timeUsed));
 
-  const timeLeft = Math.max(0, maxTime - timeUsed);
-
-  // base = maxTime, bonus = timeLeft
-  return (maxTime + timeLeft) * 10;
+  // simple: 100 base + (remaining time)
+  const bonus = Math.max(0, m - t);
+  return 100 + bonus;
 }

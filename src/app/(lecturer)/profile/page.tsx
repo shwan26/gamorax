@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
-import { getCurrentLecturer, fakeLogout } from "@/src/lib/fakeAuth";
+import { supabase } from "@/src/lib/supabaseClient";
 import { LogOut, Trash2, UserRound } from "lucide-react";
 import GradientButton from "@/src/components/GradientButton";
 
@@ -39,43 +39,144 @@ function Field({
   );
 }
 
+type Profile = {
+  id: string;
+  role: string | null;
+  first_name: string | null;
+  last_name: string | null;
+};
+
 export default function LecturerProfile() {
   const router = useRouter();
-  const user = useMemo(() => getCurrentLecturer(), []);
 
-  const [firstName, setFirstName] = useState(user?.firstName || "");
-  const [lastName, setLastName] = useState(user?.lastName || "");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  function handleSave() {
-    localStorage.setItem(
-      "gamorax_lecturer",
-      JSON.stringify({
-        ...user,
-        firstName,
-        lastName,
-      })
-    );
-    alert("Profile updated (mock)");
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [email, setEmail] = useState<string>("");
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      setLoading(true);
+
+      // ✅ must be logged in
+      const { data: u, error: uErr } = await supabase.auth.getUser();
+      if (!u.user || uErr) {
+        router.replace(`/login?next=${encodeURIComponent("/profile")}`);
+        return;
+      }
+
+      if (!alive) return;
+      setEmail(u.user.email ?? "");
+
+      // ✅ load profile (NO email here)
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, role, first_name, last_name")
+        .single();
+
+      if (!alive) return;
+
+      if (error) {
+        console.error(error);
+        alert("Load profile failed: " + error.message);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ must be lecturer
+      if (data?.role !== "lecturer") {
+        await supabase.auth.signOut();
+        router.replace(`/login?next=${encodeURIComponent("/dashboard")}`);
+        return;
+      }
+
+      setProfile(data as Profile);
+      setFirstName((data?.first_name ?? "").toString());
+      setLastName((data?.last_name ?? "").toString());
+      setLoading(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [router]);
+
+  const initials = useMemo(() => {
+    const a = (firstName || "").trim().charAt(0) || "L";
+    const b = (lastName || "").trim().charAt(0) || "";
+    return (a + b).toUpperCase();
+  }, [firstName, lastName]);
+
+  async function handleSave() {
+    if (!profile?.id) return;
+
+    try {
+      setSaving(true);
+
+      // ✅ IMPORTANT: my_profile_api is likely a VIEW (not writable)
+      // Update the real table that stores these fields (you must set the correct table name)
+      const { error } = await supabase
+        .from("profiles") // <-- CHANGE THIS to your real table (e.g. "profiles")
+        .update({
+          first_name: firstName.trim() || null,
+          last_name: lastName.trim() || null,
+        })
+        .eq("id", profile.id);
+
+      if (error) throw error;
+
+      alert("✅ Profile updated");
+    } catch (err: any) {
+      alert(err?.message ?? "Save failed");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function handleLogout() {
-    fakeLogout();
+  async function handleLogout() {
+    await supabase.auth.signOut();
     router.push("/login");
   }
 
-  function handleDeleteAccount() {
+  async function handleDeleteAccount() {
     const ok = confirm(
-      "Delete your lecturer account?\n\nThis will remove your account from this browser (mock)."
+      "Delete your account?\n\nThis will permanently delete your account and profile data."
     );
     if (!ok) return;
 
-    localStorage.removeItem("gamorax_lecturer");
-    fakeLogout();
-    router.push("/register");
+    try {
+      setDeleting(true);
+
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Not logged in");
+
+      const res = await fetch("/api/lecturer/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.user.id }),
+      });
+
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out?.error || "Delete failed");
+
+      await supabase.auth.signOut();
+      router.replace("/register");
+    } catch (err: any) {
+      alert(err?.message ?? "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
   }
 
-  const initials =
-    (firstName?.trim()?.charAt(0) || "L") + (lastName?.trim()?.charAt(0) || "");
+
+  if (loading) return null;
 
   return (
     <div className="min-h-screen app-surface app-bg">
@@ -89,84 +190,45 @@ export default function LecturerProfile() {
             </span>
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm text-slate-600 dark:text-slate-300">
-            Update your lecturer details for this device (mock storage).
+            Manage your lecturer profile.
           </p>
         </div>
 
-        <div
-          className="
-            relative mt-8 overflow-hidden rounded-3xl
-            border border-slate-200/80 bg-white/70 p-6 shadow-sm backdrop-blur
-            sm:p-8
-            dark:border-slate-800/70 dark:bg-slate-950/55
-          "
-        >
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
-              backgroundSize: "18px 18px",
-            }}
-          />
-          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[#00D4FF]/20 blur-3xl" />
-          <div className="pointer-events-none absolute -right-28 -bottom-28 h-72 w-72 rounded-full bg-[#020024]/10 blur-3xl dark:bg-[#020024]/30" />
-
+        <div className="relative mt-8 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/70 p-6 shadow-sm backdrop-blur sm:p-8 dark:border-slate-800/70 dark:bg-slate-950/55">
           <div className="relative">
             <div className="flex items-center gap-4 sm:gap-5">
-              <div
-                className="
-                  shrink-0 rounded-3xl p-[1px]
-                  bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-                "
-              >
-                <div className="rounded-3xl bg-white/90 p-1.5 dark:bg-slate-950/75">
-                  <div
-                    className="
-                      flex h-16 w-16 items-center justify-center rounded-2xl
-                      bg-white/80 text-slate-900 shadow-sm
-                      dark:bg-slate-950/60 dark:text-slate-50
-                    "
-                    aria-label="Avatar"
-                  >
-                    {initials.trim() ? (
-                      <span className="text-xl font-bold">{initials}</span>
-                    ) : (
-                      <UserRound className="h-6 w-6" />
-                    )}
-                  </div>
+              <div className="rounded-3xl bg-white/90 p-2 dark:bg-slate-950/75">
+                <div
+                  className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/80 text-slate-900 shadow-sm dark:bg-slate-950/60 dark:text-slate-50"
+                  aria-label="Avatar"
+                >
+                  {initials.trim() ? (
+                    <span className="text-xl font-bold">{initials}</span>
+                  ) : (
+                    <UserRound className="h-6 w-6" />
+                  )}
                 </div>
               </div>
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-semibold text-slate-900 dark:text-slate-50">
-                  {firstName || lastName
-                    ? `${firstName} ${lastName}`.trim()
-                    : "Lecturer"}
+                  {firstName || lastName ? `${firstName} ${lastName}`.trim() : "Lecturer"}
                 </p>
                 <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">
-                  {user?.email ? user.email : "Signed in on this device"}
+                  {email}
                 </p>
               </div>
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <Field
-                label="First Name"
-                value={firstName}
-                onChange={setFirstName}
-                placeholder="e.g. Taylor"
-              />
-              <Field
-                label="Last Name"
-                value={lastName}
-                onChange={setLastName}
-                placeholder="e.g. Swift"
-              />
+              <Field label="First Name" value={firstName} onChange={setFirstName} />
+              <Field label="Last Name" value={lastName} onChange={setLastName} />
             </div>
 
             <div className="mt-6 space-y-3">
-              <GradientButton onClick={handleSave}>Save Changes</GradientButton>
+              <GradientButton onClick={handleSave} disabled={saving}>
+                {saving ? "Saving..." : "Save Changes"}
+              </GradientButton>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <GradientButton
@@ -180,9 +242,10 @@ export default function LecturerProfile() {
                 <GradientButton
                   variant="danger"
                   onClick={handleDeleteAccount}
+                  disabled={deleting}
                   iconLeft={<Trash2 className="h-4 w-4" />}
                 >
-                  Delete Account
+                  {deleting ? "Deleting..." : "Delete Account"}
                 </GradientButton>
               </div>
             </div>

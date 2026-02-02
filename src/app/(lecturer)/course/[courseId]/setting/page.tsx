@@ -35,49 +35,77 @@ export default function CourseSettingPage() {
   });
 
   useEffect(() => {
-    if (!courseId) return;
-    const c = getCourseById(courseId);
-    setCourse(c);
+    let alive = true;
 
-    if (c) {
-      setForm({
-        courseCode: c.courseCode ?? "",
-        courseName: c.courseName ?? "",
-        section: c.section ?? "",
-        semester: c.semester ?? "",
-      });
-    }
+    (async () => {
+      if (!courseId) return;
+
+      try {
+        const c = await getCourseById(courseId); // ✅ await
+        if (!alive) return;
+
+        setCourse(c);
+
+        if (c) {
+          setForm({
+            courseCode: c.courseCode ?? "",
+            courseName: c.courseName ?? "",
+            section: c.section ?? "",
+            semester: c.semester ?? "",
+          });
+        }
+      } catch (e) {
+        console.error(e);
+        if (!alive) return;
+        setCourse(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [courseId]);
+
 
   if (!courseId) return <div className="p-6">Missing course id.</div>;
   if (!course) return <div className="p-6">Loading...</div>;
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.courseCode.trim() || !form.courseName.trim()) {
       alert("Course Code and Course Name are required.");
       return;
     }
 
-    updateCourse(courseId, {
-      courseCode: form.courseCode.trim(),
-      courseName: form.courseName.trim(),
-      section: form.section.trim() || undefined,
-      semester: form.semester.trim() || undefined,
-    });
+    try {
+      await updateCourse(courseId, {
+        courseCode: form.courseCode.trim(),
+        courseName: form.courseName.trim(),
+        section: form.section.trim() || undefined,
+        semester: form.semester.trim() || undefined,
+      });
 
-    alert("Course updated");
-    router.push(`/course/${courseId}`);
+      alert("Course updated");
+      router.push(`/course/${courseId}`);
+    } catch (e: any) {
+      alert(e?.message ?? "Update failed");
+    }
   }
 
-  function handleDeleteCourse() {
+
+  async function handleDeleteCourse() {
     if (!confirm("Delete this course and ALL games inside it?")) return;
 
-    const games = getGamesByCourseId(courseId);
-    games.forEach((g) => deleteGame(g.id));
+    try {
+      const games = await getGamesByCourseId(courseId); // ✅ await if async
+      await Promise.all(games.map((g) => deleteGame(g.id))); // ✅ wait deletes
 
-    deleteCourse(courseId);
-    router.push("/dashboard");
+      await deleteCourse(courseId); // ✅ wait delete course
+      router.push("/dashboard");
+    } catch (e: any) {
+      alert(e?.message ?? "Delete failed");
+    }
   }
+
 
   return (
     <div className="min-h-screen app-surface app-bg">

@@ -1,22 +1,55 @@
+// src/app/(lecturer)/course/[courseId]/game/[gameId]/live/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+
 import Navbar from "@/src/components/LecturerNavbar";
 import GameSubNavbar from "@/src/components/GameSubNavbar";
-import { getGameById } from "@/src/lib/gameStorage";
-import { getCourseById } from "@/src/lib/courseStorage";
-import { createLiveSession, type LiveSession } from "@/src/lib/liveStorage";
-import QRCode from "react-qr-code";
-import { socket } from "@/src/lib/socket";
-import { Users, Play, Link2, KeyRound } from "lucide-react";
 import GradientButton from "@/src/components/GradientButton";
+
+import { supabase } from "@/src/lib/supabaseClient";
+import { socket, setSocketAccessToken } from "@/src/lib/socket";
+
+import QRCode from "react-qr-code";
+import { Users, Play, Link2, KeyRound } from "lucide-react";
+
+
+/* ------------------------------ types ------------------------------ */
+
+type CourseRow = {
+  id: string;
+  courseCode: string;
+  courseName: string;
+  section?: string | null;
+  semester?: string | null;
+};
+
+type GameRow = {
+  id: string;
+  courseId: string;
+  quizNumber: string;
+  timer: { mode: "automatic" | "manual"; defaultTime: number };
+  shuffleQuestions: boolean;
+  shuffleAnswers: boolean;
+};
+
+type LiveSessionRow = {
+  id: string;
+  pin: string;
+  quiz_id?: string;
+  lecturer_id?: string;
+  is_active?: boolean;
+  status?: string;
+};
 
 type LiveStudent = {
   studentId: string;
   name: string;
-  avatarSrc?: string; // optional
+  avatarSrc?: string;
 };
+
+/* ------------------------------ helpers ------------------------------ */
 
 function initialsFromName(name: string) {
   const s = (name ?? "").trim();
@@ -27,13 +60,7 @@ function initialsFromName(name: string) {
   return (first + last).toUpperCase();
 }
 
-function StudentAvatar({
-  s,
-  size = 44,
-}: {
-  s: LiveStudent;
-  size?: number;
-}) {
+function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
   const initials = initialsFromName(s.name);
 
   return (
@@ -61,59 +88,180 @@ function StudentAvatar({
   );
 }
 
+/* ------------------------------ page ------------------------------ */
+
 export default function LivePage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const router = useRouter();
+  const sp = useSearchParams();
 
   const courseId = (params?.courseId ?? "").toString();
   const gameId = (params?.gameId ?? "").toString();
 
-  const game = useMemo(() => (gameId ? getGameById(gameId) : null), [gameId]);
-  const course = useMemo(
-    () => (courseId ? getCourseById(courseId) : null),
-    [courseId]
-  );
+  // allow re-using existing PIN from URL (nice for refresh / share)
+  const pinFromUrl = (sp?.get("pin") ?? "").trim();
 
-  const valid = !!game && !!course && game.courseId === courseId;
+  const [loading, setLoading] = useState(true);
+  const [course, setCourse] = useState<CourseRow | null>(null);
+  const [game, setGame] = useState<GameRow | null>(null);
 
-  const [session, setSession] = useState<LiveSession | null>(null);
+  const [session, setSession] = useState<LiveSessionRow | null>(null);
   const [students, setStudents] = useState<LiveStudent[]>([]);
+
+  // ✅ keep token in component scope (DO NOT do this in middleware)
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   // prevent double-create in dev (React strict mode)
   const createdRef = useRef(false);
 
+  const valid = !!course && !!game && game.courseId === courseId;
+
+  async function requireLecturerOrRedirect(nextPath: string) {
+    // must be logged in
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) {
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+      return false;
+    }
+
+    // must be lecturer
+    const { data: prof, error } = await supabase
+      .from("my_profile_api")
+      .select("role")
+      .single();
+
+    if (error || !prof || prof.role !== "lecturer") {
+      await supabase.auth.signOut();
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  /* ------------------------------ auth token ------------------------------ */
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+      if (!alive) return;
+      setAccessToken(token);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      const token = session?.access_token ?? null;
+      setAccessToken(token);
+    });
+
+    return () => {
+      alive = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  /* ------------------------------ load course + game ------------------------------ */
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!courseId || !gameId) return;
+
+      setLoading(true);
+
+      const ok = await requireLecturerOrRedirect(
+        `/course/${courseId}/game/${gameId}/live`
+      );
+      if (!ok) return;
+
+      const { data: c, error: cErr } = await supabase
+        .from("courses_api")
+        .select("id, courseCode, courseName, section, semester")
+        .eq("id", courseId)
+        .single();
+
+      if (!alive) return;
+      if (cErr) {
+        alert("Load course error: " + cErr.message);
+        setLoading(false);
+        return;
+      }
+
+      const { data: g, error: gErr } = await supabase
+        .from("games_api")
+        .select("id, courseId, quizNumber, timer, shuffleQuestions, shuffleAnswers")
+        .eq("id", gameId)
+        .single();
+
+      if (!alive) return;
+      if (gErr) {
+        alert("Load game error: " + gErr.message);
+        setLoading(false);
+        return;
+      }
+
+      setCourse(c as CourseRow);
+      setGame(g as GameRow);
+      setLoading(false);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [courseId, gameId, router]);
+
+  /* ------------------------------ ensure live session exists ------------------------------ */
+
   useEffect(() => {
     if (!valid) return;
+
+    if (pinFromUrl) {
+      setSession((prev) => prev ?? ({ id: "", pin: pinFromUrl } as LiveSessionRow));
+      return;
+    }
+
     if (createdRef.current) return;
     createdRef.current = true;
 
-    const s = createLiveSession(gameId);
-    setSession(s);
-  }, [valid, gameId]);
+    (async () => {
+      const { data, error } = await supabase.rpc("create_live_session", {
+        p_quiz_id: gameId,
+      });
 
-  // connect + join room + receive students:update
+      if (error) {
+        alert("Create live session error: " + error.message);
+        return;
+      }
+
+      setSession(data as LiveSessionRow);
+    })();
+  }, [valid, gameId, pinFromUrl]);
+
+  const pin = session?.pin ?? "";
+
+  const joinUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    if (!pin) return "";
+    return `${window.location.origin}/join/${pin}`;
+  }, [pin]);
+
+  /* ------------------------------ socket connect (lecturer) ------------------------------ */
+
   useEffect(() => {
-    if (!session?.pin) return;
+    if (!pin || !game || !course) return;
+    if (!accessToken) return;
 
     const s = socket;
-    s.connect();
 
-    const pin = session.pin;
-
-    const meta = {
-      gameId,
-      quizTitle: game?.quizNumber ?? "Quiz",
-      courseCode: course?.courseCode ?? "",
-      courseName: course?.courseName ?? "",
-      section: (course?.section ?? "").toString(),
-      semester: (course?.semester ?? "").toString(),
-    };
+    const meta = { /* ...same meta... */ };
 
     const doJoin = () => {
-      s.emit("lecturer:join", { pin }); 
-      s.emit("meta:set", { pin, meta }); 
+      s.emit("lecturer:join", { pin });
+      s.emit("meta:set", { pin, meta });
     };
-
 
     const onStudentsUpdate = (list: LiveStudent[]) => {
       setStudents(Array.isArray(list) ? list : []);
@@ -123,47 +271,56 @@ export default function LivePage() {
       console.error("socket connect_error:", err?.message ?? err);
     };
 
-    if (s.connected) doJoin();
     s.on("connect", doJoin);
     s.on("students:update", onStudentsUpdate);
     s.on("connect_error", onErr);
+
+    // ✅ IMPORTANT: set token on REAL socket instance
+    setSocketAccessToken(accessToken);
+
+    // reconnect fresh
+    try {
+      if (s.connected) s.disconnect();
+    } catch {}
+
+    s.connect();
+
+    if (s.connected) doJoin();
 
     return () => {
       s.off("connect", doJoin);
       s.off("students:update", onStudentsUpdate);
       s.off("connect_error", onErr);
-      // optional: don't disconnect globally if other pages use same socket
-      // s.disconnect();
     };
-  }, [session?.pin, gameId, game?.quizNumber, course?.courseCode, course?.courseName, course?.section, course?.semester]);
+  }, [pin, game, course, accessToken]);
 
-  if (!valid || !game || !course || !session) return null;
-
-  const pin = session.pin;
-
-  const joinUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/join/${pin}` : "";
 
   const hasStudents = students.length > 0;
 
   function handleStart() {
     if (!hasStudents) return;
     router.push(
-      `/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(
-        pin
-      )}`
+      `/course/${courseId}/game/${gameId}/live/question?pin=${encodeURIComponent(pin)}`
     );
   }
+
+  /* ------------------------------ render ------------------------------ */
+
+  if (loading) return null;
+  if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
+  if (!valid || !course || !game) return <div className="p-6">Invalid course/game.</div>;
+  if (!pin) return <div className="p-6">Creating live session…</div>;
 
   return (
     <div className="min-h-screen app-surface app-bg">
       <Navbar />
+
       <GameSubNavbar
         title={`${game.quizNumber} — ${course.courseCode}${
           course.section ? ` • Section ${course.section}` : ""
         }${course.semester ? ` • ${course.semester}` : ""}`}
-        canStartLive = {true}
-        liveBlockReason = ""
+        canStartLive={true}
+        liveBlockReason=""
       />
 
       <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
@@ -176,7 +333,6 @@ export default function LivePage() {
               dark:border-slate-800/70 dark:bg-slate-950/45
             "
           >
-            {/* dot pattern + glow */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
               style={{
@@ -199,7 +355,7 @@ export default function LivePage() {
                   </p>
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 break-words">
                     <span className="font-mono">
-                      {joinUrl.replace(/^https?:\/\//, "")}
+                      {joinUrl ? joinUrl.replace(/^https?:\/\//, "") : ""}
                     </span>
                   </p>
                 </div>
@@ -212,8 +368,7 @@ export default function LivePage() {
                   flex items-center justify-center
                 "
               >
-                {/* QR code */}
-                <QRCode value={joinUrl} size={260} />
+                {joinUrl ? <QRCode value={joinUrl} size={260} /> : null}
               </div>
 
               <div className="flex items-start gap-3">
@@ -240,9 +395,7 @@ export default function LivePage() {
                   Start
                 </GradientButton>
                 <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400">
-                  {hasStudents
-                    ? "Ready when you are."
-                    : "Waiting for at least 1 student to join."}
+                  {hasStudents ? "Ready when you are." : "Waiting for at least 1 student to join."}
                 </p>
               </div>
             </div>
@@ -256,7 +409,6 @@ export default function LivePage() {
               dark:border-slate-800/70 dark:bg-slate-950/45
             "
           >
-            {/* dot pattern + glow */}
             <div
               className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
               style={{
@@ -300,23 +452,22 @@ export default function LivePage() {
                 </div>
               ) : (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {students.map((s) => (
+                  {students.map((st) => (
                     <div
-                      key={s.studentId}
+                      key={st.studentId}
                       className="
                         rounded-3xl border border-slate-200/70 bg-white/70 p-3 shadow-sm backdrop-blur
                         dark:border-slate-800/70 dark:bg-slate-950/55
                       "
                     >
                       <div className="flex items-center gap-3">
-                        <StudentAvatar s={s} />
-
+                        <StudentAvatar s={st} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-                            {s.name || "Student"}
+                            {st.name || "Student"}
                           </p>
                           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {s.studentId}
+                            {st.studentId}
                           </p>
                         </div>
                       </div>

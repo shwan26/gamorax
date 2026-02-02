@@ -15,11 +15,20 @@ const caesar = localFont({
 export default function StudentNavbar() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [me, setMe] = useState<ReturnType<typeof getCurrentStudent>>(null);
+  const [me, setMe] = useState<Awaited<ReturnType<typeof getCurrentStudent>>>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setMounted(true);
-    setMe(getCurrentStudent());
+
+    (async () => {
+      const cur = await getCurrentStudent();
+      if (!cancelled) setMe(cur);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // keep avatar stable (avoid recompute)

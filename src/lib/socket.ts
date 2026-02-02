@@ -7,10 +7,14 @@ function makeSocket(): Socket {
   const url = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000";
 
   return io(url, {
-    path: "/socket.io",                 // ✅ Express socket server default
-    transports: ["websocket", "polling"], // ✅ allow fallback while debugging
-    autoConnect: false,                // ✅ you control when to connect()
+    path: "/socket.io",
+    transports: ["websocket", "polling"],
+    autoConnect: false,
     withCredentials: true,
+
+    // ✅ We'll set this later before connect()
+    auth: { accessToken: "" },
+
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelayMax: 2000,
@@ -26,6 +30,20 @@ export function getSocket(): Socket {
   return _socket;
 }
 
+/** ✅ Call this before socket.connect() */
+export function setSocketAccessToken(accessToken: string) {
+  const s = getSocket();
+  // socket.io supports updating auth before connect/reconnect
+  (s as any).auth = { ...(s as any).auth, accessToken };
+}
+
+/** Optional: clean disconnect */
+export function disconnectSocket() {
+  if (_socket) {
+    _socket.disconnect();
+  }
+}
+
 /**
  * ✅ Import { socket } everywhere.
  * This proxy delays creating the real socket until you actually use it on client.
@@ -35,5 +53,10 @@ export const socket: Socket = new Proxy({} as Socket, {
     const s = getSocket();
     const v = (s as any)[prop];
     return typeof v === "function" ? v.bind(s) : v;
+  },
+  set(_t, prop, value) {
+    const s = getSocket();
+    (s as any)[prop] = value;
+    return true;
   },
 });

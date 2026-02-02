@@ -72,7 +72,7 @@ function Field({
 export default function MeProfilePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-  const [me, setMe] = useState<ReturnType<typeof getCurrentStudent>>(null);
+  const [me, setMe] = useState<Awaited<ReturnType<typeof getCurrentStudent>>>(null);
 
   const [name, setName] = useState("");
   const [studentId, setStudentId] = useState("");
@@ -80,15 +80,17 @@ export default function MeProfilePage() {
 
   useEffect(() => {
     setMounted(true);
-    const cur = getCurrentStudent();
-    if (!cur) {
-      router.push("/auth/login");
-      return;
-    }
-    setMe(cur);
-    setName(cur.name || "");
-    setStudentId(cur.studentId || "");
-    setAvatarSeed(cur.avatarSeed || cur.email || "student");
+    (async () => {
+      const cur = await getCurrentStudent();
+      if (!cur) {
+        router.push("/auth/login");
+        return;
+      }
+      setMe(cur);
+      setName(cur.name || "");
+      setStudentId(cur.studentId || "");
+      setAvatarSeed(cur.avatarSeed || cur.email || "student");
+    })();
   }, [router]);
 
   const autoId = useMemo(() => (me ? deriveStudentIdFromEmail(me.email) : ""), [me]);
@@ -101,7 +103,7 @@ export default function MeProfilePage() {
   if (!mounted) return null;
   if (!me) return null;
 
-  function onSave() {
+  async function onSave() {
     const n = name.trim();
     const sid = studentId.trim() || autoId;
     const seed = avatarSeed.trim() || me?.email || "student";
@@ -109,23 +111,26 @@ export default function MeProfilePage() {
     if (!n) return alert("Name is required.");
     if (!sid) return alert("Student ID is required (or use AU email).");
 
-    const next = updateCurrentStudent({
+    const next = await updateCurrentStudent({
       name: n,
       studentId: sid,
       avatarSeed: seed,
     });
 
     setMe(next);
+      // refresh current profile from DB
+      const fresh = await getCurrentStudent();
+      if (fresh) setMe(fresh);
     alert("Profile updated");
     router.push("/me");
   }
 
-  function onLogout() {
-    logoutStudent();
+  async function onLogout() {
+    await logoutStudent();
     router.push("/auth/login");
   }
 
-  function onDeleteAccount() {
+  async function onDeleteAccount() {
     if (!me) return;
 
     const ok = confirm(
@@ -139,7 +144,7 @@ export default function MeProfilePage() {
       clearLiveStudent();
     } catch {}
 
-    deleteCurrentStudent();
+    await deleteCurrentStudent();
     router.push("/auth/register");
   }
 

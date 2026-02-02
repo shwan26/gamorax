@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import { getQuestions } from "@/src/lib/questionStorage";
+import { getQuestions, type Question } from "@/src/lib/questionStorage";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -124,15 +124,53 @@ export default function ReportDetailPage() {
     [reportId]
   );
 
-  const game = useMemo<Game | null>(() => (gameId ? getGameById(gameId) : null), [gameId]);
+  const [questions, setQuestions] = useState<Question[]>([]);
 
-  const course = useMemo<Course | null>(() => {
-    if (!game?.courseId) return null;
-    return getCourseById(game.courseId);
-  }, [game?.courseId]);
+  const [game, setGame] = useState<Game | null>(null);
+  const [course, setCourse] = useState<Course | null>(null);
+  const loadingMeta = !!gameId && game === null; 
 
-  const questions = useMemo(() => (gameId ? getQuestions(gameId) : []), [gameId]);
-  const totalQ = questions.length || report?.totalQuestions || 0;
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!gameId) {
+        if (alive) {
+          setGame(null);
+          setCourse(null);
+        }
+        return;
+      }
+
+      try {
+        const g = await getGameById(gameId);
+        if (!alive) return;
+
+        setGame(g);
+
+        if (g?.courseId) {
+          const c = await getCourseById(g.courseId);
+          if (alive) setCourse(c);
+        } else {
+          if (alive) setCourse(null);
+        }
+      } catch (e) {
+        console.error(e);
+        if (alive) {
+          setGame(null);
+          setCourse(null);
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
+
+const totalQ = questions.length || report?.totalQuestions || 0;
 
   const finishIso = report?.lastQuestionAt || report?.savedAt || "";
 

@@ -27,9 +27,19 @@ export function getAvatarSrc(input: StudentAccount | LiveStudent | null | undefi
  */
 export function toLiveStudent(me: StudentAccount, size = 96): LiveStudent {
   const seed = getSeedFromAccount(me);
+
+  // ✅ LiveStudent.studentId must be string
+  const sid =
+    (me.studentId && me.studentId.trim()) ||
+    // fallback to derived id from email if you want:
+    // deriveStudentIdFromEmail(me.email) ||
+    me.email ||
+    me.id;
+
   return {
-    studentId: me.studentId,
+    studentId: sid,
     name: me.name,
     avatarSrc: botttsUrl(seed, size),
   };
 }
+

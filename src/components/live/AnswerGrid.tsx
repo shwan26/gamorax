@@ -9,24 +9,28 @@ const ABCDE = ["A", "B", "C", "D", "E"] as const;
 type QType = "multiple_choice" | "true_false" | "matching" | "input";
 type Mode = "live" | "assignment";
 
+type Pair = { left: string; right: string };
+
 type Props = {
   q: any;
   disabled: boolean;
-
-  mode?: Mode; // ✅ NEW
+  mode?: Mode;
 
   onSubmitChoice: (payload: { indices: number[] }) => void;
   onAttemptMatch?: (payload: { leftIndex: number; rightIndex: number }) => Promise<{ correct: boolean }>;
   onSubmitInput?: (payload: { value: string }) => void;
+
+  onSubmitMatching?: (payload: { pairs: Pair[] }) => void; // ✅ for assignment matching auto-next
 };
 
 export default function AnswerGrid({
   q,
   disabled,
-  mode = "live", // ✅ default keeps existing live behavior
+  mode = "live",
   onSubmitChoice,
   onAttemptMatch,
   onSubmitInput,
+  onSubmitMatching,
 }: Props) {
   const type = (q?.type ?? "multiple_choice") as QType;
   const showFull = mode === "assignment";
@@ -42,6 +46,15 @@ export default function AnswerGrid({
   const [inputValue, setInputValue] = useState("");
   const inputSubmittedRef = useRef(false);
 
+  // ✅ matching submission state
+  const [pairs, setPairs] = useState<Pair[]>([]);
+  const pairsRef = useRef<Pair[]>([]);
+  const matchingSubmittedRef = useRef(false);
+
+  useEffect(() => {
+    pairsRef.current = pairs;
+  }, [pairs]);
+
   const qKey = `${q?.questionIndex ?? ""}|${q?.id ?? ""}|${type}`;
 
   useEffect(() => {
@@ -56,9 +69,30 @@ export default function AnswerGrid({
     setMatchedRight(new Set());
 
     setInputValue("");
+
+    // ✅ reset matching
+    setPairs([]);
+    pairsRef.current = [];
+    matchingSubmittedRef.current = false;
   }, [qKey]);
 
-  const answers = useMemo(() => (Array.isArray(q?.answers) ? q.answers : []), [q]);
+  const answers = useMemo(() => {
+    const raw =
+      (Array.isArray(q?.answers) && q.answers) ||
+      (Array.isArray(q?.choices) && q.choices) ||
+      (Array.isArray(q?.options) && q.options) ||
+      [];
+
+    // normalize to objects: { text, image? }
+    return raw.map((x: any) => {
+      if (typeof x === "string") return { text: x };
+      if (x && typeof x === "object") {
+        if ("text" in x || "image" in x) return x;
+        return { text: String(x.label ?? x.value ?? ""), image: x.image };
+      }
+      return { text: String(x ?? "") };
+    });
+  }, [q]);
 
   const optionsCount = useMemo(() => {
     if (type === "true_false") return 2;
@@ -94,20 +128,52 @@ export default function AnswerGrid({
     if (!onAttemptMatch) return;
     if (matchingBusyRef.current) return;
 
+    const left = leftItems[leftIndex] ?? "";
+    const right = rightItems[rightIndex] ?? "";
+    if (!left || !right) return;
+
     matchingBusyRef.current = true;
     try {
       const res = await onAttemptMatch({ leftIndex, rightIndex });
+      if (!res?.correct) return;
 
-      if (res?.correct) {
-        setMatchedLeft((prev) => {
-          const nx = new Set(prev);
-          nx.add(leftIndex);
-          return nx;
-        });
-        setMatchedRight((prev) => {
-          const nx = new Set(prev);
-          nx.add(rightIndex);
-          return nx;
+      setMatchedLeft((prev) => {
+        const nx = new Set(prev);
+        nx.add(leftIndex);
+        return nx;
+      });
+
+      setMatchedRight((prev) => {
+        const nx = new Set(prev);
+        nx.add(rightIndex);
+        return nx;
+      });
+
+      // ✅ IMPORTANT FIX:
+      // do NOT call onSubmitMatching inside setPairs(prev=>...) — that triggers
+      // "Cannot update parent while rendering child" in React concurrent mode.
+      const nextPairs: Pair[] = [
+        ...pairsRef.current.filter((p) => p.left !== left),
+        { left, right },
+      ];
+
+      pairsRef.current = nextPairs;
+      setPairs(nextPairs);
+
+      // ✅ auto-submit when all left items have a pair
+      const required = leftItems.length; // or Math.min(leftItems.length, rightItems.length)
+
+      if (
+        mode === "assignment" &&
+        !matchingSubmittedRef.current &&
+        required > 0 &&
+        nextPairs.length === required
+      ) {
+        matchingSubmittedRef.current = true;
+
+        // schedule callback after this tick (safe for parent setState)
+        queueMicrotask(() => {
+          onSubmitMatching?.({ pairs: nextPairs });
         });
       }
     } finally {
@@ -155,7 +221,7 @@ export default function AnswerGrid({
 
   const grad = `bg-gradient-to-br ${BADGE_ACCENT}`;
 
-  /* -------------------- INPUT stays same -------------------- */
+  /* -------------------- INPUT -------------------- */
   if (type === "input") {
     return (
       <div className="w-full">
@@ -194,7 +260,7 @@ export default function AnswerGrid({
     );
   }
 
-  /* -------------------- MATCHING stays same -------------------- */
+  /* -------------------- MATCHING -------------------- */
   if (type === "matching") {
     return (
       <div className="w-full">
@@ -255,10 +321,9 @@ export default function AnswerGrid({
     );
   }
 
-  /* -------------------- TRUE/FALSE: live = T/F, assignment = True/False -------------------- */
+  /* -------------------- TRUE/FALSE -------------------- */
   if (type === "true_false") {
     if (!showFull) {
-      // ✅ LIVE MODE (unchanged)
       const tfLabels = ["T", "F"] as const;
 
       return (
@@ -286,7 +351,6 @@ export default function AnswerGrid({
       );
     }
 
-    // ✅ ASSIGNMENT MODE (True / False text)
     const tfText = ["True", "False"];
 
     return (
@@ -319,12 +383,8 @@ export default function AnswerGrid({
                   </span>
 
                   <div className="min-w-0">
-                    <div className="text-base font-extrabold text-slate-900 dark:text-slate-50">
-                      {tfText[idx]}
-                    </div>
-                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      Tap to select
-                    </div>
+                    <div className="text-base font-extrabold text-slate-900 dark:text-slate-50">{tfText[idx]}</div>
+                    <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Tap to select</div>
                   </div>
                 </div>
               </button>
@@ -335,9 +395,8 @@ export default function AnswerGrid({
     );
   }
 
-  /* -------------------- MULTIPLE CHOICE: live = letters, assignment = full answers -------------------- */
+  /* -------------------- MULTIPLE CHOICE -------------------- */
   if (!showFull) {
-    // ✅ LIVE MODE (unchanged: big A/B/C/D/E)
     return (
       <div className="w-full">
         <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-3 sm:max-w-lg sm:gap-4 md:max-w-2xl md:gap-6">
@@ -370,7 +429,7 @@ export default function AnswerGrid({
     );
   }
 
-  // ✅ ASSIGNMENT MODE (full answer text + optional image)
+  // assignment-mode MC: full answer text + optional image
   return (
     <div className="w-full">
       <div className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-3 sm:gap-4">

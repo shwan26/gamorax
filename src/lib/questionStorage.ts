@@ -1,97 +1,175 @@
+// src/lib/questionStorage.ts
+import { supabase } from "@/src/lib/supabaseClient";
+
 export type QuestionType = "multiple_choice" | "true_false" | "matching" | "input";
 
 export type Answer = {
   text: string;
-  correct: boolean;        // ✅ now can be multiple true
+  correct: boolean;
   image?: string | null;
 };
 
-export type MatchPair = {
-  left: string;
-  right: string;
-};
+export type MatchPair = { left: string; right: string };
 
 export type Question = {
   id: string;
-  type: QuestionType;      // ✅ NEW
+  type: QuestionType;
   text: string;
   image?: string | null;
-
-  // used by MC + TF
   answers: Answer[];
-
-  // used by matching
   matches?: MatchPair[];
-
-  // used by input answer
   acceptedAnswers?: string[];
-
   timeMode: "default" | "specific";
   time: number;
 };
 
-const STORAGE_KEY = "gamorax_questions";
+// -------------------- Supabase rows --------------------
+type QuestionApiRow = {
+  id: string;
+  gameId: string;
+  position: number;
+  type: QuestionType;
+  text: string;
+  image: string | null;
+  timeMode: "default" | "specific";
+  time: number;
+  matches: any | null;
+  acceptedAnswers: string[] | null;
+};
 
-export function getQuestions(gameId: string): Question[] {
-  if (typeof window === "undefined") return []; // ✅ prevents SSR crash
-  const data = localStorage.getItem(`${STORAGE_KEY}_${gameId}`);
-  return data ? JSON.parse(data) : [];
+type AnswerApiRow = {
+  id: string;
+  questionId: string;
+  answerIndex: number;
+  text: string;
+  image: string | null;
+  correct: boolean;
+};
+
+// helpers
+function emptyAnswers(n = 4): Answer[] {
+  return Array.from({ length: n }, () => ({ text: "", correct: false, image: null }));
 }
 
+function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Question {
+  const qType = row.type ?? "multiple_choice";
 
-export function saveQuestions(gameId: string, questions: Question[]) {
-  localStorage.setItem(
-    `${STORAGE_KEY}_${gameId}`,
-    JSON.stringify(questions)
-  );
+  let localAnswers: Answer[] = [];
+  if (qType === "multiple_choice" || qType === "true_false") {
+    const sorted = [...answers].sort((a, b) => a.answerIndex - b.answerIndex);
+    localAnswers = sorted.map((a) => ({
+      text: a.text ?? "",
+      correct: !!a.correct,
+      image: a.image ?? null,
+    }));
+    while (localAnswers.length < 4) localAnswers.push({ text: "", correct: false, image: null });
+    if (localAnswers.length > 4) localAnswers = localAnswers.slice(0, 4);
+  } else {
+    localAnswers = emptyAnswers(4);
+  }
+
+  return {
+    id: row.id,
+    type: qType,
+    text: row.text ?? "",
+    image: row.image ?? null,
+    answers: localAnswers,
+    matches: Array.isArray(row.matches) ? row.matches : Array.from({ length: 5 }, () => ({ left: "", right: "" })),
+    acceptedAnswers: Array.isArray(row.acceptedAnswers) ? row.acceptedAnswers : [""],
+    timeMode: row.timeMode ?? "specific",
+    time: Number(row.time ?? 60),
+  };
 }
 
-export function updateQuestion(
-  gameId: string,
-  questionId: string,
-  patch: Partial<Question>
-) {
-  const questions = getQuestions(gameId);
+// ✅ Supabase-backed reads
+export async function getQuestions(gameId: string): Promise<Question[]> {
+  if (!gameId) return [];
 
-  const next = questions.map((q) => {
-    if (q.id !== questionId) return q;
+  const { data: qs, error: qErr } = await supabase
+    .from("questions_api")
+    .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers")
+    .eq("gameId", gameId)
+    .order("position", { ascending: true });
 
-    const updated: Question = { ...q, ...patch };
+  if (qErr) throw qErr;
 
-    // ✅ If we explicitly sent image: null => remove it from storage
-    if ("image" in patch && patch.image === null) {
-      delete (updated as any).image; // removes key so localStorage JSON is clean
+  const qRows = (qs ?? []) as QuestionApiRow[];
+  if (qRows.length === 0) return [];
+
+  const qIds = qRows.map((r) => r.id);
+
+  const { data: ans, error: aErr } = await supabase
+    .from("answers_api")
+    .select("id, questionId, answerIndex, text, image, correct")
+    .in("questionId", qIds)
+    .order("answerIndex", { ascending: true });
+
+  if (aErr) throw aErr;
+
+  const aRows = (ans ?? []) as AnswerApiRow[];
+
+  return qRows.map((qr) => {
+    const thisAnswers = aRows.filter((a) => a.questionId === qr.id);
+    return normalizeQuestion(qr, thisAnswers);
+  });
+}
+
+// ✅ Supabase-backed save (replaces localStorage)
+export async function saveQuestions(gameId: string, questions: Question[]): Promise<void> {
+  if (!gameId) return;
+
+  // ensure positions 1..n
+  const normalized = questions.map((q, i) => ({ ...q, _pos: i + 1 }));
+
+  for (const q of normalized) {
+    const qPayload = {
+      id: q.id,
+      gameId,
+      position: (q as any)._pos,
+      type: q.type,
+      text: q.text ?? "",
+      image: q.image ?? null,
+      timeMode: q.timeMode,
+      time: q.time,
+      matches: q.type === "matching" ? (q.matches ?? null) : null,
+      acceptedAnswers: q.type === "input" ? (q.acceptedAnswers ?? null) : null,
+    };
+
+    // update -> if 0 rows -> insert
+    const { data: updRows, error: updErr } = await supabase
+      .from("questions_api")
+      .update(qPayload)
+      .eq("id", q.id)
+      .select("id");
+
+    if (updErr) throw updErr;
+
+    if (!updRows || updRows.length === 0) {
+      const { error: insErr } = await supabase.from("questions_api").insert(qPayload);
+      if (insErr) throw insErr;
     }
 
-    return updated;
-  });
+    // answers table
+    if (q.type === "multiple_choice" || q.type === "true_false") {
+      const { error: delErr } = await supabase.from("answers_api").delete().eq("questionId", q.id);
+      if (delErr) throw delErr;
 
-  saveQuestions(gameId, next);
-}
+      const payload = (q.answers ?? emptyAnswers(4))
+        .slice(0, 4)
+        .map((a, idx) => ({
+          questionId: q.id,
+          answerIndex: idx,
+          text: a.text ?? "",
+          image: a.image ?? null,
+          correct: !!a.correct,
+        }));
 
-export function updateAnswer(
-  gameId: string,
-  questionId: string,
-  answerIndex: number,
-  patch: Partial<Answer>
-) {
-  const questions = getQuestions(gameId);
-
-  const next = questions.map((q) => {
-    if (q.id !== questionId) return q;
-
-    const answers = [...q.answers];
-    const updatedAnswer: Answer = { ...answers[answerIndex], ...patch };
-
-    if ("image" in patch && patch.image === null) {
-      delete (updatedAnswer as any).image;
+      const { error: insErr } = await supabase.from("answers_api").insert(payload);
+      if (insErr) throw insErr;
+    } else {
+      await supabase.from("answers_api").delete().eq("questionId", q.id);
     }
-
-    answers[answerIndex] = updatedAnswer;
-    return { ...q, answers };
-  });
-
-  saveQuestions(gameId, next);
+  }
 }
 
 export function isQuestionComplete(q: Question): boolean {
@@ -122,4 +200,9 @@ export function isQuestionComplete(q: Question): boolean {
   if (type === "input") return hasQuestion && accepted.length >= 1;
 
   return false;
+}
+
+export async function getTotalQuestions(gameId: string): Promise<number> {
+  const qs = await getQuestions(gameId);
+  return qs.length;
 }
