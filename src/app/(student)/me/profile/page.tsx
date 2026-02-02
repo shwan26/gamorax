@@ -73,8 +73,9 @@ export default function MeProfilePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [me, setMe] = useState<Awaited<ReturnType<typeof getCurrentStudent>>>(null);
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
 
-  const [name, setName] = useState("");
   const [studentId, setStudentId] = useState("");
   const [avatarSeed, setAvatarSeed] = useState<string>("");
 
@@ -87,7 +88,8 @@ export default function MeProfilePage() {
         return;
       }
       setMe(cur);
-      setName(cur.name || "");
+      setFirstName(cur.firstName || "");
+      setLastName(cur.lastName || "");
       setStudentId(cur.studentId || "");
       setAvatarSeed(cur.avatarSeed || cur.email || "student");
     })();
@@ -104,23 +106,26 @@ export default function MeProfilePage() {
   if (!me) return null;
 
   async function onSave() {
-    const n = name.trim();
+    const fn = firstName.trim();
+    const ln = lastName.trim();
     const sid = studentId.trim() || autoId;
     const seed = avatarSeed.trim() || me?.email || "student";
 
-    if (!n) return alert("Name is required.");
+    if (!fn) return alert("First name is required.");
+    if (!ln) return alert("Last name is required.");
     if (!sid) return alert("Student ID is required (or use AU email).");
 
     const next = await updateCurrentStudent({
-      name: n,
+      firstName: fn,
+      lastName: ln,
       studentId: sid,
       avatarSeed: seed,
     });
 
     setMe(next);
-      // refresh current profile from DB
-      const fresh = await getCurrentStudent();
-      if (fresh) setMe(fresh);
+    const fresh = await getCurrentStudent();
+    if (fresh) setMe(fresh);
+
     alert("Profile updated");
     router.push("/me");
   }
@@ -149,7 +154,7 @@ export default function MeProfilePage() {
   }
 
   const initials =
-    (name?.trim()?.charAt(0) || "S") + (me.email?.trim()?.charAt(0) || "");
+  (firstName?.trim()?.charAt(0) || "S") + (lastName?.trim()?.charAt(0) || "");
 
   return (
     <div className="min-h-screen app-surface app-bg">
@@ -203,7 +208,8 @@ export default function MeProfilePage() {
 
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-semibold text-slate-900 dark:text-slate-50">
-                  {name?.trim() ? name.trim() : "Student"}
+                  {[firstName.trim(), lastName.trim()].filter(Boolean).join(" ") || "Student"}
+
                 </p>
                 <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">
                   {me.email}
@@ -251,12 +257,9 @@ export default function MeProfilePage() {
             {/* Fields */}
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
               <Field label="Email" value={me.email} disabled />
-              <Field
-                label="Full Name"
-                value={name}
-                onChange={setName}
-                placeholder="e.g. Shwan Myat Nay Chi"
-              />
+              <Field label="First Name" value={firstName} onChange={setFirstName} placeholder="e.g. Shwan" />
+              <Field label="Last Name" value={lastName} onChange={setLastName} placeholder="e.g. Myat Nay Chi" />
+
               <Field
                 label="Student ID"
                 value={studentId}

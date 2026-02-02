@@ -216,7 +216,7 @@ export default function MePage() {
               My Dashboard
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {me.name}
+              {[me.firstName, me.lastName].filter(Boolean).join(" ").trim() || "Student"}
               {me.studentId ? ` • ${me.studentId}` : ""} • {me.email}
             </p>
           </div>

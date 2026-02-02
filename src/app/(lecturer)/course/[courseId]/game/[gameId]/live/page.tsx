@@ -51,6 +51,8 @@ type LiveStudent = {
 
 /* ------------------------------ helpers ------------------------------ */
 
+/* ------------------------------ helpers ------------------------------ */
+
 function initialsFromName(name: string) {
   const s = (name ?? "").trim();
   if (!s) return "?";
@@ -63,6 +65,12 @@ function initialsFromName(name: string) {
 function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
   const initials = initialsFromName(s.name);
 
+  const src =
+    s.avatarSrc ||
+    `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+      (s.studentId || s.name || "student").trim()
+    )}`;
+
   return (
     <div
       className="
@@ -73,17 +81,21 @@ function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
       style={{ width: size, height: size }}
       aria-label="Student avatar"
     >
-      {s.avatarSrc ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={s.avatarSrc}
-          alt={s.name}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={s.name}
+        className="h-full w-full object-cover"
+        loading="lazy"
+      />
+
+      {/* If you ever want initials fallback instead of always image, use this:
+      {src ? (
+        <img src={src} alt={s.name} className="h-full w-full object-cover" loading="lazy" />
       ) : (
         <span className="text-sm font-bold">{initials}</span>
       )}
+      */}
     </div>
   );
 }
@@ -256,7 +268,15 @@ export default function LivePage() {
 
     const s = socket;
 
-    const meta = { /* ...same meta... */ };
+    const meta = {
+      gameId: game.id,
+      quizTitle: game.quizNumber,          // or your real quiz title field
+      courseCode: course.courseCode,
+      courseName: course.courseName,
+      section: course.section ?? null,
+      semester: course.semester ?? null,
+    };
+
 
     const doJoin = () => {
       s.emit("lecturer:join", { pin });

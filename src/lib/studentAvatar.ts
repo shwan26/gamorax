@@ -38,7 +38,8 @@ export function toLiveStudent(me: StudentAccount, size = 96): LiveStudent {
 
   return {
     studentId: sid,
-    name: me.name,
+    name: me.firstName,
+    
     avatarSrc: botttsUrl(seed, size),
   };
 }
