@@ -131,7 +131,7 @@ export default function StudentJoin() {
                       </div>
                       <div className="text-sm">
                         <div className="font-semibold text-slate-900 dark:text-slate-50">
-                          {me.name}
+                          {[me.firstName, me.lastName].filter(Boolean).join(" ").trim() || "Student"}
                         </div>
                         <div className="text-xs text-slate-600 dark:text-slate-300">
                           {me.email}

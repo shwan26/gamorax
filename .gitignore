@@ -49,3 +49,5 @@ socket-server/dist/
 .env
 .env.local
 socket-server/.env
+socket-server/.env.local
+socket-server/.env.example

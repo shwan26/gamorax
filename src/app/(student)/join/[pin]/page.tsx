@@ -51,7 +51,8 @@ export default function LobbyPage() {
 
   // editable fields (UI)
   const [meEmail, setMeEmail] = useState("");
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [studentIdManual, setStudentIdManual] = useState("");
 
   const derivedId = useMemo(() => deriveStudentIdFromEmail(meEmail), [meEmail]);
@@ -134,7 +135,8 @@ export default function LobbyPage() {
       }
 
       setMeEmail(me.email ?? "");
-      setName(me.name ?? "");
+      setFirstName(me.firstName ?? "");
+      setLastName(me.lastName ?? "");
       setStudentIdManual(me.studentId ?? "");
 
       const live = await getOrCreateLiveStudent();
@@ -162,6 +164,13 @@ export default function LobbyPage() {
 
   const effectiveStudentId = (useDerivedId && canAutoDerive ? derivedId : studentIdManual).trim();
   const avatarSrc = useMemo(() => getAvatarSrc(student, 96), [student]);
+
+  // ✅ Create full display name for live usage
+  const displayName = useMemo(() => {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    return [fn, ln].filter(Boolean).join(" ").trim();
+  }, [firstName, lastName]);
 
   // ✅ Connect socket ONCE (with token) and keep it authenticated
   useEffect(() => {
@@ -235,7 +244,7 @@ export default function LobbyPage() {
 
     const doJoin = () => {
       const sid = (effectiveStudentId || student.studentId || "").trim();
-      const nm = (name.trim() || student.name || "").trim();
+      const nm = (displayName || student.name || "").trim();
       if (!sid || !nm) return;
 
       const studentToJoin = { ...student, studentId: sid, name: nm };
@@ -256,7 +265,7 @@ export default function LobbyPage() {
       s.off("connect", doJoin);
       s.off("question:show", goQuestion);
     };
-  }, [mounted, pin, ready, student, accessToken, pinStatus, effectiveStudentId, name, router, s]);
+  }, [mounted, pin, ready, student, accessToken, pinStatus, effectiveStudentId, displayName, router, s]);
 
   // ✅ Random avatar (disabled after save)
   const handleChangeAvatar = async () => {
@@ -280,7 +289,7 @@ export default function LobbyPage() {
     }
   };
 
-  // ✅ Save profile (name + studentId) then lock editing
+  // ✅ Save profile (first/last + studentId) then lock editing
   const handleSaveProfile = async () => {
     if (pinStatus !== "active") {
       return alert("This PIN is not active right now. Please check with your lecturer.");
@@ -291,23 +300,27 @@ export default function LobbyPage() {
       return;
     }
 
-    const cleanName = name.trim();
+    const fn = firstName.trim();
+    const ln = lastName.trim();
     const sid = effectiveStudentId;
+    const nm = [fn, ln].filter(Boolean).join(" ").trim();
 
-    if (!cleanName) return alert("Please enter your full name.");
+    if (!fn) return alert("Please enter your first name.");
+    if (!ln) return alert("Please enter your last name.");
     if (!canAutoDerive && !sid) {
       return alert("Please enter your Student ID (or use AU email like u5400000@au.edu).");
     }
 
     await updateCurrentStudent({
-      name: cleanName,
+      firstName: fn,
+      lastName: ln,
       studentId: sid,
     });
 
     const me2 = await getCurrentStudent();
     if (!me2) return;
 
-    const nextLive = { ...toLiveStudent(me2, 96), studentId: sid, name: cleanName };
+    const nextLive = { ...toLiveStudent(me2, 96), studentId: sid, name: nm };
     writeLiveStudent(nextLive);
     setStudent(nextLive);
 
@@ -478,22 +491,42 @@ export default function LobbyPage() {
               </p>
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-200">
-                Full Name
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={locked}
-                className={[
-                  "w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm outline-none",
-                  "border-slate-200/80 bg-white/80",
-                  "focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent",
-                  "dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100",
-                  locked ? "opacity-60 cursor-not-allowed" : "",
-                ].join(" ")}
-              />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  First Name
+                </label>
+                <input
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  disabled={locked}
+                  className={[
+                    "w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm outline-none",
+                    "border-slate-200/80 bg-white/80",
+                    "focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent",
+                    "dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100",
+                    locked ? "opacity-60 cursor-not-allowed" : "",
+                  ].join(" ")}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  Last Name
+                </label>
+                <input
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  disabled={locked}
+                  className={[
+                    "w-full rounded-xl border px-3 py-2.5 text-sm shadow-sm outline-none",
+                    "border-slate-200/80 bg-white/80",
+                    "focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent",
+                    "dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100",
+                    locked ? "opacity-60 cursor-not-allowed" : "",
+                  ].join(" ")}
+                />
+              </div>
             </div>
 
             <div>

@@ -13,6 +13,7 @@ import {
   BookOpen,
   Filter,
 } from "lucide-react";
+import DashboardSkeletonGrid from "@/src/components/skeletons/DashboardSkeleton";
 
 type Course = {
   id: string;
@@ -312,19 +313,20 @@ export default function LecturerDashboard() {
         <div className="mt-6 grid items-start gap-4 sm:mt-8 sm:grid-cols-2 lg:grid-cols-3">
           <CreateCourseCard />
 
-          {loading ? null : errMsg ? (
-            <div className="sm:col-span-2 lg:col-span-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
-              Load courses error: {errMsg}
-            </div>
-          ) : filteredSorted.length === 0 ? (
-            <div className="sm:col-span-2 lg:col-span-2 rounded-2xl border border-slate-200/70 bg-white/60 p-4 text-sm text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
-              No courses found.
-            </div>
-          ) : (
-            filteredSorted.map((course) => (
-              <CourseCard key={course.id} course={course} />
-            ))
-          )}
+          {loading ? (
+              <DashboardSkeletonGrid count={5} />
+            ) : errMsg ? (
+              <div className="sm:col-span-2 lg:col-span-2 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+                Load courses error: {errMsg}
+              </div>
+            ) : filteredSorted.length === 0 ? (
+              <div className="sm:col-span-2 lg:col-span-2 rounded-2xl border border-slate-200/70 bg-white/60 p-4 text-sm text-slate-700 dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
+                No courses found.
+              </div>
+            ) : (
+              filteredSorted.map((course) => <CourseCard key={course.id} course={course} />)
+            )}
+
         </div>
       </main>
     </div>

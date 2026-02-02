@@ -6,7 +6,8 @@ import { supabase } from "@/src/lib/supabaseClient";
 export type StudentAccount = {
   id: string;
   email: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   studentId: string | null;
   avatarSeed: string | null;
   points: number;
@@ -33,9 +34,10 @@ async function fetchMyStudentProfile(): Promise<StudentAccount | null> {
 
   if (uErr || !authUser?.id) return null;
 
+  // ✅ updated columns: firstName/lastName (no fullName)
   const { data: prof, error: pErr } = await supabase
     .from("my_profile_api")
-    .select("id, role, fullName, studentId, avatarSeed, points")
+    .select("id, role, firstName, lastName, studentId, avatarSeed, points")
     .single();
 
   if (pErr || !prof) return null;
@@ -44,7 +46,8 @@ async function fetchMyStudentProfile(): Promise<StudentAccount | null> {
   return {
     id: prof.id,
     email: authUser.email ?? "",
-    name: prof.fullName ?? "",
+    firstName: prof.firstName ?? "",
+    lastName: prof.lastName ?? "",
     studentId: prof.studentId ?? null,
     avatarSeed: prof.avatarSeed ?? null,
     points: Number(prof.points ?? 0),
@@ -54,21 +57,24 @@ async function fetchMyStudentProfile(): Promise<StudentAccount | null> {
 /**
  * ✅ Register student (Supabase Auth)
  * - writes metadata so your `handle_new_user()` trigger can populate profiles
- * - your `enforce_student_email_and_id()` trigger enforces full_name + student_id rules
+ * - your `enforce_student_email_and_id()` trigger enforces first_name/last_name + student_id rules
  */
 export async function registerStudent(args: {
   email: string;
   password: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   studentId?: string; // required if non-AU email (based on your trigger)
   avatarSeed?: string;
 }) {
   const email = normEmail(args.email);
   const password = normPassword(args.password);
-  const name = String(args.name ?? "").trim();
 
-  if (!email || !password || !name) {
-    throw new Error("Please fill in email, password, and name.");
+  const firstName = String(args.firstName ?? "").trim();
+  const lastName = String(args.lastName ?? "").trim();
+
+  if (!email || !password || !firstName || !lastName) {
+    throw new Error("Please fill in email, password, first name, and last name.");
   }
   if (password.length < 4) {
     throw new Error("Password must be at least 4 characters.");
@@ -85,10 +91,12 @@ export async function registerStudent(args: {
     options: {
       data: {
         role: "student",
-        full_name: name,
+        // ✅ IMPORTANT: must match your handle_new_user() keys
+        first_name: firstName,
+        last_name: lastName,
         // If AU email, student_id may be auto-derived by your trigger anyway.
         // If non-AU email, your trigger requires student_id.
-        student_id: studentId,
+        ...(studentId ? { student_id: studentId } : {}),
         avatar_seed: avatarSeed,
       },
     },
@@ -137,7 +145,8 @@ export async function logoutStudent() {
  * ✅ Update current student profile (my_profile_api view)
  */
 export async function updateCurrentStudent(patch: Partial<{
-  name: string;
+  firstName: string;
+  lastName: string;
   studentId: string;
   avatarSeed: string;
 }>) {
@@ -146,7 +155,8 @@ export async function updateCurrentStudent(patch: Partial<{
   if (!authUser) throw new Error("Not logged in.");
 
   const payload: any = {};
-  if (patch.name !== undefined) payload.fullName = String(patch.name).trim();
+  if (patch.firstName !== undefined) payload.firstName = String(patch.firstName).trim();
+  if (patch.lastName !== undefined) payload.lastName = String(patch.lastName).trim();
   if (patch.studentId !== undefined) payload.studentId = String(patch.studentId).trim();
   if (patch.avatarSeed !== undefined) payload.avatarSeed = String(patch.avatarSeed).trim();
 

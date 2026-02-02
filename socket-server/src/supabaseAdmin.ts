@@ -7,7 +7,11 @@ if (!url || !key) {
   throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
 }
 
-// ✅ Admin client (service role): backend only
-export const supabaseAdmin = createClient(url, key, {
-  auth: { persistSession: false, autoRefreshToken: false }
-});
+export const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: { persistSession: false, autoRefreshToken: false },
+    db: { schema: "public" }, // ✅ important
+  }
+);

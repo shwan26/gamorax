@@ -5,10 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/src/components/Navbar";
 import GradientButton from "@/src/components/GradientButton";
-import {
-  registerStudent,
-  deriveStudentIdFromEmail,
-} from "@/src/lib/studentAuthStorage";
+import { registerStudent, deriveStudentIdFromEmail } from "@/src/lib/studentAuthStorage";
 import { ArrowLeft, UserRound } from "lucide-react";
 
 function getNextFromUrl(): string {
@@ -22,7 +19,8 @@ export default function StudentRegisterClient() {
 
   const [next, setNext] = useState("/me/reports");
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [studentId, setStudentId] = useState("");
   const [password, setPassword] = useState("");
@@ -41,13 +39,27 @@ export default function StudentRegisterClient() {
 
   async function onRegister() {
     try {
+      const f = firstName.trim();
+      const l = lastName.trim();
+      const e = email.trim().toLowerCase();
+      const pw = password;
+
+      if (!f || !l || !e || !pw) {
+        alert("Please fill in all required fields.");
+        return;
+      }
+
+      const name = `${f} ${l}`.trim();
+
       await registerStudent({
         email,
         password,
-        name,
-        // only pass studentId if not AU-derived (AU will be derived anyway)
+        firstName,
+        lastName,
         studentId: derivedId ? undefined : studentId,
       });
+
+
       router.push(next);
     } catch (e: any) {
       alert(e?.message ?? "Register failed");
@@ -112,10 +124,10 @@ export default function StudentRegisterClient() {
 
               {/* form */}
               <div className="relative mt-6 space-y-4">
-                {/* Full Name */}
+                {/* First Name */}
                 <div>
                   <label className="block mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">
-                    Full Name
+                    First Name
                   </label>
                   <input
                     className="
@@ -125,9 +137,30 @@ export default function StudentRegisterClient() {
                       dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100
                       placeholder:text-slate-400 dark:placeholder:text-slate-500
                     "
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="First name"
+                    autoComplete="given-name"
+                  />
+                </div>
+
+                {/* Last Name */}
+                <div>
+                  <label className="block mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Last Name
+                  </label>
+                  <input
+                    className="
+                      w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
+                      shadow-sm outline-none
+                      focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
+                      dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100
+                      placeholder:text-slate-400 dark:placeholder:text-slate-500
+                    "
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Last name"
+                    autoComplete="family-name"
                   />
                 </div>
 
@@ -148,11 +181,13 @@ export default function StudentRegisterClient() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="u6555555@au.edu or yourname@gmail.com"
                     inputMode="email"
+                    autoComplete="email"
                   />
 
                   {derivedId ? (
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Detected AU email — Student ID will be <span className="font-semibold">{derivedId}</span>.
+                      Detected AU email — Student ID will be{" "}
+                      <span className="font-semibold">{derivedId}</span>.
                     </p>
                   ) : (
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
@@ -180,6 +215,7 @@ export default function StudentRegisterClient() {
                     placeholder="6555555"
                     inputMode="numeric"
                     disabled={!!derivedId}
+                    autoComplete="off"
                   />
                 </div>
 
@@ -200,14 +236,11 @@ export default function StudentRegisterClient() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
+                    autoComplete="new-password"
                   />
                 </div>
 
-                <GradientButton
-                  onClick={onRegister}
-                  type="button"
-          
-                >
+                <GradientButton onClick={onRegister} type="button">
                   Create Account
                 </GradientButton>
 

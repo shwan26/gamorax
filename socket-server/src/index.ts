@@ -1,3 +1,4 @@
+// src/index.ts
 import "./env.js"; // IMPORTANT: .js extension for NodeNext output
 import express from "express";
 import cors from "cors";
@@ -5,9 +6,22 @@ import { createServer } from "http";
 import { Server as IOServer, Socket } from "socket.io";
 
 import { supabaseAdmin } from "./supabaseAdmin.js";
+import { createClient } from "@supabase/supabase-js";
 import { calcPoints } from "./quizScoring.js";
 
+/* -------------------- Supabase clients -------------------- */
+/**
+ * ✅ supabaseAuth (ANON) is ONLY for verifying JWT access tokens.
+ * ✅ supabaseAdmin (SERVICE ROLE) is for DB reads/writes bypassing RLS.
+ */
+const supabaseAuth = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!,
+  { auth: { persistSession: false, autoRefreshToken: false } }
+);
+
 /* -------------------- Types (server internal) -------------------- */
+
 
 type LiveQuestionType = "multiple_choice" | "true_false" | "matching" | "input";
 
@@ -20,9 +34,7 @@ type LiveQuestionBase = {
   image?: string | null;
   startAt: number;
   durationSec: number;
-
-  // optional: link to DB question id (uuid) so we can update live_sessions.current_question_id
-  questionId?: string | null;
+  questionId?: string | null; // DB question id (uuid) for persistence
 };
 
 type QuestionMC = LiveQuestionBase & {
@@ -48,18 +60,13 @@ type QuestionPayloadOut = QuestionMC | QuestionMatching | QuestionInput;
 
 type AnswerChoice = { kind: "choice"; indices: number[]; timeUsed: number };
 type AnswerInput = { kind: "input"; value: string; timeUsed: number };
-type AnswerMatching = {
-  kind: "matching";
-  pairs: Map<number, number>;
-  lastTimeUsed: number;
-};
-
+type AnswerMatching = { kind: "matching"; pairs: Map<number, number>; lastTimeUsed: number };
 type AnswerRecord = AnswerChoice | AnswerInput | AnswerMatching;
 
 type LiveStudent = {
-  profileId: string;          // Supabase auth uid
+  profileId: string; // Supabase auth uid
   displayName: string;
-  studentId?: string | null;  // from profiles.student_id (optional)
+  studentId?: string | null; // profiles.student_id
   avatarUrl?: string | null;
 };
 
@@ -81,16 +88,26 @@ type Score = {
 };
 
 type Room = {
-  students: Map<string, LiveStudent>;                 // profileId -> student
+  students: Map<string, LiveStudent>;
   current?: QuestionPayloadOut;
-  answers: Map<number, Map<string, AnswerRecord>>;    // qIndex -> (profileId -> record)
+  answers: Map<number, Map<string, AnswerRecord>>;
   scoredQuestions: Set<number>;
-  scores: Map<string, Score>;                         // profileId -> totals
+  scores: Map<string, Score>;
   durationByQuestion: Map<number, number>;
+  connections: Map<string, Set<string>>;
 
-  // presence
-  connections: Map<string, Set<string>>;              // profileId -> socketIds
+  // ✅ add this
+  meta?: {
+    gameId?: string;
+    quizTitle?: string;
+    courseCode?: string;
+    courseName?: string;
+    section?: string | null;
+    semester?: string | null;
+  };
 };
+
+
 
 type SessionRow = {
   id: string;
@@ -106,14 +123,16 @@ type SessionRow = {
   question_duration: number | null;
 };
 
+type ProfileRow = {
+  id: string;
+  role: "student" | "lecturer";
+  first_name: string | null;
+  last_name: string | null;
+  student_id: string | null;
+  avatar_seed: string | null;
+};
+
 /* -------------------- In-memory rooms (realtime only) -------------------- */
-/**
- * Supabase is the persistent store.
- * This map is ONLY for realtime:
- * - current question payload
- * - fast counting/scoring
- * - socket presence
- */
 const rooms = new Map<string, Room>();
 
 function getRoom(pin: string): Room {
@@ -124,8 +143,10 @@ function getRoom(pin: string): Room {
       scoredQuestions: new Set(),
       scores: new Map(),
       durationByQuestion: new Map(),
-      connections: new Map()
+      connections: new Map(),
+      meta: {},
     });
+
   }
   return rooms.get(pin)!;
 }
@@ -178,7 +199,7 @@ function makeLeaderboard(room: Room) {
         studentId: st.studentId ?? st.profileId,
         name: st.displayName,
         avatarSrc: st.avatarUrl ?? undefined,
-        ...sc
+        ...sc,
       };
     })
     .sort(
@@ -251,19 +272,16 @@ async function getActiveSessionByPin(pin: string): Promise<SessionRow | null> {
 }
 
 async function upsertParticipant(sessionId: string, student: LiveStudent) {
-  // this matches your live_participants columns
-  await supabaseAdmin
-    .from("live_participants")
-    .upsert(
-      {
-        session_id: sessionId,
-        profile_id: student.profileId,
-        display_name: student.displayName,
-        student_id: student.studentId ?? null,
-        avatar_url: student.avatarUrl ?? null
-      },
-      { onConflict: "session_id,profile_id" }
-    );
+  await supabaseAdmin.from("live_participants").upsert(
+    {
+      session_id: sessionId,
+      profile_id: student.profileId,
+      display_name: student.displayName,
+      student_id: student.studentId ?? null,
+      avatar_url: student.avatarUrl ?? null,
+    },
+    { onConflict: "session_id,profile_id" }
+  );
 }
 
 async function insertMCAnswerIfPossible(opts: {
@@ -273,10 +291,8 @@ async function insertMCAnswerIfPossible(opts: {
   answerIndex: number;
   timeUsed: number;
 }) {
-  // Your table live_answers requires question_id NOT NULL
   if (!opts.questionId) return;
 
-  // Your constraint is answer_index between 0..3 — clamp so insert won't fail
   const idx = Math.max(0, Math.min(3, opts.answerIndex));
   const timeUsed = Math.max(0, Math.floor(opts.timeUsed));
 
@@ -285,7 +301,7 @@ async function insertMCAnswerIfPossible(opts: {
     question_id: opts.questionId,
     profile_id: opts.profileId,
     answer_index: idx,
-    time_used: timeUsed
+    time_used: timeUsed,
   });
 }
 
@@ -297,7 +313,7 @@ async function upsertLiveScore(sessionId: string, profileId: string, score: Scor
       correct: score.correct,
       points: score.points,
       total_time: score.totalTime,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     },
     { onConflict: "session_id,profile_id" }
   );
@@ -322,7 +338,7 @@ const httpServer = createServer(app);
 const io = new IOServer(httpServer, {
   path: "/socket.io",
   cors: { origin, credentials: true },
-  transports: ["websocket"]
+  transports: ["websocket"],
 });
 
 /* -------------------- Auth middleware (NO GUEST) -------------------- */
@@ -332,39 +348,52 @@ const io = new IOServer(httpServer, {
  */
 io.use(async (socket, next) => {
   try {
-    const token = (socket.handshake.auth as any)?.accessToken;
+    const token =
+      (socket.handshake.auth as any)?.accessToken ||
+      socket.handshake.headers?.authorization?.replace("Bearer ", "");
+
     if (!token) return next(new Error("Missing accessToken"));
 
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
-    if (error || !data?.user) return next(new Error("Invalid token"));
+    // ✅ 1) Verify token using ANON client
+    const { data: authData, error: authErr } = await supabaseAuth.auth.getUser(token);
+    if (authErr || !authData?.user) return next(new Error("Invalid token"));
 
-    const uid = data.user.id;
+    const uid = authData.user.id;
 
-    // Load profile
-    const { data: profile } = await supabaseAdmin
+    // ✅ 2) Load profile using SERVICE ROLE client (bypass RLS)
+    const { data: profile, error: pErr } = await supabaseAdmin
+      .schema("public")
       .from("profiles")
-      .select("id, role, full_name, student_id, avatar_seed, first_name, last_name")
+      .select("id, role, first_name, last_name, student_id, avatar_seed")
       .eq("id", uid)
       .maybeSingle();
 
-    if (!profile) return next(new Error("Profile not found"));
+    if (pErr || !profile) return next(new Error("Profile not found"));
 
     socket.data.uid = uid;
-    socket.data.role = profile.role; // 'student' | 'lecturer'
+    socket.data.role = profile.role;
 
-    // basic displayName
     const displayName =
-      profile.role === "student"
-        ? profile.full_name ?? "Student"
-        : `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() || "Lecturer";
+      `${profile.first_name ?? ""} ${profile.last_name ?? ""}`.trim() ||
+      (profile.role === "student" ? "Student" : "Lecturer");
 
     socket.data.displayName = displayName;
     socket.data.studentId = profile.student_id ?? null;
-    socket.data.avatarUrl = profile.avatar_seed ? `https://api.dicebear.com/7.x/thumbs/svg?seed=${encodeURIComponent(profile.avatar_seed)}` : null;
+    const email = authData.user.email ?? "";
+    const seed = (profile.avatar_seed || email || uid || "student").trim();
+
+    const avatarUrl =
+      profile.role === "student"
+        ? `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed)}`
+        : null;
+
+socket.data.avatarUrl = avatarUrl;
+socket.data.studentId = profile.role === "student" ? (profile.student_id ?? null) : null;
+
 
     return next();
-  } catch (e) {
-    return next(new Error("Auth failed"));
+  } catch (e: any) {
+    return next(new Error(e?.message ?? "Auth failed"));
   }
 });
 
@@ -377,19 +406,36 @@ io.on("connection", (socket: Socket) => {
   const studentId = socket.data.studentId as string | null;
   const avatarUrl = socket.data.avatarUrl as string | null;
 
-  // PIN check (ACK) — uses Supabase (truth)
-  socket.on("pin:check", async ({ pin }: { pin: string }, ack?: (resp: any) => void) => {
+  socket.on("meta:set", ({ pin, meta }: { pin: string; meta: any }) => {
+    const p = String(pin ?? "").trim();
+    if (!p || !meta) return;
+
+    const room = getRoom(p);
+
+    // ✅ store only what you need
+    room.meta = {
+      gameId: meta.gameId,
+      quizTitle: meta.quizTitle,
+      courseCode: meta.courseCode,
+      courseName: meta.courseName,
+      section: meta.section ?? null,
+      semester: meta.semester ?? null,
+    };
+
+    // ✅ broadcast to everyone in room (students + lecturer)
+    io.to(p).emit("session:meta", room.meta);
+  });
+
+  // PIN check (ACK)
+  socket.on("pin:check", async ({ pin }, ack) => {
     const p = String(pin ?? "").trim();
     if (!p) return ack?.({ exists: false });
 
     const session = await getActiveSessionByPin(p);
     if (!session) return ack?.({ exists: false });
 
-    // "hasQuestion" if currently in question or answer and has a current_question_id or in-memory current
     const room = rooms.get(p);
     const hasQuestion = Boolean(room?.current) || Boolean(session.current_question_id);
-
-    // presence count (socket presence, not DB)
     const totalJoined = room?.connections?.size ?? 0;
 
     return ack?.({
@@ -400,12 +446,23 @@ io.on("connection", (socket: Socket) => {
       questionIndex: session.question_index,
       totalQuestions: session.total_questions,
       hasQuestion,
-      totalJoined
+      totalJoined,
+
+      // ✅ add this
+      meta: room?.meta ?? null,
     });
   });
 
-  // STUDENT JOIN
-  socket.on("join", async ({ pin }: { pin: string }) => {
+  // STUDENT JOIN (accept student payload so avatar/name/id can update live)
+socket.on(
+  "join",
+  async ({
+    pin,
+    student,
+  }: {
+    pin: string;
+    student?: { studentId?: string; name?: string; avatarSrc?: string };
+  }) => {
     const p = String(pin ?? "").trim();
     if (!p) return;
 
@@ -415,45 +472,82 @@ io.on("connection", (socket: Socket) => {
       return;
     }
 
-    // join socket room
+    // only students should use this event
+    if (role !== "student") {
+      socket.emit("join:error", { message: "Not allowed" });
+      return;
+    }
+
     socket.join(p);
     socket.data.pin = p;
 
-    // track presence in memory
     const room = getRoom(p);
+    if (room.meta) socket.emit("session:meta", room.meta);
+
+
+    // ✅ use payload values if provided (this enables live avatar changes)
+    const nextStudentId =
+      String(student?.studentId ?? socket.data.studentId ?? "").trim() || null;
+
+    const nextDisplayName =
+      String(student?.name ?? socket.data.displayName ?? "").trim() || "Student";
+
+    const nextAvatarUrl =
+      String(student?.avatarSrc ?? socket.data.avatarUrl ?? "").trim() || null;
+
+    // keep socket.data in sync too (optional but nice)
+    socket.data.studentId = nextStudentId;
+    socket.data.displayName = nextDisplayName;
+    socket.data.avatarUrl = nextAvatarUrl;
 
     const st: LiveStudent = {
       profileId: uid,
-      displayName,
-      studentId,
-      avatarUrl
+      displayName: nextDisplayName,
+      studentId: nextStudentId,
+      avatarUrl: nextAvatarUrl,
     };
 
+    // ✅ update / upsert in-memory student (this is what lecturer sees)
     room.students.set(uid, st);
-    room.scores.set(uid, room.scores.get(uid) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] });
 
+    // don't reset existing score
+    room.scores.set(
+      uid,
+      room.scores.get(uid) ?? { correct: 0, totalTime: 0, points: 0, perQuestion: [] }
+    );
+
+    // track connections
     const set = room.connections.get(uid) ?? new Set<string>();
     set.add(socket.id);
     room.connections.set(uid, set);
 
-    // persist participant
     await upsertParticipant(session.id, st);
 
     emitRoomCount(io, p, room);
-    io.to(p).emit("students:update", Array.from(room.students.values()).map((x) => ({
-      studentId: x.studentId ?? x.profileId,
-      name: x.displayName,
-      avatarSrc: x.avatarUrl ?? undefined
-    })));
 
-    // if a question is live in memory, send it
+    // ✅ broadcast updated avatars/names immediately
+    io.to(p).emit(
+      "students:update",
+      Array.from(room.students.values()).map((x) => ({
+        studentId: x.studentId ?? x.profileId,
+        name: x.displayName,
+        avatarSrc: x.avatarUrl ?? undefined,
+      }))
+    );
+
     if (room.current) {
       socket.emit("question:show", toPublicQuestion(room.current));
       const { counts, totalAnswers } = countsForRoom(room, room.current.questionIndex);
-      socket.emit("answer:count", { questionIndex: room.current.questionIndex, counts, totalAnswers });
+      socket.emit("answer:count", {
+        questionIndex: room.current.questionIndex,
+        counts,
+        totalAnswers,
+      });
       socket.emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
     }
-  });
+  }
+);
+
 
   // LECTURER JOIN
   socket.on("lecturer:join", async ({ pin }: { pin: string }) => {
@@ -466,24 +560,29 @@ io.on("connection", (socket: Socket) => {
       return;
     }
 
-    // Only allow lecturer who owns session
     if (role !== "lecturer" || session.lecturer_id !== uid) {
       socket.emit("join:error", { message: "Not allowed" });
       return;
     }
 
     socket.join(p);
+    
     socket.data.pin = p;
 
     const room = getRoom(p);
+    if (room.meta) socket.emit("session:meta", room.meta);
+
 
     emitRoomCount(io, p, room);
 
-    socket.emit("students:update", Array.from(room.students.values()).map((x) => ({
-      studentId: x.studentId ?? x.profileId,
-      name: x.displayName,
-      avatarSrc: x.avatarUrl ?? undefined
-    })));
+    socket.emit(
+      "students:update",
+      Array.from(room.students.values()).map((x) => ({
+        studentId: x.studentId ?? x.profileId,
+        name: x.displayName,
+        avatarSrc: x.avatarUrl ?? undefined,
+      }))
+    );
 
     if (room.current) {
       socket.emit("question:show", toPublicQuestion(room.current));
@@ -517,7 +616,7 @@ io.on("connection", (socket: Socket) => {
       image: question.image ?? null,
       startAt: safeInt(question.startAt, Date.now()),
       durationSec: dur,
-      questionId: question.questionId ? String(question.questionId) : null
+      questionId: question.questionId ? String(question.questionId) : null,
     };
 
     let out: QuestionPayloadOut;
@@ -528,7 +627,7 @@ io.on("connection", (socket: Socket) => {
         type: "matching",
         left: Array.isArray(question.left) ? question.left.map((x: any) => String(x ?? "")) : [],
         right: Array.isArray(question.right) ? question.right.map((x: any) => String(x ?? "")) : [],
-        correctPairs: Array.isArray(question.correctPairs) ? question.correctPairs : []
+        correctPairs: Array.isArray(question.correctPairs) ? question.correctPairs : [],
       };
     } else if (base.type === "input") {
       out = {
@@ -536,7 +635,7 @@ io.on("connection", (socket: Socket) => {
         type: "input",
         acceptedAnswers: Array.isArray(question.acceptedAnswers)
           ? question.acceptedAnswers.map((x: any) => String(x ?? "")).filter(Boolean)
-          : []
+          : [],
       };
     } else {
       out = {
@@ -546,7 +645,7 @@ io.on("connection", (socket: Socket) => {
         allowMultiple: Boolean(question.allowMultiple),
         correctIndices: Array.isArray(question.correctIndices)
           ? question.correctIndices.map(Number).filter(Number.isFinite)
-          : []
+          : [],
       };
     }
 
@@ -555,7 +654,6 @@ io.on("connection", (socket: Socket) => {
     room.scoredQuestions.delete(qIndex);
     room.durationByQuestion.set(qIndex, dur);
 
-    // persist live_sessions state
     await supabaseAdmin
       .from("live_sessions")
       .update({
@@ -563,7 +661,7 @@ io.on("connection", (socket: Socket) => {
         question_index: qIndex,
         current_question_id: base.questionId ?? null,
         question_started_at: new Date(base.startAt).toISOString(),
-        question_duration: dur
+        question_duration: dur,
       })
       .eq("id", session.id);
 
@@ -573,8 +671,8 @@ io.on("connection", (socket: Socket) => {
       out.type === "true_false"
         ? [0, 0]
         : out.type === "multiple_choice"
-          ? Array.from({ length: Math.min(5, out.answers.length) }, () => 0)
-          : [];
+        ? Array.from({ length: Math.min(5, out.answers.length) }, () => 0)
+        : [];
 
     io.to(p).emit("answer:count", { questionIndex: qIndex, counts: initCounts, totalAnswers: 0 });
   });
@@ -607,7 +705,6 @@ io.on("connection", (socket: Socket) => {
 
     io.to(p).emit("answer:count", { questionIndex: qIndex, ...countsForRoom(room, qIndex) });
 
-    // Persist to Supabase (best-effort): only first index, only if we have session + questionId
     try {
       const session = await getActiveSessionByPin(p);
       if (session) {
@@ -618,11 +715,11 @@ io.on("connection", (socket: Socket) => {
           questionId,
           profileId: uid,
           answerIndex: first,
-          timeUsed
+          timeUsed,
         });
       }
     } catch {
-      // ignore persistence errors; realtime still works
+      // ignore persistence errors
     }
   });
 
@@ -647,8 +744,6 @@ io.on("connection", (socket: Socket) => {
     room.answers.set(qIndex, map);
 
     io.to(p).emit("answer:count", { questionIndex: qIndex, counts: [], totalAnswers: map.size });
-
-    // Optional: persist input answers later by adding a jsonb table.
   });
 
   // MATCH ATTEMPT (ack returns {correct})
@@ -678,7 +773,6 @@ io.on("connection", (socket: Socket) => {
       rec = { kind: "matching", pairs: new Map(), lastTimeUsed: 0 } as AnswerMatching;
       map.set(uid, rec);
       room.answers.set(qIndex, map);
-
       io.to(p).emit("answer:count", { questionIndex: qIndex, counts: [], totalAnswers: map.size });
     }
 
@@ -718,42 +812,24 @@ io.on("connection", (socket: Socket) => {
 
     const maxTime = room.durationByQuestion.get(qIndex) ?? safeInt(room.current.durationSec, 20);
 
-    // attach lecturer-only keys for scoring + reveal payload
     const type = payload?.type as LiveQuestionType;
 
     if (type === "matching" && room.current.type === "matching") {
       room.current.correctPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs : [];
-      io.to(p).emit("answer:reveal", {
-        questionIndex: qIndex,
-        type: "matching",
-        correctPairs: room.current.correctPairs,
-        maxTime
-      });
+      io.to(p).emit("answer:reveal", { questionIndex: qIndex, type: "matching", correctPairs: room.current.correctPairs, maxTime });
     } else if (type === "input" && room.current.type === "input") {
       room.current.acceptedAnswers = Array.isArray(payload?.acceptedAnswers) ? payload.acceptedAnswers : [];
-      io.to(p).emit("answer:reveal", {
-        questionIndex: qIndex,
-        type: "input",
-        acceptedAnswers: room.current.acceptedAnswers,
-        maxTime
-      });
+      io.to(p).emit("answer:reveal", { questionIndex: qIndex, type: "input", acceptedAnswers: room.current.acceptedAnswers, maxTime });
     } else {
       if (room.current.type !== "multiple_choice" && room.current.type !== "true_false") return;
-
       room.current.correctIndices = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
-      io.to(p).emit("answer:reveal", {
-        questionIndex: qIndex,
-        type: room.current.type,
-        correctIndices: room.current.correctIndices,
-        maxTime
-      });
+      io.to(p).emit("answer:reveal", { questionIndex: qIndex, type: room.current.type, correctIndices: room.current.correctIndices, maxTime });
     }
 
     room.scoredQuestions.add(qIndex);
 
     const ansMap = room.answers.get(qIndex) ?? new Map<string, AnswerRecord>();
 
-    // score everyone who answered
     for (const [profileId, rec] of ansMap.entries()) {
       const prevScore =
         room.scores.get(profileId) ?? ({ correct: 0, totalTime: 0, points: 0, perQuestion: [] } satisfies Score);
@@ -819,21 +895,20 @@ io.on("connection", (socket: Socket) => {
         isCorrect,
         timeUsed,
         maxTime,
-        pointsEarned
+        pointsEarned,
       };
 
       const nextScore: Score = {
         correct: prevScore.correct + (isCorrect ? 1 : 0),
         totalTime: prevScore.totalTime + timeUsed,
         points: prevScore.points + pointsEarned,
-        perQuestion: [...prevScore.perQuestion, detail]
+        perQuestion: [...prevScore.perQuestion, detail],
       };
 
       room.scores.set(profileId, nextScore);
 
       io.to(p).emit("score:update", { studentId: profileId, total: nextScore, last: detail });
 
-      // persist totals (best effort)
       try {
         await upsertLiveScore(session.id, profileId, nextScore);
       } catch {}
@@ -841,7 +916,6 @@ io.on("connection", (socket: Socket) => {
 
     io.to(p).emit("leaderboard:update", { leaderboard: makeLeaderboard(room) });
 
-    // session status -> answer (persist)
     await supabaseAdmin.from("live_sessions").update({ status: "answer" }).eq("id", session.id);
   });
 
@@ -860,7 +934,7 @@ io.on("connection", (socket: Socket) => {
     io.to(p).emit("final_results", {
       pin: p,
       total: payload?.total ?? room.current?.total ?? session.total_questions,
-      leaderboard: makeLeaderboard(room)
+      leaderboard: makeLeaderboard(room),
     });
 
     io.to(p).emit("quiz:finished", payload);
@@ -887,17 +961,19 @@ io.on("connection", (socket: Socket) => {
 
     if (!room.connections.has(uid)) {
       room.students.delete(uid);
-      // keep scores so reconnect doesn't lose progress
     }
 
     socket.leave(p);
     emitRoomCount(io, p, room);
 
-    io.to(p).emit("students:update", Array.from(room.students.values()).map((x) => ({
-      studentId: x.studentId ?? x.profileId,
-      name: x.displayName,
-      avatarSrc: x.avatarUrl ?? undefined
-    })));
+    io.to(p).emit(
+      "students:update",
+      Array.from(room.students.values()).map((x) => ({
+        studentId: x.studentId ?? x.profileId,
+        name: x.displayName,
+        avatarSrc: x.avatarUrl ?? undefined,
+      }))
+    );
   });
 
   // DISCONNECTING
@@ -914,11 +990,16 @@ io.on("connection", (socket: Socket) => {
       if (set.size === 0) {
         room.connections.delete(uid);
         room.students.delete(uid);
-        io.to(pin).emit("students:update", Array.from(room.students.values()).map((x) => ({
-          studentId: x.studentId ?? x.profileId,
-          name: x.displayName,
-          avatarSrc: x.avatarUrl ?? undefined
-        })));
+
+        io.to(pin).emit(
+          "students:update",
+          Array.from(room.students.values()).map((x) => ({
+            studentId: x.studentId ?? x.profileId,
+            name: x.displayName,
+            avatarSrc: x.avatarUrl ?? undefined,
+          }))
+        );
+
         emitRoomCount(io, pin, room);
       } else {
         room.connections.set(uid, set);
