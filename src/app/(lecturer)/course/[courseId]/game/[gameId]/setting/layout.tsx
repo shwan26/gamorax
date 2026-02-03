@@ -126,6 +126,8 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
               <nav className="flex flex-col gap-2">
                 {menu.map((item) => {
                   const active = pathname.startsWith(item.href);
+                  const Icon = item.icon;
+
                   return (
                     <Link
                       key={item.label}
@@ -139,11 +141,30 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
                           : "border border-transparent text-slate-700 hover:bg-white/80 dark:text-slate-200 dark:hover:bg-slate-950/60",
                       ].join(" ")}
                     >
+                      {/* ICON */}
+                      <span
+                        className={[
+                          "inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm",
+                          active
+                            ? "border-[#00D4FF]/40 bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]"
+                            : "border-slate-200/80 bg-white/80 dark:border-slate-800/70 dark:bg-slate-950/60",
+                        ].join(" ")}
+                      >
+                        <Icon
+                          className={[
+                            "h-4 w-4",
+                            active ? "text-white" : "text-slate-700 dark:text-slate-200",
+                          ].join(" ")}
+                        />
+                      </span>
+
+                      {/* LABEL */}
                       <span className="min-w-0 truncate">{item.label}</span>
                     </Link>
                   );
                 })}
               </nav>
+
             </aside>
 
             <section className="flex-1 p-4 sm:p-6">
