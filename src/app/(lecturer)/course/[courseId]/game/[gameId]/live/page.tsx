@@ -50,20 +50,34 @@ type LiveStudent = {
 };
 
 /* ------------------------------ helpers ------------------------------ */
-
-/* ------------------------------ helpers ------------------------------ */
-
-function initialsFromName(name: string) {
-  const s = (name ?? "").trim();
-  if (!s) return "?";
-  const parts = s.split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const last = (parts.length > 1 ? parts[parts.length - 1]?.[0] : "") ?? "";
-  return (first + last).toUpperCase();
+function SkeletonLine({ w = "w-full", h = "h-4" }: { w?: string; h?: string }) {
+  return (
+    <div
+      className={[
+        "rounded-full bg-slate-200/80 dark:bg-slate-800/70",
+        "animate-pulse",
+        w,
+        h,
+      ].join(" ")}
+    />
+  );
 }
 
+function SkeletonBox({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={[
+        "rounded-3xl bg-slate-200/60 dark:bg-slate-800/50",
+        "animate-pulse",
+        className,
+      ].join(" ")}
+    />
+  );
+}
+
+
+
 function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
-  const initials = initialsFromName(s.name);
 
   const src =
     s.avatarSrc ||
@@ -81,21 +95,13 @@ function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
       style={{ width: size, height: size }}
       aria-label="Student avatar"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      
       <img
         src={src}
         alt={s.name}
         className="h-full w-full object-cover"
         loading="lazy"
       />
-
-      {/* If you ever want initials fallback instead of always image, use this:
-      {src ? (
-        <img src={src} alt={s.name} className="h-full w-full object-cover" loading="lazy" />
-      ) : (
-        <span className="text-sm font-bold">{initials}</span>
-      )}
-      */}
     </div>
   );
 }
@@ -326,7 +332,132 @@ export default function LivePage() {
 
   /* ------------------------------ render ------------------------------ */
 
-  if (loading) return null;
+  if (loading)
+  return (
+    <div className="min-h-screen app-surface app-bg">
+      <Navbar />
+
+      <GameSubNavbar
+        title="Loading…"
+        canStartLive={false}
+        liveBlockReason=""
+      />
+
+      <main className="mx-auto max-w-6xl px-4 pb-10 pt-6 sm:pt-8">
+        <div className="grid gap-4 lg:grid-cols-[420px_1fr]">
+          {/* LEFT skeleton */}
+          <section
+            className="
+              relative overflow-hidden rounded-3xl
+              border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
+              dark:border-slate-800/70 dark:bg-slate-950/45
+            "
+          >
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+                backgroundSize: "18px 18px",
+              }}
+            />
+            <div className="pointer-events-none absolute -left-20 -top-20 h-56 w-56 rounded-full bg-[#00D4FF]/14 blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 -bottom-24 h-56 w-56 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+
+            <div className="relative space-y-5">
+              <div className="flex items-start gap-3">
+                <SkeletonBox className="h-12 w-12 rounded-2xl" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <SkeletonLine w="w-32" h="h-4" />
+                  <SkeletonLine w="w-64" h="h-3" />
+                </div>
+              </div>
+
+              <div
+                className="
+                  rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm
+                  dark:border-slate-800/70 dark:bg-slate-950/55
+                  flex items-center justify-center
+                "
+              >
+                {/* QR placeholder */}
+                <SkeletonBox className="h-[260px] w-[260px] rounded-2xl" />
+              </div>
+
+              <div className="flex items-start gap-3">
+                <SkeletonBox className="h-12 w-12 rounded-2xl" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <SkeletonLine w="w-24" h="h-4" />
+                  <SkeletonLine w="w-40" h="h-10" />
+                </div>
+              </div>
+
+              <div className="pt-1">
+                <SkeletonBox className="h-11 w-full rounded-2xl" />
+                <div className="mt-2 flex justify-center">
+                  <SkeletonLine w="w-48" h="h-3" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* RIGHT skeleton */}
+          <section
+            className="
+              relative overflow-hidden rounded-3xl
+              border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
+              dark:border-slate-800/70 dark:bg-slate-950/45
+            "
+          >
+            <div
+              className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+                backgroundSize: "18px 18px",
+              }}
+            />
+            <div className="pointer-events-none absolute -left-20 -top-20 h-56 w-56 rounded-full bg-[#00D4FF]/14 blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 -bottom-24 h-56 w-56 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+
+            <div className="relative">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <SkeletonLine w="w-28" h="h-4" />
+                </div>
+                <SkeletonLine w="w-10" h="h-6" />
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="
+                      rounded-3xl border border-slate-200/70 bg-white/70 p-3 shadow-sm backdrop-blur
+                      dark:border-slate-800/70 dark:bg-slate-950/55
+                    "
+                  >
+                    <div className="flex items-center gap-3">
+                      <SkeletonBox className="h-11 w-11 rounded-full" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <SkeletonLine w="w-28" h="h-4" />
+                        <SkeletonLine w="w-16" h="h-3" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4">
+                <SkeletonLine w="w-72" h="h-3" />
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
   if (!valid || !course || !game) return <div className="p-6">Invalid course/game.</div>;
   if (!pin) return <div className="p-6">Creating live session…</div>;

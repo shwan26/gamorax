@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getQuestions, type Question } from "@/src/lib/questionStorage";
 import { socket } from "@/src/lib/socket";
-
 import { getLiveStateByPin, type LiveReportRow, saveLiveReport } from "@/src/lib/liveStorage";
 import LecturerLiveLayout from "./LecturerLiveLayout";
+import { supabase } from "@/src/lib/supabaseClient";
 
 /* ---------------- helpers ---------------- */
 
@@ -436,6 +436,12 @@ export default function LecturerLiveFlow({
 
     const onFinal = (p: any) => {
       (async () => {
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) {
+          console.warn("Not logged in - cannot save report");
+          return;
+        }
+
         const lb = Array.isArray(p?.leaderboard) ? p.leaderboard : [];
         if (lb.length > 0) setRanked(lb);
         setStatus("final");
@@ -453,23 +459,38 @@ export default function LecturerLiveFlow({
 
         const nowIso = new Date().toISOString();
 
-        let lastQuestionAt = nowIso;
+        // inside onFinal
+        let sessionId: string | null = null;
         try {
           if (pin) {
             const st = await getLiveStateByPin(pin);
-            if (st?.questionStartedAt) lastQuestionAt = st.questionStartedAt;
+            sessionId = st?.sessionId ?? null;
           }
         } catch {}
 
-        saveLiveReport({
+        if (!sessionId) {
+          console.warn("No sessionId found - cannot save report (RLS requires it)");
+          return;
+        }
+
+        await saveLiveReport({
           id: crypto.randomUUID(),
-          gameId,
-          pin: pin || "(missing)",
+          sessionId,               // ✅ important for RLS
+          quizId: gameId,           // ⚠️ make sure gameId is your quiz_id; otherwise use game.quizId
+          pin,
+
+          courseCode: course?.courseCode ?? null,
+          courseName: course?.courseName ?? null,
+          section: course?.section ?? null,
+          semester: course?.semester ?? null,
+          quizTitle: game?.quizNumber ?? null,
+
           totalQuestions: questions.length,
-          startedAt: undefined,
-          lastQuestionAt,
-          savedAt: nowIso,
-          rows,
+
+          rows,                     // ✅ FIX
+          // stats optional; will auto compute if you omit it
+          finishedAt: nowIso,
+          createdAt: nowIso,
         });
       })();
     };
