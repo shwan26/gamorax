@@ -49,6 +49,14 @@ export default function CreateGamePage() {
   const [sourceGameId, setSourceGameId] = useState<string>(""); // selected game from that course
 
   const loadingAny = loadingGames || loadingCourses;
+  const currentCourse = useMemo(() => {
+    return courses.find((c) => c.id === courseId) ?? null;
+  }, [courses, courseId]);
+
+  const currentCourseLabel = useMemo(() => {
+    return formatCourseLabel(currentCourse);
+  }, [currentCourse]);
+
 
   async function requireUserOrRedirect(nextPath: string) {
     const { data } = await supabase.auth.getUser();
@@ -211,7 +219,11 @@ export default function CreateGamePage() {
                     Create game
                   </h2>
                   <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-300">
-                    Create a new game in this course, or copy from another course.
+                    Create a new game in{" "}
+                    <span className="font-semibold text-slate-900 dark:text-slate-50">
+                      {loadingCourses ? "this course..." : currentCourseLabel}
+                    </span>
+                    , or copy from another game.
                   </p>
                 </div>
               </div>

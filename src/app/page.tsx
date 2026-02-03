@@ -163,18 +163,19 @@ export default function HomePage() {
         {/* CTAs */}
         <div className="mt-8 grid gap-4 sm:mt-10 sm:gap-5 md:mt-12 md:grid-cols-2">
           <RoleCard
-            href="/login"
+            href={`/login?role=lecturer&next=${encodeURIComponent("/dashboard")}`}
             title="Lecturer"
             subtitle="Create games and host live sessions."
             icon={GraduationCap}
           />
           <RoleCard
-            href="/join"
+            href={`/login?role=student&next=${encodeURIComponent("/me")}`}
             title="Student"
             subtitle="Join instantly and answer on your device."
             icon={UserRound}
           />
         </div>
+
 
         {/* features */}
         <div className="mt-8 grid gap-4 sm:mt-10 md:mt-12 md:grid-cols-3">
