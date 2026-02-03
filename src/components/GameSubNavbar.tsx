@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Settings, Radio } from "lucide-react";
+import { ArrowLeft, Settings, Radio, Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export default function GameSubNavbar({
@@ -24,6 +24,7 @@ export default function GameSubNavbar({
 
   const base = `/course/${courseId}/game/${gameId}`;
   const isSetting = pathname.startsWith(`${base}/setting`);
+  const isPreview = pathname.startsWith(`${base}/preview`);
   const isLive = pathname.startsWith(`${base}/live`);
 
   const [liveErr, setLiveErr] = useState<string | null>(null);
@@ -115,6 +116,14 @@ export default function GameSubNavbar({
             >
               <Settings className="h-4 w-4" />
               <span>Setting</span>
+            </Link>
+
+            <Link
+              href={`${base}/preview/question`}
+              className={`${common} ${isPreview ? activeCls : inactiveCls}`}
+            >
+              <Eye className="h-4 w-4" />
+              <span>Preview</span>
             </Link>
 
             {/* ✅ Live blocks navigation when quiz not ready */}

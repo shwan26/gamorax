@@ -27,6 +27,13 @@ function fmt(iso?: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+function fmtMinutes(seconds?: number) {
+  const s = Number(seconds ?? 0);
+  if (!Number.isFinite(s) || s <= 0) return "0.0";
+  return (s / 60).toFixed(1);
+}
+
+
 type HistoryRow = {
   id: string;
   pin: string;
@@ -167,7 +174,7 @@ export default function ReportHistoryPage() {
               Report History
             </h3>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {game?.quizNumber ?? "-"} • {totalQ} questions • {reports.length} reports
+              {game?.quizNumber ?? "-"} |    {reports.length} reports
             </p>
           </div>
         </div>
@@ -183,7 +190,7 @@ export default function ReportHistoryPage() {
                 <Th label="PIN" sort="pin" />
                 <Th label="#Students" sort="students" right />
                 <Th label="Avg Score" sort="avgScore" right />
-                <Th label="Avg Time (s)" sort="avgTime" right />
+                <Th label="Avg Time (min)" sort="avgTime" right />
                 <Th label="Avg Points" sort="avgPoints" right />
                 <th className="px-4 py-3 text-right text-xs font-semibold tracking-wide text-slate-600 dark:text-slate-300">
                   Detail
@@ -220,8 +227,9 @@ export default function ReportHistoryPage() {
                   </td>
 
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                    {r.avgTime}
+                    {fmtMinutes(r.avgTime)}
                   </td>
+
 
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#2563EB] dark:text-[#A7F3FF]">
                     {r.avgPoints}

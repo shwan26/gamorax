@@ -48,6 +48,87 @@ function fmt(iso?: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+function fmtMinutes(seconds?: number, digits = 1) {
+  const s = Number(seconds ?? 0);
+  if (!Number.isFinite(s) || s <= 0) return (0).toFixed(digits);
+  return (s / 60).toFixed(digits);
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  min,
+  avg,
+  max,
+  unit,
+  accentClass,
+}: {
+  icon: any;
+  label: string;
+  min: string | number;
+  avg: string | number;
+  max: string | number;
+  unit?: string;
+  accentClass?: string;
+}) {
+  const U = unit ? (
+    <span className="ml-1 text-[10px] font-semibold text-slate-400">{unit}</span>
+  ) : null;
+
+  const valCls = ["tabular-nums font-semibold", accentClass ?? "text-slate-900 dark:text-slate-50"].join(" ");
+
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white/50 px-3 py-2.5 text-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40">
+      <div className="flex items-center gap-2.5">
+        <div className="h-8 w-8 rounded-2xl border border-slate-200/70 bg-white/70 p-1.5 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/45">
+          <Icon className="h-5 w-5 text-slate-500 dark:text-slate-300" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 truncate">
+            {label}
+          </div>
+
+          {/* ✅ min/avg/max same row */}
+          <div className="mt-1.5 grid grid-cols-3 gap-2">
+            <div className="flex items-baseline justify-between rounded-xl border border-slate-200/60 bg-white/55 px-2 py-1.5 dark:border-slate-800/60 dark:bg-slate-950/45">
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                min
+              </span>
+              <span className={valCls}>
+                {min}
+                {U}
+              </span>
+            </div>
+
+            <div className="flex items-baseline justify-between rounded-xl border border-slate-200/60 bg-white/55 px-2 py-1.5 dark:border-slate-800/60 dark:bg-slate-950/45">
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                avg
+              </span>
+              <span className={valCls}>
+                {avg}
+                {U}
+              </span>
+            </div>
+
+            <div className="flex items-baseline justify-between rounded-xl border border-slate-200/60 bg-white/55 px-2 py-1.5 dark:border-slate-800/60 dark:bg-slate-950/45">
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                max
+              </span>
+              <span className={valCls}>
+                {max}
+                {U}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
 function escapeCsv(v: any) {
   const s = String(v ?? "");
   if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
@@ -472,48 +553,37 @@ const totalQ = questions.length || report?.totalQuestions || 0;
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200">
-            <div className="flex items-start gap-3">
-              <BarChart3 className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Score (min / avg / max)
-                </div>
-                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50 tabular-nums">
-                  {s.score.min} / {s.score.avg} / {s.score.max}
-                </div>
-              </div>
-            </div>
-          </div>
+          <StatCard
+            icon={BarChart3}
+            label={`Score (out of ${totalQ})`}
+            min={s.score.min}
+            avg={s.score.avg}
+            max={s.score.max}
+            accentClass="text-slate-900 dark:text-slate-50"
+          />
 
-          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200">
-            <div className="flex items-start gap-3">
-              <Coins className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Points (min / avg / max)
-                </div>
-                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50 tabular-nums">
-                  {s.points.min} / {s.points.avg} / {s.points.max}
-                </div>
-              </div>
-            </div>
-          </div>
+          <StatCard
+            icon={Coins}
+            label="Points"
+            min={s.points.min}
+            avg={s.points.avg}
+            max={s.points.max}
+            accentClass="text-[#2563EB] dark:text-[#A7F3FF]"
+          />
 
-          <div className="rounded-2xl border border-slate-200/70 bg-white/55 p-4 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-200 sm:col-span-3">
-            <div className="flex items-start gap-3">
-              <Timer className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-              <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  Time spent (seconds) — min / avg / max
-                </div>
-                <div className="mt-0.5 font-semibold text-slate-900 dark:text-slate-50 tabular-nums">
-                  {s.timeSpent.min} / {s.timeSpent.avg} / {s.timeSpent.max}
-                </div>
-              </div>
-            </div>
+          <div className="sm:col-span-3">
+            <StatCard
+              icon={Timer}
+              label="Time spent"
+              min={fmtMinutes(s.timeSpent.min)}
+              avg={fmtMinutes(s.timeSpent.avg)}
+              max={fmtMinutes(s.timeSpent.max)}
+              unit="min"
+              accentClass="text-[#2563EB] dark:text-[#A7F3FF]"
+            />
           </div>
         </div>
+
 
         {/* table */}
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200/70 bg-white/60 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/40">
@@ -526,7 +596,7 @@ const totalQ = questions.length || report?.totalQuestions || 0;
                   <Th label="Name" sort="name" />
                   <Th label={`Score (${totalQ})`} sort="score" right />
                   <Th label="Points" sort="points" right />
-                  <Th label="Time Spent (s)" sort="timeSpent" right />
+                  <Th label="Time Spent (min)" sort="timeSpent" right />
                 </tr>
               </thead>
 
@@ -566,7 +636,7 @@ const totalQ = questions.length || report?.totalQuestions || 0;
                       </td>
 
                       <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#2563EB] dark:text-[#A7F3FF]">
-                        {r.timeSpent}
+                        {fmtMinutes(r.timeSpent)}
                       </td>
                     </tr>
                   );

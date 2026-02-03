@@ -1,3 +1,6 @@
+// src/lib/liveStorage.ts
+import { supabase } from "@/src/lib/supabaseClient";
+
 /* =========================
    LIVE SOCKET TYPES
 ========================= */
@@ -12,7 +15,7 @@ export type LiveQuestionPayloadBase = {
   type: LiveQuestionType;
   image?: string | null;
 
-  startAt: number;        // ms epoch
+  startAt: number; // ms epoch
   durationSec: number;
 };
 
@@ -20,50 +23,25 @@ export type LiveQuestionPayloadMC = LiveQuestionPayloadBase & {
   type: "multiple_choice" | "true_false";
   answers: string[];
   allowMultiple?: boolean;
-  correctIndices?: number[]; // optional (usually only lecturer knows)
+  correctIndices?: number[]; // lecturer-only usually
 };
 
 export type LiveQuestionPayloadMatching = LiveQuestionPayloadBase & {
   type: "matching";
   left: string[];
   right: string[];
-  // correctPairs can be lecturer-only
-  correctPairs?: { left: string; right: string }[];
+  correctPairs?: { left: string; right: string }[]; // lecturer-only
 };
 
 export type LiveQuestionPayloadInput = LiveQuestionPayloadBase & {
   type: "input";
-  acceptedAnswers?: string[];
+  acceptedAnswers?: string[]; // lecturer-only
 };
 
 export type LiveQuestionShowEvent = {
   pin: string;
   question: LiveQuestionPayloadMC | LiveQuestionPayloadMatching | LiveQuestionPayloadInput;
 };
-
-export type LiveAnswerSubmitEvent =
-  | {
-      pin: string;
-      studentId: string;
-      questionIndex: number;
-      indices: number[]; // MC/TF (and multi-correct)
-      timeUsed: number;
-    }
-  | {
-      pin: string;
-      studentId: string;
-      questionIndex: number;
-      value: string; // input
-      timeUsed: number;
-    }
-  | {
-      pin: string;
-      studentId: string;
-      questionIndex: number;
-      leftIndex: number;
-      rightIndex: number;
-      timeUsed: number;
-    };
 
 export type LiveRevealEvent =
   | {
@@ -88,7 +66,6 @@ export type LiveRevealEvent =
       maxTime: number;
     };
 
-
 export type LiveStudent = {
   studentId: string;
   name: string;
@@ -97,10 +74,9 @@ export type LiveStudent = {
 
 export type LiveAnswer = {
   studentId: string;
-  indices: number[];   // ✅ replaces answerIndex
-  timeUsed: number;    // seconds
+  indices: number[]; // for choice
+  timeUsed: number; // seconds
 };
-
 
 export type LiveScore = {
   correct: number;
@@ -110,295 +86,28 @@ export type LiveScore = {
 
 export type LiveStatus = "lobby" | "question" | "answer" | "final";
 
-export type LiveSession = {
-  id: string;
-  gameId: string;
+/**
+ * This type is now "DB state", not local state.
+ * (Students/answers/scores are fetched from Supabase when needed.)
+ */
+export type LiveSessionState = {
+  sessionId: string;
+  quizId: string;
   pin: string;
-  isActive: boolean;
-
   status: LiveStatus;
   questionIndex: number;
-
-  students: LiveStudent[];
-  answersByQuestion: Record<number, LiveAnswer[]>;
-  scores: Record<string, LiveScore>;
-
-  startedAt?: string;
-  endedAt?: string;
-
-  lastQuestionAt?: string; // save data with last question timestamp
+  totalQuestions: number;
+  currentQuestionId: string | null;
+  questionStartedAt: string | null;
+  questionDuration: number | null;
+  meta?: LiveMeta | null;
 };
 
-const STORAGE_KEY = "gamorax_live_sessions";
 
-function normalizeAnswer(a: any): LiveAnswer {
-  const indices =
-    Array.isArray(a?.indices) ? a.indices.map((n: any) => Number(n)).filter(Number.isFinite)
-    : Number.isFinite(a?.answerIndex) ? [Number(a.answerIndex)]
-    : [];
+/* =========================
+   REPORT STORAGE (client)
+========================= */
 
-  return {
-    studentId: String(a?.studentId ?? ""),
-    indices,
-    timeUsed: Number.isFinite(a?.timeUsed) ? Number(a.timeUsed) : 0,
-  };
-}
-
-
-function normalizeSession(s: any): LiveSession {
-  return {
-    id: String(s?.id ?? crypto.randomUUID()),
-    gameId: String(s?.gameId ?? ""),
-    pin: String(s?.pin ?? ""),
-    isActive: typeof s?.isActive === "boolean" ? s.isActive : true,
-
-    status: (s?.status as LiveStatus) ?? "lobby",
-    questionIndex: Number.isFinite(s?.questionIndex) ? s.questionIndex : 0,
-
-    students: Array.isArray(s?.students) ? s.students : [],
-    answersByQuestion:
-      s?.answersByQuestion && typeof s.answersByQuestion === "object"
-        ? Object.fromEntries(
-            Object.entries(s.answersByQuestion).map(([k, arr]) => [
-              Number(k),
-              Array.isArray(arr) ? arr.map(normalizeAnswer) : [],
-            ])
-          )
-        : {},
-        scores: s?.scores && typeof s.scores === "object" ? s.scores : {},
-
-    startedAt: s?.startedAt,
-    endedAt: s?.endedAt,
-
-    lastQuestionAt: s?.lastQuestionAt, // ✅ save with last question timestamp
-  };
-}
-
-function normalizeReport(r: any): LiveReport {
-  const rows: LiveReportRow[] = Array.isArray(r?.rows) ? r.rows : [];
-
-  // stats might be missing or partially missing (old data)
-  const hasFullStats =
-    r?.stats &&
-    r.stats.score &&
-    r.stats.timeSpent &&
-    r.stats.points &&
-    typeof r.stats.score.avg === "number" &&
-    typeof r.stats.timeSpent.avg === "number" &&
-    typeof r.stats.points.avg === "number";
-
-  const stats: LiveReportStats = hasFullStats
-    ? r.stats
-    : computeLiveReportStats(rows);
-
-  return {
-    id: String(r?.id ?? crypto.randomUUID()),
-    gameId: String(r?.gameId ?? ""),
-    pin: String(r?.pin ?? ""),
-    totalQuestions: Number(r?.totalQuestions ?? 0),
-
-    startedAt: r?.startedAt,
-    lastQuestionAt: String(r?.lastQuestionAt ?? ""),
-    savedAt: String(r?.savedAt ?? ""),
-
-    rows,
-    stats,
-  };
-}
-
-
-
-function getAll(): LiveSession[] {
-  if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEY);
-  const raw = data ? JSON.parse(data) : [];
-  return Array.isArray(raw) ? raw.map(normalizeSession) : [];
-}
-
-function saveAll(sessions: LiveSession[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-}
-
-
-
-/* ---------- CURRENT SESSION PER GAME ---------- */
-export function setCurrentLivePin(gameId: string, pin: string) {
-  localStorage.setItem(`gamorax_live_current_${gameId}`, pin);
-}
-
-export function getCurrentLivePin(gameId: string) {
-  return localStorage.getItem(`gamorax_live_current_${gameId}`);
-}
-
-/* ---------- CREATE / GET ---------- */
-export function createLiveSession(gameId: string): LiveSession {
-  const pin = Math.floor(100000 + Math.random() * 900000).toString();
-
-  const session: LiveSession = {
-    id: crypto.randomUUID(),
-    gameId,
-    pin,
-    isActive: true,
-    status: "lobby",
-    questionIndex: 0,
-    students: [],
-    answersByQuestion: {},
-    scores: {},
-    startedAt: new Date().toISOString(),
-  };
-
-  const sessions = getAll();
-  sessions.push(session);
-  saveAll(sessions);
-
-  setCurrentLivePin(gameId, pin);
-  return session;
-}
-
-export function getLiveByPin(pin: string): LiveSession | null {
-  return getAll().find((s) => s.pin === pin && s.isActive) || null;
-}
-
-export function getCurrentLiveSession(gameId: string): LiveSession | null {
-  const pin = getCurrentLivePin(gameId);
-  if (!pin) return null;
-  return getLiveByPin(pin);
-}
-
-function updateSession(pin: string, updater: (s: LiveSession) => LiveSession) {
-  const sessions = getAll(); // already normalized
-  const idx = sessions.findIndex((s) => s.pin === pin);
-  if (idx === -1) return;
-
-  const current = normalizeSession(sessions[idx]);
-  sessions[idx] = normalizeSession(updater(current));
-  saveAll(sessions);
-}
-
-/* ---------- JOIN ---------- */
-export function joinLiveSession(pin: string, student: LiveStudent) {
-  updateSession(pin, (s) => {
-    const students = Array.isArray(s.students) ? s.students : [];
-
-    if (students.some((p) => p.studentId === student.studentId)) {
-      return { ...s, students };
-    }
-
-    return {
-      ...s,
-      students: [...students, student],
-      scores: {
-        ...s.scores,
-        [student.studentId]:
-          s.scores?.[student.studentId] || { correct: 0, points: 0, totalTime: 0 },
-      },
-    };
-  });
-}
-
-
-/* ---------- START / PHASE ---------- */
-export function startLive(pin: string) {
-  updateSession(pin, (s) => ({
-    ...s,
-    status: "question",
-    questionIndex: 0,
-  }));
-}
-
-export function setLiveStatus(pin: string, status: LiveStatus) {
-  updateSession(pin, (s) => ({ ...s, status }));
-}
-
-/* ---------- SUBMIT ANSWER ---------- */
-export function submitAnswer(pin: string, questionIndex: number, answer: LiveAnswer) {
-  updateSession(pin, (s) => {
-    const prev = s.answersByQuestion[questionIndex] || [];
-    if (prev.some((a) => a.studentId === answer.studentId)) return s;
-
-    return {
-      ...s,
-      answersByQuestion: {
-        ...s.answersByQuestion,
-        [questionIndex]: [...prev, answer],
-      },
-    };
-  });
-}
-
-
-export function setLastQuestionAt(pin: string, iso = new Date().toISOString()) {
-  updateSession(pin, (s) => ({ ...s, lastQuestionAt: iso }));
-}
-
-
-/* ---------- REVEAL (CALC POINTS) ---------- */
-function sameSet(a: number[], b: number[]) {
-  const A = new Set(a);
-  const B = new Set(b);
-  if (A.size !== B.size) return false;
-  for (const x of A) if (!B.has(x)) return false;
-  return true;
-}
-
-export function revealAndScoreQuestion(params: {
-  pin: string;
-  questionIndex: number;
-  correctIndices: number[]; // ✅ array now
-  maxTime: number;
-}) {
-  const { pin, questionIndex, correctIndices, maxTime } = params;
-
-  updateSession(pin, (s) => {
-    const answers = s.answersByQuestion[questionIndex] || [];
-    const nextScores: Record<string, LiveScore> = { ...s.scores };
-
-    for (const a of answers) {
-      const prev = nextScores[a.studentId] || { correct: 0, points: 0, totalTime: 0 };
-      const isCorrect = sameSet(a.indices ?? [], correctIndices ?? []);
-
-      const base = isCorrect ? 100 : 0;
-      const bonus = isCorrect ? Math.max(0, maxTime - a.timeUsed) : 0;
-
-      nextScores[a.studentId] = {
-        correct: prev.correct + (isCorrect ? 1 : 0),
-        points: prev.points + base + bonus,
-        totalTime: prev.totalTime + a.timeUsed,
-      };
-    }
-
-    return { ...s, status: "answer", scores: nextScores };
-  });
-}
-
-
-/* ---------- NEXT / FINAL ---------- */
-export function nextOrFinal(params: {
-  pin: string;
-  totalQuestions: number;
-}) {
-  const { pin, totalQuestions } = params;
-
-  updateSession(pin, (s) => {
-    const nextIndex = s.questionIndex + 1;
-
-    if (nextIndex >= totalQuestions) {
-      return {
-        ...s,
-        status: "final",
-        endedAt: new Date().toISOString(),
-      };
-    }
-
-    return {
-      ...s,
-      status: "question",
-      questionIndex: nextIndex,
-    };
-  });
-}
-
-/* ---------- REPORT STORAGE ---------- */
 export type LiveReportRow = {
   rank: number;
   studentId: string;
@@ -410,7 +119,6 @@ export type LiveReportRow = {
 
 export type LiveReportStats = {
   students: number;
-
   score: { min: number; max: number; avg: number };
   points: { min: number; max: number; avg: number };
   timeSpent: { min: number; max: number; avg: number };
@@ -430,7 +138,7 @@ export type LiveReport = {
   stats?: LiveReportStats;
 };
 
-const REPORT_KEY = "gamorax_live_reports";
+const REPORT_KEY = "gamorax_live_reports_v1";
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -438,30 +146,6 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   } catch {
     return fallback;
   }
-}
-
-function getAllReports(): LiveReport[] {
-  if (typeof window === "undefined") return [];
-
-  const raw = safeParse<any[]>(localStorage.getItem(REPORT_KEY), []);
-  const arr = Array.isArray(raw) ? raw : [];
-
-  const normalized = arr.map(normalizeReport);
-
-  // optional: write back if something changed (migrate old stats -> new stats)
-  // cheap check: if any report had missing stats.points
-  const needWriteBack = arr.some((r) => !(r?.stats?.points));
-  if (needWriteBack) {
-    localStorage.setItem(REPORT_KEY, JSON.stringify(normalized));
-  }
-
-  return normalized;
-}
-
-
-function writeAllReports(list: LiveReport[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(REPORT_KEY, JSON.stringify(list));
 }
 
 function round2(n: number) {
@@ -476,7 +160,7 @@ export function computeLiveReportStats(rows: LiveReportRow[]): LiveReportStats {
   const times = rows.map((r) => Number(r.totalTime || 0));
 
   const stat = (arr: number[]) => {
-    if (arr.length === 0) return { min: 0, max: 0, avg: 0 };
+    if (!arr.length) return { min: 0, max: 0, avg: 0 };
     const min = Math.min(...arr);
     const max = Math.max(...arr);
     const avg = arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -489,6 +173,18 @@ export function computeLiveReportStats(rows: LiveReportRow[]): LiveReportStats {
     points: stat(points),
     timeSpent: stat(times),
   };
+}
+
+function getAllReports(): LiveReport[] {
+  if (typeof window === "undefined") return [];
+  const raw = safeParse<any[]>(localStorage.getItem(REPORT_KEY), []);
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr as LiveReport[];
+}
+
+function writeAllReports(list: LiveReport[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(REPORT_KEY, JSON.stringify(list));
 }
 
 /** ✅ Save ONE report entry (history). */
@@ -509,25 +205,146 @@ export function saveLiveReport(report: LiveReport) {
   writeAllReports(all);
 }
 
-/** ✅ List all reports for a game (history) */
+/** (Optional helpers if you want them later) */
 export function getReportsByGame(gameId: string): LiveReport[] {
   return getAllReports()
     .filter((r) => r.gameId === gameId)
     .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
 }
 
-/** ✅ Get one report by id (detail) */
 export function getReportById(reportId: string): LiveReport | null {
   return getAllReports().find((r) => r.id === reportId) ?? null;
 }
 
-/** Keep this helper if you still want “latest” */
-export function getLatestLiveReportByGame(gameId: string): LiveReport | null {
-  const list = getReportsByGame(gameId);
-  return list[0] ?? null;
+
+/* =========================
+   SUPABASE HELPERS
+========================= */
+
+// 1) Read minimal live session state by pin (uses your RPC)
+export async function getLiveStateByPin(pin: string): Promise<LiveSessionState | null> {
+  const p = String(pin ?? "").trim();
+  if (!p) return null;
+
+  const { data, error } = await supabase.rpc("get_live_state_by_pin", { p_pin: p });
+  if (error) throw error;
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.session_id) return null;
+
+  return {
+    sessionId: row.session_id,
+    quizId: row.quiz_id,
+    pin: p,
+    status: row.status,
+    questionIndex: row.question_index,
+    totalQuestions: row.total_questions,
+    currentQuestionId: row.current_question_id ?? null,
+    questionStartedAt: row.question_started_at ?? null,
+    questionDuration: row.question_duration ?? null,
+    meta: null, // socket can send meta:set / session:meta; keep it in React state
+  };
 }
 
+// 2) Lecturer: create/reuse session (uses your RPC create_live_session(p_quiz_id))
+export async function createLiveSessionSupabase(quizId: string) {
+  const { data, error } = await supabase.rpc("create_live_session", { p_quiz_id: quizId });
+  if (error) throw error;
+  return data; // live_sessions row
+}
 
+// 3) Student join lobby (writes live_participants; RLS already enforces lobby + student)
+export async function joinLiveSessionSupabase(pin: string, student: LiveStudent) {
+  const state = await getLiveStateByPin(pin);
+  if (!state?.sessionId) throw new Error("PIN not active");
+
+  const { data: u } = await supabase.auth.getUser();
+  const uid = u?.user?.id;
+  if (!uid) throw new Error("Not authenticated");
+
+  const payload = {
+    session_id: state.sessionId,
+    profile_id: uid,
+    display_name: student.name,
+    student_id: student.studentId || null,
+    avatar_url: student.avatarSrc || null,
+  };
+
+  const { error } = await supabase.from("live_participants").upsert(payload, {
+    onConflict: "session_id,profile_id",
+  });
+  if (error) throw error;
+
+  return state;
+}
+
+// 4) Submit choice answer (MC/TF) via your RPC submit_live_answer_by_pin(pin, indices, time_used)
+export async function submitChoiceAnswerByPin(args: {
+  pin: string;
+  indices: number[];
+  timeUsed: number;
+}) {
+  const p = String(args.pin ?? "").trim();
+  if (!p) throw new Error("Missing pin");
+
+  const indices = Array.isArray(args.indices) ? args.indices : [];
+  const timeUsed = Number.isFinite(args.timeUsed) ? Number(args.timeUsed) : 0;
+
+  const { data, error } = await supabase.rpc("submit_live_answer_by_pin", {
+    p_pin: p,
+    p_answer_indices: indices,
+    p_time_used: timeUsed,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * OPTIONAL (recommended):
+ * If you add the generic RPC for input/matching later,
+ * you can use these immediately without changing pages again.
+ */
+export async function submitInputAnswerByPin(args: { pin: string; value: string; timeUsed: number }) {
+  const p = String(args.pin ?? "").trim();
+  const value = String(args.value ?? "");
+  const timeUsed = Number.isFinite(args.timeUsed) ? Number(args.timeUsed) : 0;
+
+  // expects you to create: submit_live_answer_generic_by_pin(pin, kind, payload, time_used)
+  const { data, error } = await supabase.rpc("submit_live_answer_generic_by_pin", {
+    p_pin: p,
+    p_kind: "input",
+    p_payload: { value },
+    p_time_used: timeUsed,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+export async function submitMatchingAnswerByPin(args: {
+  pin: string;
+  pairs: Record<number, number>;
+  timeUsed: number;
+}) {
+  const p = String(args.pin ?? "").trim();
+  const timeUsed = Number.isFinite(args.timeUsed) ? Number(args.timeUsed) : 0;
+
+  const { data, error } = await supabase.rpc("submit_live_answer_generic_by_pin", {
+    p_pin: p,
+    p_kind: "matching",
+    p_payload: { pairs: args.pairs ?? {} },
+    p_time_used: timeUsed,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
+/* =========================
+   LIVE META (client cache)
+   (kept for backward compatibility with old pages)
+========================= */
 
 export type LiveMeta = {
   gameId?: string;
@@ -538,21 +355,21 @@ export type LiveMeta = {
   semester?: string;
 };
 
-const KEY = "gamorax_live_meta_by_pin";
+const LIVE_META_KEY = "gamorax_live_meta_by_pin_v1";
 
-function readAll(): Record<string, LiveMeta> {
+function readAllLiveMeta(): Record<string, LiveMeta> {
   if (typeof window === "undefined") return {};
-  return safeParse<Record<string, LiveMeta>>(localStorage.getItem(KEY), {});
+  return safeParse<Record<string, LiveMeta>>(localStorage.getItem(LIVE_META_KEY), {});
 }
 
-function writeAll(obj: Record<string, LiveMeta>) {
+function writeAllLiveMeta(obj: Record<string, LiveMeta>) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(obj));
+  localStorage.setItem(LIVE_META_KEY, JSON.stringify(obj));
 }
 
 export function saveLiveMeta(pin: string, meta: any) {
-  if (!pin) return;
-  const all = readAll();
+  const p = String(pin ?? "").trim();
+  if (!p) return;
 
   const clean = (x: any) => {
     const v = String(x ?? "").trim();
@@ -568,12 +385,14 @@ export function saveLiveMeta(pin: string, meta: any) {
     semester: clean(meta?.semester),
   };
 
-  all[pin] = { ...(all[pin] ?? {}), ...next };
-  writeAll(all);
+  const all = readAllLiveMeta();
+  all[p] = { ...(all[p] ?? {}), ...next };
+  writeAllLiveMeta(all);
 }
 
 export function getLiveMeta(pin: string): LiveMeta | null {
-  if (!pin) return null;
-  const all = readAll();
-  return all[pin] ?? null;
+  const p = String(pin ?? "").trim();
+  if (!p) return null;
+  const all = readAllLiveMeta();
+  return all[p] ?? null;
 }

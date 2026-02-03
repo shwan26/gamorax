@@ -8,7 +8,14 @@ import type { Question } from "@/src/lib/questionStorage";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
 
-import { createAssignment, deleteAssignment, listAssignmentsByGame, type Assignment } from "@/src/lib/assignmentStorage";
+import {
+  createAssignment,
+  deleteAssignment,
+  listAssignmentsByGame,
+  type Assignment,
+} from "@/src/lib/assignmentStorage";
+
+/* ---------------- helpers ---------------- */
 
 async function sha256Hex(input: string) {
   const data = new TextEncoder().encode(input);
@@ -20,6 +27,33 @@ async function sha256Hex(input: string) {
 function fromLocalDatetimeValue(v: string) {
   if (!v) return undefined;
   return new Date(v).toISOString();
+}
+
+function Dots() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:0ms]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:120ms]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:240ms]" />
+    </span>
+  );
+}
+
+function SkeletonCards() {
+  return (
+    <div className="space-y-2">
+      {[0, 1].map((i) => (
+        <div
+          key={i}
+          className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/50"
+        >
+          <div className="h-4 w-40 animate-pulse rounded bg-slate-200/70 dark:bg-slate-800/60" />
+          <div className="mt-3 h-3 w-64 animate-pulse rounded bg-slate-200/70 dark:bg-slate-800/60" />
+          <div className="mt-4 h-10 w-full animate-pulse rounded-xl bg-slate-200/70 dark:bg-slate-800/60" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function AssignmentSettingPage() {
@@ -44,6 +78,9 @@ export default function AssignmentSettingPage() {
   // assignments list from DB
   const [list, setList] = useState<Assignment[]>([]);
   const [loadingList, setLoadingList] = useState(true);
+
+  // create animation
+  const [creating, setCreating] = useState(false);
 
   // load game
   useEffect(() => {
@@ -130,7 +167,7 @@ export default function AssignmentSettingPage() {
     return `${window.location.origin}/assignment/${a.publicToken}`;
   }
 
-  async function copy(text: string) {
+  async function copyText(text: string) {
     try {
       await navigator.clipboard.writeText(text);
       alert("Copied!");
@@ -150,6 +187,7 @@ export default function AssignmentSettingPage() {
     const raw = passcode.trim();
     const passcodeHash = raw ? await sha256Hex(raw) : undefined;
 
+    setCreating(true);
     try {
       await createAssignment({
         courseId,
@@ -162,11 +200,16 @@ export default function AssignmentSettingPage() {
       });
 
       setPasscode("");
-      alert("Assignment created.");
+
+      // ✅ wait until list refresh so lecturer sees the new link appear
       await reloadList();
+
+      alert("Assignment created.");
     } catch (e: any) {
       console.error(e);
       alert(e?.message ?? "Create failed");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -191,6 +234,12 @@ export default function AssignmentSettingPage() {
         </p>
       </div>
 
+      {creating ? (
+        <div className="rounded-2xl border border-sky-200/70 bg-sky-50/70 px-4 py-3 text-sm font-bold text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/25 dark:text-sky-200">
+          Creating assignment and generating link <Dots />
+        </div>
+      ) : null}
+
       <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/50">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
@@ -201,7 +250,8 @@ export default function AssignmentSettingPage() {
                 titleTouchedRef.current = true;
                 setTitle(e.target.value);
               }}
-              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm dark:border-slate-800/70 dark:bg-slate-950/35"
+              disabled={creating}
+              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35"
             />
             {game?.quizNumber ? (
               <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
@@ -218,7 +268,8 @@ export default function AssignmentSettingPage() {
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
               placeholder="e.g. 1234"
-              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm dark:border-slate-800/70 dark:bg-slate-950/35"
+              disabled={creating}
+              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35"
             />
             <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
               Students must enter this passcode before starting.
@@ -233,7 +284,8 @@ export default function AssignmentSettingPage() {
               type="datetime-local"
               value={opensAt}
               onChange={(e) => setOpensAt(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm dark:border-slate-800/70 dark:bg-slate-950/35"
+              disabled={creating}
+              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35"
             />
           </div>
 
@@ -245,7 +297,8 @@ export default function AssignmentSettingPage() {
               type="datetime-local"
               value={dueAt}
               onChange={(e) => setDueAt(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm dark:border-slate-800/70 dark:bg-slate-950/35"
+              disabled={creating}
+              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35"
             />
           </div>
 
@@ -259,7 +312,8 @@ export default function AssignmentSettingPage() {
               max={6 * 60 * 60}
               value={durationSec}
               onChange={(e) => setDurationSec(Number(e.target.value))}
-              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm dark:border-slate-800/70 dark:bg-slate-950/35"
+              disabled={creating}
+              className="mt-1 w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35"
             />
           </div>
 
@@ -267,10 +321,27 @@ export default function AssignmentSettingPage() {
             <button
               type="button"
               onClick={handleCreate}
-              disabled={loadingQs}
-              className="w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm font-bold shadow-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800/70 dark:bg-slate-950/35 dark:hover:bg-slate-950/55"
+              disabled={loadingQs || creating}
+              className="
+                w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5
+                text-sm font-bold shadow-sm hover:bg-white
+                disabled:cursor-not-allowed disabled:opacity-60
+                dark:border-slate-800/70 dark:bg-slate-950/35 dark:hover:bg-slate-950/55
+                inline-flex items-center justify-center gap-2
+              "
             >
-              {loadingQs ? "Loading questions..." : "Create assignment"}
+              {loadingQs ? (
+                <>
+                  Loading questions <Dots />
+                </>
+              ) : creating ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent dark:border-slate-500 dark:border-t-transparent" />
+                  Creating <Dots />
+                </>
+              ) : (
+                "Create assignment"
+              )}
             </button>
           </div>
         </div>
@@ -279,8 +350,8 @@ export default function AssignmentSettingPage() {
       <div className="space-y-3">
         <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-50">Existing</h3>
 
-        {loadingList ? (
-          <div className="text-sm text-slate-600 dark:text-slate-300">Loading...</div>
+        {loadingList || creating ? (
+          <SkeletonCards />
         ) : list.length === 0 ? (
           <div className="text-sm text-slate-600 dark:text-slate-300">No assignments yet.</div>
         ) : (
@@ -312,7 +383,7 @@ export default function AssignmentSettingPage() {
 
                         <button
                           type="button"
-                          onClick={() => void copy(link)}
+                          onClick={() => void copyText(link)}
                           className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
                         >
                           <Copy className="h-4 w-4" /> Copy
@@ -325,6 +396,7 @@ export default function AssignmentSettingPage() {
                       onClick={() => void handleDelete(a.id)}
                       className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200/80 bg-white/70 text-red-600 shadow-sm hover:bg-white dark:border-red-900/40 dark:bg-slate-950/40 dark:text-red-400"
                       title="Delete"
+                      disabled={creating}
                     >
                       <Trash2 className="h-5 w-5" />
                     </button>
