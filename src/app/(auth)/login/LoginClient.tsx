@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Navbar from "@/src/components/Navbar";
 import GradientButton from "@/src/components/GradientButton";
@@ -40,6 +40,7 @@ export default function LoginPage() {
   const iconChip = "border-slate-200/80 bg-white/90 dark:border-slate-700/80 dark:bg-slate-950/70";
 
   const darkFieldBg = "dark:bg-slate-950/60";
+  const redirectedRef = useRef(false);
 
   const ui = useMemo(() => {
     if (role === "student") {
@@ -61,16 +62,45 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    if (redirectedRef.current) return;
     let alive = true;
+
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      if (data.session) router.replace(nextUrl);
+        // Avoid running during fast refresh re-mount storms
+        const { data } = await supabase.auth.getSession();
+        if (!alive) return;
+
+        if (!data.session) return;
+
+        // ✅ verify role before redirecting to nextUrl
+        const { data: profile, error } = await supabase
+        .from("my_profile_api")
+        .select("role")
+        .single();
+
+        if (!alive) return;
+
+        // if profile fetch fails, don't redirect (prevents ping-pong)
+        if (error || !profile?.role) return;
+
+        // if role mismatch, sign out and stay on login
+        if (profile.role !== role) {
+        await supabase.auth.signOut();
+        return;
+        }
+
+        redirectedRef.current = true;
+        router.replace(nextUrl);
+
     })();
+
     return () => {
-      alive = false;
+        alive = false;
+        
     };
-  }, [router, nextUrl]);
+    
+    }, [nextUrl, role, router]);
+
 
   async function onLogin() {
     if (submitting) return;
