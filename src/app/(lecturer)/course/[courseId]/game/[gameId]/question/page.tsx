@@ -16,7 +16,7 @@ import {
 import QuestionList from "@/src/components/question-edit/QuestionList";
 import QuestionEditorForm from "@/src/components/question-edit/QuestionEditorForm";
 import DeleteModal from "@/src/components/question-edit/DeleteModal";
-
+import QuestionPageSkeleton from "@/src/components/skeletons/QuestionPageSkeleton";
 import { supabase } from "@/src/lib/supabaseClient";
 
 /* ------------------------------ helpers ------------------------------ */
@@ -163,7 +163,7 @@ export default function QuestionPage() {
     if (!courseId || !gameId) return;
 
     setLoading(true);
-
+    
     const ok = await requireLecturerOrRedirect(`/course/${courseId}/game/${gameId}/question`);
     if (!ok) return;
 
@@ -503,7 +503,7 @@ export default function QuestionPage() {
     setDragIndex(null);
   }
 
-  if (loading) return null;
+  if (loading) return <QuestionPageSkeleton />;
   if (!valid || !course || !game || !activeQuestion) return null;
 
   return (

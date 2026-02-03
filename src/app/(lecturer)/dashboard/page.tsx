@@ -100,23 +100,26 @@ function CreateCourseCard() {
   return (
     <Link
       href="/course/create"
+      aria-label="Create new course"
+      title="Create new course"
       className="
         group relative overflow-hidden rounded-3xl p-[1px]
-        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-        shadow-[0_12px_30px_rgba(37,99,235,0.10)]
+        bg-gradient-to-r from-[#00D4FF] to-[#00D4FF]
+        shadow-[0_0_0_1px_rgba(0,212,255,0.45),0_18px_55px_rgba(124,58,237,0.22)]
         transition-all hover:-translate-y-1
-        hover:shadow-[0_0_0_1px_rgba(56,189,248,0.30),0_18px_55px_rgba(56,189,248,0.16)]
-        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
+        hover:shadow-[0_0_0_2px_rgba(0,212,255,0.65),0_25px_80px_rgba(124,58,237,0.30)]
+        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/60
       "
     >
       <div
         className="
-          relative rounded-[23px] bg-white ring-1 ring-slate-200/70
-          dark:bg-[#071A33] dark:ring-slate-700/60
-          p-6
+          relative rounded-[23px]
+          border border-slate-200/80 bg-white/70 p-6 shadow-sm backdrop-blur
+          dark:border-slate-800/70 dark:bg-slate-950/45
           min-h-[140px]
         "
       >
+        
         <div
           className="pointer-events-none absolute inset-0 opacity-[0.05] dark:opacity-[0.10]"
           style={{
@@ -126,10 +129,17 @@ function CreateCourseCard() {
           }}
         />
 
+        {/* glow blobs (same palette) */}
+        <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-[#00D4FF]/18 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="pointer-events-none absolute -right-24 -bottom-24 h-72 w-72 rounded-full bg-[#7C3AED]/18 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+
         <div className="relative flex h-full flex-col">
           <div className="flex items-start gap-4">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/70 dark:bg-[#071A33]">
-              <Plus className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+            {/* icon badge: glassy like AnswerInput */}
+            <div className="rounded-2xl p-[1px] bg-gradient-to-br from-[#00D4FF] to-[#7C3AED] shadow-sm">
+              <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-3 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/45">
+                <Plus className="h-5 w-5 text-[#0B3B8F] dark:text-[#A7F3FF]" />
+              </div>
             </div>
 
             <div className="min-w-0 flex-1">
@@ -146,6 +156,7 @@ function CreateCourseCard() {
     </Link>
   );
 }
+
 
 export default function LecturerDashboard() {
   const router = useRouter();
@@ -165,49 +176,28 @@ export default function LecturerDashboard() {
       setLoading(true);
       setErrMsg("");
 
-      // must be logged in
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) {
-        router.replace(`/login?next=${encodeURIComponent("/dashboard")}`);
-        return;
-      }
-
-      // must be lecturer
-      const { data: prof, error: pErr } = await supabase
-        .from("my_profile_api")
-        .select("role")
-        .single();
-
-      if (pErr || !prof || prof.role !== "lecturer") {
-        await supabase.auth.signOut();
-        router.replace(`/login?next=${encodeURIComponent("/dashboard")}`);
-        return;
-      }
-
-      // load courses
-      let q = supabase.from("courses_api").select("*");
-      // try order by createdAt if present in the view
-      q = q.order("createdAt", { ascending: false });
-
-      const { data, error } = await q;
+      const { data, error } = await supabase
+        .from("courses_api")
+        .select("*")
+        .order("createdAt", { ascending: false });
 
       if (!alive) return;
 
       if (error) {
         setCourses([]);
         setErrMsg(error.message);
-        setLoading(false);
-        return;
+      } else {
+        setCourses((data ?? []) as Course[]);
       }
 
-      setCourses((data ?? []) as Course[]);
       setLoading(false);
     })();
 
     return () => {
       alive = false;
     };
-  }, [router]);
+  }, []);
+
 
   const filteredSorted = useMemo(() => {
     const q = query.trim().toLowerCase();

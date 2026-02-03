@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import Navbar from "@/src/components/LecturerNavbar";
 import Link from "next/link";
 import { supabase } from "@/src/lib/supabaseClient";
+import CoursePageSkeleton from "@/src/components/skeletons/CoursePageSkeleton";
+
 
 import {
   ArrowLeft,
@@ -185,29 +187,48 @@ function CreateGameCard({ courseId }: { courseId: string }) {
   return (
     <Link
       href={`/course/${courseId}/game/create`}
+      aria-label="Create new game"
+      title="Create new game"
       className="
         group relative overflow-hidden rounded-3xl p-[1px]
-        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
-        shadow-[0_12px_30px_rgba(37,99,235,0.10)]
+        bg-gradient-to-r from-[#00D4FF] to-[#00D4FF]
+        shadow-[0_0_0_1px_rgba(0,212,255,0.45),0_18px_55px_rgba(124,58,237,0.22)]
         transition-all hover:-translate-y-1
-        hover:shadow-[0_0_0_1px_rgba(56,189,248,0.30),0_18px_55px_rgba(56,189,248,0.16)]
-        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50
+        hover:shadow-[0_0_0_2px_rgba(0,212,255,0.65),0_25px_80px_rgba(124,58,237,0.30)]
+        focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/60
       "
     >
-      <div className="relative rounded-[23px] bg-white ring-1 ring-slate-200/70 dark:bg-[#071A33] dark:ring-slate-700/60 p-6 min-h-[120px]">
+      <div
+        className="
+          relative rounded-[23px]
+          border border-slate-200/80 bg-white/70 p-6 shadow-sm backdrop-blur
+          dark:border-slate-800/70 dark:bg-slate-950/45
+          min-h-[120px]
+        "
+      >
+        {/* dot pattern */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.05] dark:opacity-[0.10]"
+          className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
           style={{
             backgroundImage:
               "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
             backgroundSize: "18px 18px",
           }}
         />
+
+        {/* glow blobs (light blue + purple) */}
+        <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-[#00D4FF]/18 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="pointer-events-none absolute -right-24 -bottom-24 h-72 w-72 rounded-full bg-[#7C3AED]/18 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+
         <div className="relative flex h-full flex-col">
           <div className="flex items-start gap-4">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm dark:border-slate-700/70 dark:bg-[#071A33]">
-              <Plus className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+            {/* icon badge */}
+            <div className="rounded-2xl p-[1px] bg-gradient-to-br from-[#00D4FF] to-[#7C3AED] shadow-sm">
+              <div className="rounded-2xl bg-white/90 p-3 dark:bg-slate-950/70">
+                <Plus className="h-5 w-5 text-[#0B3B8F] dark:text-[#A7F3FF]" />
+              </div>
             </div>
+
             <div className="min-w-0 flex-1">
               <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
                 Create new game
@@ -222,6 +243,7 @@ function CreateGameCard({ courseId }: { courseId: string }) {
     </Link>
   );
 }
+
 
 /* ------------------------------ page ------------------------------ */
 
@@ -471,16 +493,6 @@ export default function CoursePage() {
               Setting
             </Link>
 
-            <Link
-              href={`/course/${courseId}/game/create`}
-              className="
-                inline-flex items-center gap-2 rounded-2xl bg-[#2563EB] px-4 py-2 text-sm font-semibold
-                text-white shadow-sm hover:bg-[#1D4ED8] transition-colors
-              "
-            >
-              <Plus className="h-4 w-4" />
-              Create game
-            </Link>
           </div>
         </div>
 
@@ -547,7 +559,7 @@ export default function CoursePage() {
           </div>
         </div>
 
-        {loading ? null : errMsg ? (
+        {loading ?  <CoursePageSkeleton /> : errMsg ? (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
             {errMsg}
           </div>
