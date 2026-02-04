@@ -17,22 +17,19 @@ export default function RoleGuard({
   const pathname = usePathname();
   const [ok, setOk] = useState(false);
 
-  // ✅ Different login routes for lecturer vs student
-  const loginPath = requiredRole === "lecturer" ? "/login" : "/auth/login";
-  const registerPath = requiredRole === "lecturer" ? "/register" : "/auth/register";
+  const loginHref = useMemo(() => {
+    const next = pathname || (requiredRole === "lecturer" ? "/dashboard" : "/me");
+    return `/login?role=${requiredRole}&next=${encodeURIComponent(next)}`;
+  }, [pathname, requiredRole]);
 
-  // ✅ Public pages we must allow inside guarded layouts (avoids redirect loop)
-  const PUBLIC_PATHS = useMemo(() => {
-    const common = requiredRole === "lecturer" ? ["/forgot-password"] : ["/auth/forgot-password"];
-    return requiredRole === "lecturer"
-      ? [loginPath, registerPath, ...common]
-      : [loginPath, registerPath, ...common];
-  }, [requiredRole, loginPath, registerPath]);
+  const PUBLIC_PATHS = useMemo(
+    () => ["/login", "/register", "/forgot-password", "/auth/forgot-password"],
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
 
-    // ✅ allow public routes
     if (pathname && PUBLIC_PATHS.includes(pathname)) {
       setOk(true);
       return;
@@ -41,14 +38,12 @@ export default function RoleGuard({
     (async () => {
       setOk(false);
 
-      // 1) must be logged in
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) {
-        router.replace(`${loginPath}?next=${encodeURIComponent(pathname || "/")}`);
+        router.replace(loginHref);
         return;
       }
 
-      // 2) must have correct role
       const { data: p, error } = await supabase
         .from("my_profile_api")
         .select("role")
@@ -56,7 +51,7 @@ export default function RoleGuard({
 
       if (error || !p || p.role !== requiredRole) {
         await supabase.auth.signOut();
-        router.replace(`${loginPath}?next=${encodeURIComponent(pathname || "/")}`);
+        router.replace(loginHref);
         return;
       }
 
@@ -66,7 +61,7 @@ export default function RoleGuard({
     return () => {
       cancelled = true;
     };
-  }, [router, pathname, requiredRole, loginPath, PUBLIC_PATHS]);
+  }, [router, pathname, loginHref, PUBLIC_PATHS, requiredRole]);
 
   if (!ok) return null;
   return <>{children}</>;

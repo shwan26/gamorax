@@ -242,7 +242,7 @@ export default function StudentQuestionPage() {
     (async () => {
       const live = await getOrCreateLiveStudent();
       if (!live) {
-        router.replace(`/auth/login?next=${encodeURIComponent(`/join/${pin}/question`)}`);
+        router.replace(`/login?role=student&next=${encodeURIComponent(`/join/${pin}/question`)}`);
         return;
       }
       setMe(live);

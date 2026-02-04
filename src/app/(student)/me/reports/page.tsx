@@ -325,7 +325,7 @@ export default function MeReportsPage() {
     (async () => {
       const cur = await getCurrentStudent();
       if (!cur) {
-        router.push("/auth/login");
+        router.push("/login?role=student");
         return;
       }
       setMe(cur);

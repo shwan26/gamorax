@@ -247,7 +247,7 @@ export default function MePage() {
     (async () => {
       const cur = await getCurrentStudent();
       if (!cur) {
-        router.push("/auth/login");
+        router.push("/login?role=student");
         return;
       }
       setMe(cur);
@@ -462,30 +462,6 @@ export default function MePage() {
               </div>
             )}
           </>
-        )}
-
-        {/* grid */}
-        <div className="mt-6 grid items-start gap-4 sm:mt-8 sm:grid-cols-2 lg:grid-cols-2">
-          {last.map((a) => (
-            <AttemptCard
-              key={a.id}
-              a={a}
-              onOpen={() => router.push("/me/reports")}
-            />
-          ))}
-        </div>
-        
-
-        {/* empty state */}
-        {filteredSorted.length === 0 && (
-          <div
-            className="
-              mt-10 rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-center text-sm text-slate-600 backdrop-blur
-              dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-300
-            "
-          >
-            No quiz attempts yet. Join a live quiz with PIN.
-          </div>
         )}
       </main>
     </div>

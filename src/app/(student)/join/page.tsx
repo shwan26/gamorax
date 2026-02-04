@@ -43,7 +43,7 @@ export default function StudentJoin() {
     const meNow = await getCurrentStudent();
 
     if (!meNow) {
-      router.push(`/auth/login?next=${encodeURIComponent(`/join/${pin}`)}`);
+      router.push(`/login?next=${encodeURIComponent(`/join/${pin}`)}`);
       return;
     }
 
@@ -199,7 +199,7 @@ export default function StudentJoin() {
                 {!me && (
                   <div className="grid grid-cols-2 gap-3 pt-1">
                     <button
-                      onClick={() => router.push("/auth/login")}
+                      onClick={() => router.push("/login?role=student")}
                       type="button"
                       className="
                         rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
@@ -212,7 +212,7 @@ export default function StudentJoin() {
                     </button>
 
                     <button
-                      onClick={() => router.push("/auth/register")}
+                      onClick={() => router.push("/register?role=student")}
                       type="button"
                       className="
                         rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
