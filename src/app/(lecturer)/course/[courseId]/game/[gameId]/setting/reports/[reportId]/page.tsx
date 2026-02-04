@@ -278,17 +278,42 @@ export default function ReportDetailPage() {
 
   const stats = useMemo(() => {
     if (!report) return null;
-    return report.stats ?? computeLiveReportStats(report.rows ?? []);
+
+    const computed = computeLiveReportStats(report.rows ?? []);
+    const raw = (report.stats ?? {}) as any;
+
+    return {
+      students: raw.students ?? computed.students,
+
+      score: {
+        min: raw.score?.min ?? computed.score.min,
+        avg: raw.score?.avg ?? computed.score.avg,
+        max: raw.score?.max ?? computed.score.max,
+      },
+
+      points: {
+        min: raw.points?.min ?? computed.points.min,
+        avg: raw.points?.avg ?? computed.points.avg,
+        max: raw.points?.max ?? computed.points.max,
+      },
+
+      timeSpent: {
+        min: raw.timeSpent?.min ?? computed.timeSpent.min,
+        avg: raw.timeSpent?.avg ?? computed.timeSpent.avg,
+        max: raw.timeSpent?.max ?? computed.timeSpent.max,
+      },
+    };
   }, [report]);
+
 
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const rankedRows: Row[] = useMemo(() => {
     if (!report) return [];
-    const rows: Row[] = (report.rows ?? []).map((r) => ({
+    const rows: Row[] = (report.rows ?? []).map((r, i) => ({
         rank: 0,
-        studentId: String(r.studentId ?? ""),
+        studentId: String(r.studentId ?? "").trim() || `unknown-${i}`,
         name: String(r.name ?? ""),
         score: Number(r.score ?? 0),
         points: Number(r.points ?? 0),
@@ -637,7 +662,8 @@ export default function ReportDetailPage() {
                   const top = r.rank <= 3;
                   return (
                     <tr
-                      key={r.studentId}
+                      key={`${report.id}:${r.studentId || "noid"}:${r.rank}`}
+
                       className={[
                         "border-b border-slate-200/60 dark:border-slate-800/60",
                         "hover:bg-slate-50/70 dark:hover:bg-slate-900/20 transition",

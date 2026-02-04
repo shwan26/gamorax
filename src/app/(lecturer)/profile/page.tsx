@@ -7,6 +7,79 @@ import { supabase } from "@/src/lib/supabaseClient";
 import { LogOut, Trash2, UserRound } from "lucide-react";
 import GradientButton from "@/src/components/GradientButton";
 
+function Skel({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={[
+        "animate-pulse rounded-xl bg-slate-200/80",
+        "dark:bg-slate-800/70",
+        className,
+      ].join(" ")}
+    />
+  );
+}
+function LecturerProfileSkeleton() {
+  return (
+    <div className="min-h-screen app-surface app-bg">
+      <Navbar />
+
+      <main className="mx-auto max-w-4xl px-4 pb-12 pt-8 sm:pt-12 sm:pb-16">
+        {/* header skeleton */}
+        <div className="text-center">
+          <Skel className="mx-auto h-10 w-40 rounded-2xl" />
+          <Skel className="mx-auto mt-4 h-4 w-72" />
+        </div>
+
+        {/* card skeleton */}
+        <div className="relative mt-8 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/70 p-6 shadow-sm backdrop-blur sm:p-8 dark:border-slate-800/70 dark:bg-slate-950/55">
+          <div className="relative">
+            <div className="flex items-center gap-4 sm:gap-5">
+              {/* avatar */}
+              <div className="rounded-3xl bg-white/90 p-2 dark:bg-slate-950/75">
+                <Skel className="h-16 w-16 rounded-2xl" />
+              </div>
+
+              {/* name/email */}
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skel className="h-5 w-48" />
+                <Skel className="h-4 w-64" />
+              </div>
+            </div>
+
+            {/* fields */}
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Skel className="h-4 w-24 rounded-lg" />
+                <Skel className="h-11 w-full rounded-2xl" />
+              </div>
+
+              <div className="space-y-2">
+                <Skel className="h-4 w-24 rounded-lg" />
+                <Skel className="h-11 w-full rounded-2xl" />
+              </div>
+            </div>
+
+            {/* buttons */}
+            <div className="mt-6 space-y-3">
+              <Skel className="h-12 w-full rounded-3xl" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Skel className="h-12 w-full rounded-3xl" />
+                <Skel className="h-12 w-full rounded-3xl" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* footer */}
+        <div className="mt-10 flex justify-center">
+          <Skel className="h-4 w-40" />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+
 function Field({
   label,
   value,
@@ -176,7 +249,8 @@ export default function LecturerProfile() {
   }
 
 
-  if (loading) return null;
+  if (loading) return <LecturerProfileSkeleton />;
+
 
   return (
     <div className="min-h-screen app-surface app-bg">

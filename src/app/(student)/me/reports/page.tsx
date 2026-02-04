@@ -24,6 +24,131 @@ function fmt(iso: string) {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
 
+function SkeletonLine({ w = "w-full" }: { w?: string }) {
+  return (
+    <div
+      className={[
+        "h-3 rounded-full bg-slate-200/80 animate-pulse",
+        "dark:bg-slate-800/70",
+        w,
+      ].join(" ")}
+    />
+  );
+}
+
+function SkeletonPill({ w = "w-24" }: { w?: string }) {
+  return (
+    <div
+      className={[
+        "h-6 rounded-full bg-slate-200/80 animate-pulse",
+        "dark:bg-slate-800/70",
+        w,
+      ].join(" ")}
+    />
+  );
+}
+
+function AttemptRowCardSkeleton() {
+  return (
+    <div
+      className="
+        relative w-full overflow-hidden rounded-3xl p-[1px]
+        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
+        shadow-[0_12px_30px_rgba(37,99,235,0.10)]
+      "
+    >
+      <div
+        className="
+          relative rounded-[23px] bg-white ring-1 ring-slate-200/70
+          dark:bg-[#071A33] dark:ring-slate-700/60
+          p-5
+        "
+      >
+        {/* dots */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+            backgroundSize: "18px 18px",
+          }}
+        />
+
+        {/* glow */}
+        <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-[#00D4FF]/14 blur-3xl opacity-40" />
+        <div className="pointer-events-none absolute -right-20 -bottom-20 h-56 w-56 rounded-full bg-[#2563EB]/12 blur-3xl opacity-40 dark:bg-[#3B82F6]/18" />
+
+        <div className="relative flex items-start gap-3">
+          <div className="hidden sm:flex h-12 w-12 rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60" />
+
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+              {/* left */}
+              <div className="min-w-0 flex-1 space-y-2">
+                <SkeletonLine w="w-3/4" />
+                <SkeletonLine w="w-2/3" />
+                <SkeletonLine w="w-1/3" />
+              </div>
+
+              {/* right stats */}
+              <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+                <div className="h-[78px] w-[92px] rounded-2xl border border-slate-200/80 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-950/60">
+                  <div className="space-y-2">
+                    <SkeletonLine w="w-2/3" />
+                    <SkeletonLine w="w-full" />
+                    <SkeletonLine w="w-1/2" />
+                  </div>
+                </div>
+
+                <div className="h-[78px] w-[92px] rounded-2xl border border-slate-200/80 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-950/60">
+                  <div className="space-y-2">
+                    <SkeletonLine w="w-2/3" />
+                    <SkeletonLine w="w-full" />
+                    <SkeletonLine w="w-1/2" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* chips */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <SkeletonPill w="w-28" />
+              <SkeletonPill w="w-24" />
+              <SkeletonPill w="w-20" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ToolbarSkeleton() {
+  return (
+    <div
+      className="
+        rounded-2xl border border-slate-200/70 bg-white/60 p-3 shadow-sm backdrop-blur
+        dark:border-slate-800/70 dark:bg-slate-950/45
+        w-full sm:w-auto
+      "
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        {/* search */}
+        <div className="w-full sm:w-72">
+          <div className="h-10 w-full rounded-xl bg-slate-200/80 animate-pulse dark:bg-slate-800/70" />
+        </div>
+
+        {/* sort */}
+        <div className="flex gap-2">
+          <div className="h-10 w-44 rounded-xl bg-slate-200/80 animate-pulse dark:bg-slate-800/70" />
+          <div className="h-10 w-10 rounded-xl bg-slate-200/80 animate-pulse dark:bg-slate-800/70" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 type SortKey = "finishedAt" | "score" | "points" | "courseCode" | "quizTitle";
 type SortDir = "asc" | "desc";
 
@@ -345,11 +470,41 @@ export default function MeReportsPage() {
           </div>
         </div>
 
-        {loading && (
-          <div className="mt-6 text-sm text-slate-500 dark:text-slate-300">
-            Loading reports...
+        {loading ? (
+          <>
+            <div className="mt-6">
+              <ToolbarSkeleton />
+            </div>
+
+            <div className="mt-6 space-y-3 sm:mt-8">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <AttemptRowCardSkeleton key={i} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="mt-6 space-y-3 sm:mt-8">
+            {filteredSorted.length === 0 ? (
+              <div
+                className="
+                  rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-center text-sm text-slate-600 backdrop-blur
+                  dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-300
+                "
+              >
+                No reports found.
+              </div>
+            ) : (
+              filteredSorted.map((a) => (
+                <AttemptRowCard
+                  key={a.id}
+                  a={a}
+                  onOpen={() => router.push(`/me/reports`)}
+                />
+              ))
+            )}
           </div>
         )}
+
 
         {/* list */}
         <div className="mt-6 space-y-3 sm:mt-8">

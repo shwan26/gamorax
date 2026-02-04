@@ -13,7 +13,7 @@ import { getOrCreateLiveStudent, writeLiveStudent } from "@/src/lib/liveStudentS
 import { getAvatarSrc, toLiveStudent } from "@/src/lib/studentAvatar";
 import { randomSeed } from "@/src/lib/dicebear";
 import { deriveStudentIdFromEmail } from "@/src/lib/studentAuthStorage";
-import { saveLiveMeta } from "@/src/lib/liveStorage";
+import { joinLiveSessionSupabase, saveLiveMeta } from "@/src/lib/liveStorage";
 import { supabase } from "@/src/lib/supabaseClient";
 
 function DotPattern() {
@@ -88,7 +88,41 @@ export default function LobbyPage() {
   const s = socket;
 
   // ✅ Supabase access token for socket auth
+  const effectiveStudentId = (useDerivedId && canAutoDerive ? derivedId : studentIdManual).trim();
+
+  const displayName = useMemo(() => {
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    return [fn, ln].filter(Boolean).join(" ").trim();
+  }, [firstName, lastName]);
+
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  useEffect(() => {
+    if (!mounted) return;
+    if (!pin) return;
+    if (!ready) return;
+    if (!accessToken) return;
+    if (pinStatus !== "active") return;
+    if (!student) return;
+
+    (async () => {
+      try {
+        // IMPORTANT: join with final studentId/name (what you'll use in socket)
+        const sid = (effectiveStudentId || student.studentId || "").trim();
+        const nm = (displayName || student.name || "").trim();
+        if (!sid || !nm) return;
+
+        const studentToJoin = { ...student, studentId: sid, name: nm };
+        writeLiveStudent(studentToJoin);
+
+        await joinLiveSessionSupabase(pin, studentToJoin);
+      } catch (e) {
+        console.error("joinLiveSessionSupabase failed:", e);
+      }
+    })();
+  }, [mounted, pin, ready, accessToken, pinStatus, student, effectiveStudentId, displayName]);
+
+
 
   useEffect(() => {
     let alive = true;
@@ -162,16 +196,7 @@ export default function LobbyPage() {
     if (useDerivedId && canAutoDerive) setStudentIdManual(derivedId);
   }, [mounted, useDerivedId, canAutoDerive, derivedId]);
 
-  const effectiveStudentId = (useDerivedId && canAutoDerive ? derivedId : studentIdManual).trim();
   const avatarSrc = useMemo(() => getAvatarSrc(student, 96), [student]);
-
-  // ✅ Create full display name for live usage
-  const displayName = useMemo(() => {
-    const fn = firstName.trim();
-    const ln = lastName.trim();
-    return [fn, ln].filter(Boolean).join(" ").trim();
-  }, [firstName, lastName]);
-
   // ✅ Connect socket ONCE (with token) and keep it authenticated
   useEffect(() => {
     if (!mounted || !pin || !ready) return;
