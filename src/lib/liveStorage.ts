@@ -344,7 +344,9 @@ export async function getLiveStateByPin(pin: string): Promise<LiveSessionState |
       "id, quiz_id, pin, status, question_index, total_questions, current_question_id, question_started_at, question_duration"
     )
     .eq("pin", p)
-    .eq("is_active", true)
+    // ✅ remove is_active filter
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (error) throwNice(error);
@@ -363,6 +365,7 @@ export async function getLiveStateByPin(pin: string): Promise<LiveSessionState |
     meta: null,
   };
 }
+
 
 // 2) Lecturer: create/reuse session (uses your RPC create_live_session(p_quiz_id))
 export async function createLiveSessionSupabase(quizId: string) {

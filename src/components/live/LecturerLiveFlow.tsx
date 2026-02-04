@@ -71,6 +71,27 @@ export default function LecturerLiveFlow({
   const [questions, setQuestions] = useState<Question[]>([]);
   const [liveOrder, setLiveOrder] = useState<number[]>([]);
 
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode !== "live" || !pin) return;
+    let alive = true;
+
+    (async () => {
+      try {
+        const st = await getLiveStateByPin(pin);
+        if (alive) setSessionId(st?.sessionId ?? null);
+      } catch {
+        if (alive) setSessionId(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [mode, pin]);
+
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -460,38 +481,30 @@ export default function LecturerLiveFlow({
         const nowIso = new Date().toISOString();
 
         // inside onFinal
-        let sessionId: string | null = null;
-        try {
-          if (pin) {
-            const st = await getLiveStateByPin(pin);
-            sessionId = st?.sessionId ?? null;
-          }
-        } catch {}
+        const sid = sessionId ?? (await getLiveStateByPin(pin))?.sessionId ?? null;
 
-        if (!sessionId) {
-          console.warn("No sessionId found - cannot save report (RLS requires it)");
+        if (!sid) {
+          console.error("Cannot save report: sessionId is null (pin not found / session ended?)");
           return;
         }
 
         await saveLiveReport({
           id: crypto.randomUUID(),
-          sessionId,               // ✅ important for RLS
-          quizId: gameId,           // ⚠️ make sure gameId is your quiz_id; otherwise use game.quizId
+          sessionId: sid,
+          quizId: gameId,
           pin,
-
           courseCode: course?.courseCode ?? null,
           courseName: course?.courseName ?? null,
           section: course?.section ?? null,
           semester: course?.semester ?? null,
           quizTitle: game?.quizNumber ?? null,
-
           totalQuestions: questions.length,
-
-          rows,                     // ✅ FIX
-          // stats optional; will auto compute if you omit it
-          finishedAt: nowIso,
-          createdAt: nowIso,
+          rows,                 // ✅ REQUIRED by your saveLiveReport signature
+          stats: undefined,      // optional; function will compute
+          finishedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
         });
+
       })();
     };
 
