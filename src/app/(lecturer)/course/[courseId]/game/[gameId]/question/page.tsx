@@ -9,9 +9,10 @@ import GameSubNavbar from "@/src/components/GameSubNavbar";
 import {
   type Question,
   type Answer,
+  getQuestions,
+  saveQuestions,
   isQuestionComplete,
 } from "@/src/lib/questionStorage";
-
 
 import QuestionList from "@/src/components/question-edit/QuestionList";
 import QuestionEditorForm from "@/src/components/question-edit/QuestionEditorForm";
@@ -56,61 +57,9 @@ type GameRow = {
   shuffleAnswers: boolean;
 };
 
-type QuestionApiRow = {
-  id: string;
-  gameId: string;
-  position: number;
-  type: "multiple_choice" | "true_false" | "matching" | "input";
-  text: string;
-  image: string | null;
-  timeMode: "default" | "specific";
-  time: number;
-  matches: any | null; // jsonb
-  acceptedAnswers: string[] | null;
-};
 
-type AnswerApiRow = {
-  id: string;
-  questionId: string;
-  answerIndex: number;
-  text: string;
-  image: string | null;
-  correct: boolean;
-};
 
-function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Question {
-  const qType = row.type ?? "multiple_choice";
 
-  // MC/TF use answers table
-  let localAnswers: Answer[] = [];
-  if (qType === "multiple_choice" || qType === "true_false") {
-    const sorted = [...answers].sort((a, b) => a.answerIndex - b.answerIndex);
-    localAnswers = sorted.map((a) => ({
-      text: a.text ?? "",
-      correct: !!a.correct,
-      image: a.image ?? null,
-    }));
-
-    // Ensure we always have 4 slots for UI consistency
-    while (localAnswers.length < 4) localAnswers.push({ text: "", correct: false, image: null });
-    if (localAnswers.length > 4) localAnswers = localAnswers.slice(0, 4);
-  } else {
-    // matching/input: keep a dummy 4 answers so UI won't explode if it expects it
-    localAnswers = emptyAnswers(4);
-  }
-
-  return {
-    id: row.id,
-    type: qType,
-    text: row.text ?? "",
-    image: row.image ?? null,
-    answers: localAnswers,
-    matches: Array.isArray(row.matches) ? row.matches : (Array.from({ length: 5 }, () => ({ left: "", right: "" }))),
-    acceptedAnswers: Array.isArray(row.acceptedAnswers) ? row.acceptedAnswers : [""],
-    timeMode: row.timeMode ?? "specific",
-    time: Number(row.time ?? 60),
-  };
-}
 
 /* ------------------------------ page ------------------------------ */
 
@@ -163,7 +112,7 @@ export default function QuestionPage() {
     if (!courseId || !gameId) return;
 
     setLoading(true);
-    
+
     const ok = await requireLecturerOrRedirect(`/course/${courseId}/game/${gameId}/question`);
     if (!ok) return;
 
@@ -195,127 +144,40 @@ export default function QuestionPage() {
     }
     setGame(g as GameRow);
 
-    // load questions
-    const { data: qs, error: qErr } = await supabase
-      .from("questions_api")
-      .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers")
-      .eq("gameId", gameId)
-      .order("position", { ascending: true });
+    // ✅ now use shared storage (no duplicates)
+    const built = await getQuestions(gameId);
 
-    if (qErr) {
-      setLoading(false);
-      alert("Load questions error: " + qErr.message);
-      return;
-    }
+    if (built.length === 0) {
+      const first = createBlankQuestion(g.timer?.defaultTime ?? 60);
 
-    const qRows = (qs ?? []) as QuestionApiRow[];
+      // Create first question row
+      const { error: insErr } = await supabase.from("questions_api").insert({
+        id: first.id,
+        gameId,
+        position: 1,
+        type: first.type,
+        text: first.text,
+        image: first.image,
+        timeMode: first.timeMode,
+        time: first.time,
+        matches: first.matches ?? null,
+        acceptedAnswers: first.acceptedAnswers ?? null,
+      });
 
-    if (qRows.length === 0) {
-      const first = createBlankQuestion((g as GameRow).timer?.defaultTime ?? 60);
-
-      const { data: newQ, error: insErr } = await supabase
-        .from("questions_api")
-        .insert({
-          id: first.id,
-          gameId,
-          position: 1,
-          type: first.type,
-          text: first.text,
-          image: first.image,
-          timeMode: first.timeMode,
-          time: first.time,
-          matches: first.matches ?? null,
-          acceptedAnswers: first.acceptedAnswers ?? null,
-        })
-        .select("id")
-        .single();
-
-      // ✅ If duplicate position happens, someone already created it → just reload from DB
       if (insErr) {
-        const msg = insErr.message?.toLowerCase() ?? "";
-        if (msg.includes("questions_unique_position") || msg.includes("duplicate key")) {
-          // re-fetch questions and continue normally
-          const { data: qs2, error: qErr2 } = await supabase
-            .from("questions_api")
-            .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers")
-            .eq("gameId", gameId)
-            .order("position", { ascending: true });
-
-          if (qErr2) {
-            setLoading(false);
-            alert("Load questions error: " + qErr2.message);
-            return;
-          }
-
-          // continue with the normal flow:
-          const qRows2 = (qs2 ?? []) as QuestionApiRow[];
-          const qIds2 = qRows2.map((r) => r.id);
-
-          const { data: ans2, error: aErr2 } = await supabase
-            .from("answers_api")
-            .select("id, questionId, answerIndex, text, image, correct")
-            .in("questionId", qIds2)
-            .order("answerIndex", { ascending: true });
-
-          if (aErr2) {
-            setLoading(false);
-            alert("Load answers error: " + aErr2.message);
-            return;
-          }
-
-          const aRows2 = (ans2 ?? []) as AnswerApiRow[];
-          const built2 = qRows2.map((qr) => normalizeQuestion(qr, aRows2.filter((a) => a.questionId === qr.id)));
-
-          setQuestions(built2);
-          setActiveIndex(0);
-          setLoading(false);
-          return;
-        }
-
         setLoading(false);
         alert("Create first question error: " + insErr.message);
         return;
       }
 
-      // insert answers for MC
-      const payload = first.answers.map((a, idx) => ({
-        questionId: newQ.id,
-        answerIndex: idx,
-        text: a.text ?? "",
-        image: a.image ?? null,
-        correct: !!a.correct,
-      }));
-
-      const { error: aErr } = await supabase.from("answers_api").insert(payload);
-      if (aErr) console.warn("Insert default answers error:", aErr.message);
+      // Save answers using shared save (will do 3..5 logic correctly)
+      await saveQuestions(gameId, [first]);
 
       setQuestions([first]);
       setActiveIndex(0);
       setLoading(false);
       return;
     }
-
-
-    // load all answers for these questions (one query)
-    const qIds = qRows.map((r) => r.id);
-    const { data: ans, error: aErr } = await supabase
-      .from("answers_api")
-      .select("id, questionId, answerIndex, text, image, correct")
-      .in("questionId", qIds)
-      .order("answerIndex", { ascending: true });
-
-    if (aErr) {
-      setLoading(false);
-      alert("Load answers error: " + aErr.message);
-      return;
-    }
-
-    const aRows = (ans ?? []) as AnswerApiRow[];
-
-    const built = qRows.map((qr) => {
-      const thisAnswers = aRows.filter((a) => a.questionId === qr.id);
-      return normalizeQuestion(qr, thisAnswers);
-    });
 
     setQuestions(built);
     setActiveIndex(0);
@@ -343,69 +205,7 @@ export default function QuestionPage() {
     saveTimer.current = window.setTimeout(async () => {
       try {
         setSaving(true);
-
-        // Ensure positions are 1..n in current order
-        const normalized = questions.map((q, i) => ({ ...q, _pos: i + 1 }));
-
-        for (const q of normalized) {
-          // upsert question
-          // ✅ views can't use upsert/onConflict. Do UPDATE first, if nothing updated -> INSERT.
-          const qPayload = {
-            id: q.id,
-            gameId,
-            position: (q as any)._pos,
-            type: q.type,
-            text: q.text ?? "",
-            image: q.image ?? null,
-            timeMode: q.timeMode,
-            time: q.time,
-            matches: q.type === "matching" ? (q.matches ?? null) : null,
-            acceptedAnswers: q.type === "input" ? (q.acceptedAnswers ?? null) : null,
-          };
-
-          const { data: updRows, error: updErr } = await supabase
-            .from("questions_api")
-            .update(qPayload)
-            .eq("id", q.id)
-            .select("id");
-
-          if (updErr) throw updErr;
-
-          if (!updRows || updRows.length === 0) {
-            const { error: insErr } = await supabase
-              .from("questions_api")
-              .insert(qPayload);
-
-            if (insErr) throw insErr;
-          }
-
-
-          // MC/TF answers: replace by delete+insert (simple + reliable)
-          if (q.type === "multiple_choice" || q.type === "true_false") {
-            const { error: delErr } = await supabase
-              .from("answers_api")
-              .delete()
-              .eq("questionId", q.id);
-
-            if (delErr) throw delErr;
-
-            const payload = (q.answers ?? emptyAnswers(4))
-              .slice(0, 4)
-              .map((a, idx) => ({
-                questionId: q.id,
-                answerIndex: idx,
-                text: a.text ?? "",
-                image: a.image ?? null,
-                correct: !!a.correct,
-              }));
-
-            const { error: insErr } = await supabase.from("answers_api").insert(payload);
-            if (insErr) throw insErr;
-          } else {
-            // matching/input: ensure no leftover answers
-            await supabase.from("answers_api").delete().eq("questionId", q.id);
-          }
-        }
+        await saveQuestions(gameId, questions);
       } catch (e: any) {
         console.error(e);
         alert("Auto-save error: " + (e?.message ?? String(e)));
@@ -418,6 +218,7 @@ export default function QuestionPage() {
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
   }, [valid, gameId, questions]);
+
 
   function addQuestion() {
     if (!game) return;
