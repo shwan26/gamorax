@@ -107,7 +107,6 @@ export type LiveSessionState = {
 /* =========================
    REPORT STORAGE (client)
 ========================= */
-
 export type LiveReportRow = {
   rank: number;
   studentId: string;
@@ -126,26 +125,32 @@ export type LiveReportStats = {
 
 export type LiveReport = {
   id: string;
-  gameId: string;
+  sessionId: string | null;
+  quizId: string;
   pin: string;
-  totalQuestions: number;
 
-  startedAt?: string;      // ISO
-  lastQuestionAt: string;  // ISO
-  savedAt: string;         // ISO
+  courseCode: string | null;
+  courseName: string | null;
+  section: string | null;
+  semester: string | null;
+  quizTitle: string | null;
+
+  totalQuestions: number;
+  finishedAt: string; // timestamptz
+  createdAt: string;  // timestamptz
 
   rows: LiveReportRow[];
-  stats?: LiveReportStats;
+  stats: LiveReportStats;
 };
 
-const REPORT_KEY = "gamorax_live_reports_v1";
-
-function safeParse<T>(raw: string | null, fallback: T): T {
-  try {
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+function throwNice(error: any): never {
+  const msg =
+    error?.message ||
+    error?.error_description ||
+    error?.details ||
+    JSON.stringify(error) ||
+    String(error);
+  throw new Error(msg);
 }
 
 function round2(n: number) {
@@ -175,47 +180,154 @@ export function computeLiveReportStats(rows: LiveReportRow[]): LiveReportStats {
   };
 }
 
-function getAllReports(): LiveReport[] {
-  if (typeof window === "undefined") return [];
-  const raw = safeParse<any[]>(localStorage.getItem(REPORT_KEY), []);
-  const arr = Array.isArray(raw) ? raw : [];
-  return arr as LiveReport[];
-}
+/** ✅ Save full report into live_reports (rows + stats are jsonb columns in your table) */
+export async function saveLiveReport(args: {
+  id?: string;
+  sessionId: string | null;
+  quizId: string;
+  pin: string;
 
-function writeAllReports(list: LiveReport[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(REPORT_KEY, JSON.stringify(list));
-}
+  courseCode?: string | null;
+  courseName?: string | null;
+  section?: string | null;
+  semester?: string | null;
+  quizTitle?: string | null;
 
-/** ✅ Save ONE report entry (history). */
-export function saveLiveReport(report: LiveReport) {
-  const all = getAllReports();
+  totalQuestions: number;
 
-  const next: LiveReport = {
-    ...report,
-    id: report.id || crypto.randomUUID(),
-    savedAt: report.savedAt || new Date().toISOString(),
-    stats: report.stats ?? computeLiveReportStats(report.rows ?? []),
+  rows: LiveReportRow[];
+  stats?: LiveReportStats;
+
+  finishedAt?: string;
+  createdAt?: string;
+}) {
+  const nowIso = new Date().toISOString();
+  const rows = Array.isArray(args.rows) ? args.rows : [];
+  const stats = args.stats ?? computeLiveReportStats(rows);
+
+  const payload = {
+    id: args.id ?? crypto.randomUUID(),
+    session_id: args.sessionId,
+    quiz_id: args.quizId,
+    pin: args.pin,
+
+    course_code: args.courseCode ?? null,
+    course_name: args.courseName ?? null,
+    section: args.section ?? null,
+    semester: args.semester ?? null,
+    quiz_title: args.quizTitle ?? null,
+
+    total_questions: args.totalQuestions ?? 0,
+    finished_at: args.finishedAt ?? nowIso,
+    created_at: args.createdAt ?? nowIso,
+
+    rows,
+    stats,
   };
 
-  all.push(next);
+  const { error } = await supabase
+    .from("live_reports")
+    .upsert(payload, { onConflict: "id" });
 
-  // newest first
-  all.sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
-  writeAllReports(all);
+  if (error) throwNice(error);
+
+  return {
+    id: String(payload.id),
+    sessionId: payload.session_id ?? null,
+    quizId: String(payload.quiz_id),
+    pin: String(payload.pin),
+
+    courseCode: payload.course_code ?? null,
+    courseName: payload.course_name ?? null,
+    section: payload.section ?? null,
+    semester: payload.semester ?? null,
+    quizTitle: payload.quiz_title ?? null,
+
+    totalQuestions: Number(payload.total_questions ?? 0),
+    finishedAt: String(payload.finished_at),
+    createdAt: String(payload.created_at),
+
+    rows,
+    stats,
+  } satisfies LiveReport;
 }
 
-/** (Optional helpers if you want them later) */
-export function getReportsByGame(gameId: string): LiveReport[] {
-  return getAllReports()
-    .filter((r) => r.gameId === gameId)
-    .sort((a, b) => String(b.savedAt).localeCompare(String(a.savedAt)));
+
+/** ✅ List reports by quiz_id */
+export async function getReportsByQuiz(quizId: string): Promise<LiveReport[]> {
+  const { data, error } = await supabase
+    .from("live_reports")
+    .select(
+      "id, session_id, quiz_id, pin, course_code, course_name, section, semester, quiz_title, total_questions, finished_at, created_at, rows, stats"
+    )
+    .eq("quiz_id", quizId)
+    .order("finished_at", { ascending: false });
+
+  if (error) throwNice(error);
+
+  const arr = Array.isArray(data) ? data : [];
+  return arr.map((r: any) => {
+    const rows: LiveReportRow[] = Array.isArray(r.rows) ? r.rows : [];
+    const stats: LiveReportStats = r.stats ?? computeLiveReportStats(rows);
+
+    return {
+      id: String(r.id),
+      sessionId: r.session_id ?? null,
+      quizId: String(r.quiz_id),
+      pin: String(r.pin ?? ""),
+
+      courseCode: r.course_code ?? null,
+      courseName: r.course_name ?? null,
+      section: r.section ?? null,
+      semester: r.semester ?? null,
+      quizTitle: r.quiz_title ?? null,
+
+      totalQuestions: Number(r.total_questions ?? 0),
+      finishedAt: String(r.finished_at ?? r.created_at ?? ""),
+      createdAt: String(r.created_at ?? ""),
+
+      rows,
+      stats,
+    } satisfies LiveReport;
+  });
 }
 
-export function getReportById(reportId: string): LiveReport | null {
-  return getAllReports().find((r) => r.id === reportId) ?? null;
-}
+/** ✅ Single report by id */
+export async function getReportById(reportId: string): Promise<LiveReport | null> {
+  const { data, error } = await supabase
+    .from("live_reports")
+    .select(
+      "id, session_id, quiz_id, pin, course_code, course_name, section, semester, quiz_title, total_questions, finished_at, created_at, rows, stats"
+    )
+    .eq("id", reportId)
+    .maybeSingle();
 
+  if (error) throwNice(error);
+  if (!data) return null;
+
+  const rows: LiveReportRow[] = Array.isArray((data as any).rows) ? (data as any).rows : [];
+  const stats: LiveReportStats = (data as any).stats ?? computeLiveReportStats(rows);
+
+  return {
+    id: String((data as any).id),
+    sessionId: (data as any).session_id ?? null,
+    quizId: String((data as any).quiz_id),
+    pin: String((data as any).pin ?? ""),
+
+    courseCode: (data as any).course_code ?? null,
+    courseName: (data as any).course_name ?? null,
+    section: (data as any).section ?? null,
+    semester: (data as any).semester ?? null,
+    quizTitle: (data as any).quiz_title ?? null,
+
+    totalQuestions: Number((data as any).total_questions ?? 0),
+    finishedAt: String((data as any).finished_at ?? (data as any).created_at ?? ""),
+    createdAt: String((data as any).created_at ?? ""),
+
+    rows,
+    stats,
+  } satisfies LiveReport;
+}
 
 /* =========================
    SUPABASE HELPERS
@@ -226,30 +338,39 @@ export async function getLiveStateByPin(pin: string): Promise<LiveSessionState |
   const p = String(pin ?? "").trim();
   if (!p) return null;
 
-  const { data, error } = await supabase.rpc("get_live_state_by_pin", { p_pin: p });
-  if (error) throw error;
+  const { data, error } = await supabase
+    .from("live_sessions")
+    .select(
+      "id, quiz_id, pin, status, question_index, total_questions, current_question_id, question_started_at, question_duration"
+    )
+    .eq("pin", p)
+    // ✅ remove is_active filter
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.session_id) return null;
+  if (error) throwNice(error);
+  if (!data) return null;
 
   return {
-    sessionId: row.session_id,
-    quizId: row.quiz_id,
-    pin: p,
-    status: row.status,
-    questionIndex: row.question_index,
-    totalQuestions: row.total_questions,
-    currentQuestionId: row.current_question_id ?? null,
-    questionStartedAt: row.question_started_at ?? null,
-    questionDuration: row.question_duration ?? null,
-    meta: null, // socket can send meta:set / session:meta; keep it in React state
+    sessionId: String((data as any).id),
+    quizId: String((data as any).quiz_id),
+    pin: String((data as any).pin),
+    status: (data as any).status,
+    questionIndex: Number((data as any).question_index ?? 0),
+    totalQuestions: Number((data as any).total_questions ?? 0),
+    currentQuestionId: (data as any).current_question_id ?? null,
+    questionStartedAt: (data as any).question_started_at ?? null,
+    questionDuration: (data as any).question_duration ?? null,
+    meta: null,
   };
 }
+
 
 // 2) Lecturer: create/reuse session (uses your RPC create_live_session(p_quiz_id))
 export async function createLiveSessionSupabase(quizId: string) {
   const { data, error } = await supabase.rpc("create_live_session", { p_quiz_id: quizId });
-  if (error) throw error;
+  if (error) throwNice(error);
   return data; // live_sessions row
 }
 
@@ -273,7 +394,8 @@ export async function joinLiveSessionSupabase(pin: string, student: LiveStudent)
   const { error } = await supabase.from("live_participants").upsert(payload, {
     onConflict: "session_id,profile_id",
   });
-  if (error) throw error;
+  if (error) throwNice(error);
+
 
   return state;
 }
@@ -296,7 +418,7 @@ export async function submitChoiceAnswerByPin(args: {
     p_time_used: timeUsed,
   });
 
-  if (error) throw error;
+  if (error) throwNice(error);
   return data;
 }
 
@@ -318,7 +440,7 @@ export async function submitInputAnswerByPin(args: { pin: string; value: string;
     p_time_used: timeUsed,
   });
 
-  if (error) throw error;
+  if (error) throwNice(error);
   return data;
 }
 
@@ -337,7 +459,7 @@ export async function submitMatchingAnswerByPin(args: {
     p_time_used: timeUsed,
   });
 
-  if (error) throw error;
+  if (error) throwNice(error);
   return data;
 }
 
@@ -347,7 +469,7 @@ export async function submitMatchingAnswerByPin(args: {
 ========================= */
 
 export type LiveMeta = {
-  gameId?: string;
+  quizId?: string;
   quizTitle?: string;
   courseCode?: string;
   courseName?: string;
@@ -356,6 +478,17 @@ export type LiveMeta = {
 };
 
 const LIVE_META_KEY = "gamorax_live_meta_by_pin_v1";
+
+// ✅ JSON parse helper (used by Live Meta cache)
+function safeParse<T>(raw: string | null, fallback: T): T {
+  try {
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 
 function readAllLiveMeta(): Record<string, LiveMeta> {
   if (typeof window === "undefined") return {};
@@ -377,7 +510,7 @@ export function saveLiveMeta(pin: string, meta: any) {
   };
 
   const next: LiveMeta = {
-    gameId: clean(meta?.gameId),
+    quizId: clean(meta?.quizId),
     quizTitle: clean(meta?.quizTitle),
     courseCode: clean(meta?.courseCode),
     courseName: clean(meta?.courseName),

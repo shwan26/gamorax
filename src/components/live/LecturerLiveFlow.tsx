@@ -5,9 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getQuestions, type Question } from "@/src/lib/questionStorage";
 import { socket } from "@/src/lib/socket";
-
 import { getLiveStateByPin, type LiveReportRow, saveLiveReport } from "@/src/lib/liveStorage";
 import LecturerLiveLayout from "./LecturerLiveLayout";
+import { supabase } from "@/src/lib/supabaseClient";
 
 /* ---------------- helpers ---------------- */
 
@@ -70,6 +70,27 @@ export default function LecturerLiveFlow({
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [liveOrder, setLiveOrder] = useState<number[]>([]);
+
+  const [sessionId, setSessionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (mode !== "live" || !pin) return;
+    let alive = true;
+
+    (async () => {
+      try {
+        const st = await getLiveStateByPin(pin);
+        if (alive) setSessionId(st?.sessionId ?? null);
+      } catch {
+        if (alive) setSessionId(null);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [mode, pin]);
+
 
   useEffect(() => {
     let alive = true;
@@ -436,6 +457,12 @@ export default function LecturerLiveFlow({
 
     const onFinal = (p: any) => {
       (async () => {
+        const { data: authData } = await supabase.auth.getUser();
+        if (!authData?.user) {
+          console.warn("Not logged in - cannot save report");
+          return;
+        }
+
         const lb = Array.isArray(p?.leaderboard) ? p.leaderboard : [];
         if (lb.length > 0) setRanked(lb);
         setStatus("final");
@@ -453,24 +480,31 @@ export default function LecturerLiveFlow({
 
         const nowIso = new Date().toISOString();
 
-        let lastQuestionAt = nowIso;
-        try {
-          if (pin) {
-            const st = await getLiveStateByPin(pin);
-            if (st?.questionStartedAt) lastQuestionAt = st.questionStartedAt;
-          }
-        } catch {}
+        // inside onFinal
+        const sid = sessionId ?? (await getLiveStateByPin(pin))?.sessionId ?? null;
 
-        saveLiveReport({
+        if (!sid) {
+          console.error("Cannot save report: sessionId is null (pin not found / session ended?)");
+          return;
+        }
+
+        await saveLiveReport({
           id: crypto.randomUUID(),
-          gameId,
-          pin: pin || "(missing)",
+          sessionId: sid,
+          quizId: gameId,
+          pin,
+          courseCode: course?.courseCode ?? null,
+          courseName: course?.courseName ?? null,
+          section: course?.section ?? null,
+          semester: course?.semester ?? null,
+          quizTitle: game?.quizNumber ?? null,
           totalQuestions: questions.length,
-          startedAt: undefined,
-          lastQuestionAt,
-          savedAt: nowIso,
-          rows,
+          rows,                 // ✅ REQUIRED by your saveLiveReport signature
+          stats: undefined,      // optional; function will compute
+          finishedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
         });
+
       })();
     };
 

@@ -81,7 +81,7 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
   if (!courseId || !gameId) return <div className="p-6">Missing route params.</div>;
   if (qError) return <div className="p-6">Failed to load questions: {qError}</div>;
 
-  if (loadingMeta) return <div className="p-6">Loading...</div>;
+  if (loadingMeta) return null;
   if (metaError) return <div className="p-6">{metaError}</div>;
   if (!game || !course) return <div className="p-6">Not found.</div>;
 

@@ -200,17 +200,38 @@ export default function ReportDetailPage() {
   const gameId = (params?.gameId ?? "").toString();
   const reportId = (params?.reportId ?? "").toString();
 
-  const report = useMemo<LiveReport | null>(
-    () => (reportId ? getReportById(reportId) : null),
-    [reportId]
-  );
-
+  const [report, setReport] = useState<LiveReport | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
 
   const [game, setGame] = useState<Game | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
-  const loadingMeta = !!gameId && game === null; 
+  const [loadingReport, setLoadingReport] = useState(false);
 
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!reportId) {
+        if (alive) setReport(null);
+        return;
+      }
+
+      setLoadingReport(true);
+      try {
+        const r = await getReportById(reportId);
+        if (alive) setReport(r);
+      } catch (e: any) {
+        console.error("getReportById failed:", e?.message ?? e, e);
+        if (alive) setReport(null);
+      } finally {
+        if (alive) setLoadingReport(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [reportId]);
 
   useEffect(() => {
     let alive = true;
@@ -251,9 +272,9 @@ export default function ReportDetailPage() {
   }, [gameId]);
 
 
-const totalQ = questions.length || report?.totalQuestions || 0;
+  const totalQ = questions.length || report?.totalQuestions || 0;
 
-  const finishIso = report?.lastQuestionAt || report?.savedAt || "";
+  const finishIso = report?.finishedAt || report?.createdAt || "";
 
   const stats = useMemo(() => {
     if (!report) return null;
@@ -315,7 +336,7 @@ const totalQ = questions.length || report?.totalQuestions || 0;
     const meta: string[][] = [
       ["Report Type", "Quiz Report (Detail)"],
       ["Report ID", report.id],
-      ["Saved At", report.savedAt ? fmt(report.savedAt) : "-"],
+      ["Saved At", report.finishedAt ? fmt(report.finishedAt) : "-"],
       ["Finished At", finishIso ? fmt(finishIso) : "-"],
     ];
 
@@ -383,13 +404,22 @@ const totalQ = questions.length || report?.totalQuestions || 0;
     );
   }
 
-  if (!report) {
-    return (
-      <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
-        No report found.
-      </div>
-    );
-  }
+  if (loadingReport) {
+      return (
+        <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
+          Loading report...
+        </div>
+      );
+    }
+
+    if (!report) {
+      return (
+        <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-sm text-slate-700 backdrop-blur dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-200">
+          No report found.
+        </div>
+      );
+    }
+
 
   const Th = ({
     label,
@@ -442,6 +472,8 @@ const totalQ = questions.length || report?.totalQuestions || 0;
           backgroundSize: "18px 18px",
         }}
       />
+
+      
       {/* glow */}
       <div className="pointer-events-none absolute -left-20 -top-20 h-64 w-64 rounded-full bg-[#00D4FF]/12 blur-3xl" />
         <div className="pointer-events-none absolute -right-24 -bottom-24 h-64 w-64 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />

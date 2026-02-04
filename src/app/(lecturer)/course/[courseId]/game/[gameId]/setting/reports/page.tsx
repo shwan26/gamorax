@@ -6,7 +6,7 @@ import { getQuestions, type Question } from "@/src/lib/questionStorage";
 
 import { useParams } from "next/navigation";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getReportsByGame, type LiveReport } from "@/src/lib/liveStorage";
+import { getReportsByQuiz, type LiveReport } from "@/src/lib/liveStorage";
 
 import {
   ClipboardList,
@@ -75,15 +75,42 @@ export default function ReportHistoryPage() {
   }, [gameId]);
 
   const totalQ = questions.length || 0;
+  const [reports, setReports] = useState<LiveReport[]>([]);
+  const [loadingReports, setLoadingReports] = useState(false);
 
-  const reports = useMemo<LiveReport[]>(() => (gameId ? getReportsByGame(gameId) : []), [gameId]);
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!gameId) {
+        if (alive) setReports([]);
+        return;
+      }
+
+      setLoadingReports(true);
+      try {
+        const list = await getReportsByQuiz(gameId); // gameId here is actually quizId in your DB
+        if (alive) setReports(Array.isArray(list) ? list : []);
+      } catch (e) {
+        console.error(e);
+        if (alive) setReports([]);
+      } finally {
+        if (alive) setLoadingReports(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
 
   // ✅ SAFE: after migration, stats always has points/score/timeSpent
   const rows: HistoryRow[] = useMemo(() => {
     return reports.map((r) => ({
       id: r.id,
       pin: r.pin,
-      savedAt: r.savedAt || r.lastQuestionAt || "",
+      savedAt: r.finishedAt || r.createdAt || "",
       students: r.stats?.students ?? 0,
       avgScore: r.stats?.score?.avg ?? 0,
       avgTime: r.stats?.timeSpent?.avg ?? 0,
@@ -174,7 +201,7 @@ export default function ReportHistoryPage() {
               Report History
             </h3>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {game?.quizNumber ?? "-"} |    {reports.length} reports
+              {game?.quizNumber ?? "-"} | {loadingReports ? "Loading..." : `${reports.length} reports`}
             </p>
           </div>
         </div>
