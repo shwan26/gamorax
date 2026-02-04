@@ -15,6 +15,7 @@ import { deleteAttemptsByStudent } from "@/src/lib/studentReportStorage";
 import { clearLiveStudent } from "@/src/lib/liveStudentSession";
 import { LogOut, Trash2, UserRound, Shuffle } from "lucide-react";
 import GradientButton from "@/src/components/GradientButton";
+import { supabase } from "@/src/lib/supabaseClient";
 
 function DotPattern() {
   return (
@@ -84,7 +85,7 @@ export default function MeProfilePage() {
     (async () => {
       const cur = await getCurrentStudent();
       if (!cur) {
-        router.push("/auth/login");
+        router.push("/login?role=student");
         return;
       }
       setMe(cur);
@@ -132,26 +133,46 @@ export default function MeProfilePage() {
 
   async function onLogout() {
     await logoutStudent();
-    router.push("/auth/login");
+    router.push("/login?role=student");
   }
 
   async function onDeleteAccount() {
     if (!me) return;
 
     const ok = confirm(
-      "Delete your account?\n\nThis will remove:\n- Your account\n- All report history\n- Your points\n\nThis cannot be undone."
+      "Delete your account?\n\nThis will permanently delete your account and all related data.\n\nThis cannot be undone."
     );
     if (!ok) return;
 
-    deleteAttemptsByStudent(me.email);
-
     try {
-      clearLiveStudent();
-    } catch {}
+      // optional: clean client state (fine to keep)
+      deleteAttemptsByStudent(me.email);
+      try { clearLiveStudent(); } catch {}
 
-    await deleteCurrentStudent();
-    router.push("/auth/register");
+      // ✅ must be logged in via supabase auth to delete auth user
+      const { data: u, error: uErr } = await supabase.auth.getUser();
+      if (!u.user || uErr) throw new Error("Not logged in");
+
+      const res = await fetch("/api/student/delete-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.user.id }),
+      });
+
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out?.error || "Delete failed");
+
+      await supabase.auth.signOut();
+
+      // ✅ clear local student storage too
+      await deleteCurrentStudent();
+
+      router.replace("/register?role=student");
+    } catch (err: any) {
+      alert(err?.message ?? "Delete failed");
+    }
   }
+
 
   const initials =
   (firstName?.trim()?.charAt(0) || "S") + (lastName?.trim()?.charAt(0) || "");

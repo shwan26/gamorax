@@ -131,7 +131,7 @@ export default function AssignmentEntryPage() {
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (!data.user) {
-        router.replace(`/auth/login?next=${encodeURIComponent(`/assignment/${token}`)}`);
+        router.replace(`/login?next=${encodeURIComponent(`/assignment/${token}`)}`);
       }
     })();
   }, [token, router]);

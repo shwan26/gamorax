@@ -164,7 +164,7 @@ export default function LobbyPage() {
     (async () => {
       const me = await getCurrentStudent();
       if (!me) {
-        router.replace(`/auth/login?next=${encodeURIComponent("/join/" + pin)}`);
+        router.replace(`/login?next=${encodeURIComponent("/join/" + pin)}`);
         return;
       }
 
@@ -175,7 +175,7 @@ export default function LobbyPage() {
 
       const live = await getOrCreateLiveStudent();
       if (!live) {
-        router.replace(`/auth/login?next=${encodeURIComponent("/join/" + pin)}`);
+        router.replace(`/login?next=${encodeURIComponent("/join/" + pin)}`);
         return;
       }
 
