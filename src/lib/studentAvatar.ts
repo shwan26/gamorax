@@ -4,22 +4,33 @@ import type { LiveStudent } from "@/src/lib/liveStorage";
 import { botttsUrl } from "@/src/lib/dicebear";
 
 export function getSeedFromAccount(me: StudentAccount) {
-  return (me.avatarSeed || me.email || me.studentId || "student").trim();
+  return (me.avatarSeed || me.email || me.studentId || me.id || "student").trim();
 }
 
-export function getAvatarSrc(input: StudentAccount | LiveStudent | null | undefined, size = 96) {
-  if (!input) return "/icons/student.png";
+function getSeedFromLiveStudent(s: LiveStudent) {
+  // LiveStudent doesn’t have email/avatarSeed, so use stable fields
+  return (s.studentId || s.name || "student").trim();
+}
+
+/**
+ * Always returns a valid avatar URL (no /icons/student.png fallback).
+ */
+export function getAvatarSrc(
+  input: StudentAccount | LiveStudent | null | undefined,
+  size = 96
+) {
+  if (!input) return botttsUrl("student", size);
 
   // LiveStudent already stores avatarSrc
   if ("avatarSrc" in input && input.avatarSrc) return input.avatarSrc;
 
   // StudentAccount -> compute from seed/email/studentId
   if ("email" in input) {
-    const seed = (input.avatarSeed || input.email || input.studentId || "student").trim();
-    return botttsUrl(seed, size);
+    return botttsUrl(getSeedFromAccount(input), size);
   }
 
-  return "/icons/student.png";
+  // LiveStudent without avatarSrc
+  return botttsUrl(getSeedFromLiveStudent(input), size);
 }
 
 /**
@@ -28,19 +39,16 @@ export function getAvatarSrc(input: StudentAccount | LiveStudent | null | undefi
 export function toLiveStudent(me: StudentAccount, size = 96): LiveStudent {
   const seed = getSeedFromAccount(me);
 
-  // ✅ LiveStudent.studentId must be string
   const sid =
     (me.studentId && me.studentId.trim()) ||
-    // fallback to derived id from email if you want:
-    // deriveStudentIdFromEmail(me.email) ||
     me.email ||
     me.id;
 
+  const name = `${me.firstName ?? ""} ${me.lastName ?? ""}`.trim() || "Student";
+
   return {
     studentId: sid,
-    name: me.firstName,
-    
+    name,
     avatarSrc: botttsUrl(seed, size),
   };
 }
-

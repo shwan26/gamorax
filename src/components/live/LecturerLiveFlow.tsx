@@ -11,6 +11,8 @@ import { supabase } from "@/src/lib/supabaseClient";
 
 /* ---------------- helpers ---------------- */
 
+
+
 function getDurationSec(q: any): number {
   const t = Number(q?.time);
   if (Number.isFinite(t) && t > 0) return Math.min(60 * 60, Math.round(t));
@@ -157,21 +159,28 @@ export default function LecturerLiveFlow({
     return order;
   };
 
-  // ✅ stable matching right-side order (per pinKey)
-  const getOrCreateMatchOrder = (liveQIndex: number, optionCount: number) => {
-    const key = `gamorax_live_match_v2_R_${pinKey}_${gameId}_${liveQIndex}_${optionCount}`;
+  // ✅ stable matching order (per pinKey) - reuse for LEFT and RIGHT
+  const getOrCreateMatchOrder = (
+    side: "L" | "R",
+    liveQIndex: number,
+    optionCount: number
+  ) => {
+    const key = `gamorax_live_match_v2_${side}_${pinKey}_${gameId}_${liveQIndex}_${optionCount}`;
     const saved = sessionStorage.getItem(key);
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length === optionCount) return parsed as number[];
       } catch {}
     }
+
     const base = [...Array(optionCount)].map((_, i) => i);
-    const order = shuffleArray(base);
+    const order = shuffleArray(base); // shuffle for both sides
     sessionStorage.setItem(key, JSON.stringify(order));
     return order;
   };
+
 
   const q = useMemo(() => {
     if (!baseQ) return null;
@@ -207,17 +216,30 @@ export default function LecturerLiveFlow({
 
     // Matching
     if (baseQ.type === "matching") {
-      const pairs = (baseQ.matches ?? []).slice(0, 5);
-      const left = pairs.map((p: any) => String(p?.left ?? ""));
-      const rightBase = pairs.map((p: any) => String(p?.right ?? ""));
-      const rightOrder = getOrCreateMatchOrder(qIndex, rightBase.length);
+      const pairsBase = (baseQ.matches ?? []).slice(0, 5);
+
+      const leftBase = pairsBase.map((p: any) => String(p?.left ?? ""));
+      const rightBase = pairsBase.map((p: any) => String(p?.right ?? ""));
+
+      // ✅ shuffle LEFT (stable)
+      const leftOrder = getOrCreateMatchOrder("L", qIndex, leftBase.length);
+      const pairs = leftOrder.map((i) => pairsBase[i]).filter(Boolean);
+      const left = leftOrder.map((i) => leftBase[i]).filter(Boolean);
+
+      // ✅ shuffle RIGHT (stable)
+      const rightOrder = getOrCreateMatchOrder("R", qIndex, rightBase.length);
       const right = rightOrder.map((i) => rightBase[i]).filter(Boolean);
+
       return { ...baseQ, left, right, matches: pairs };
     }
+
+
 
     // Input
     return { ...baseQ };
   }, [baseQ?.id, baseQ?.type, qIndex, gameId, shuffleAnswers, pinKey]);
+
+  
 
   /* ---------------- socket + counts ---------------- */
 
@@ -457,54 +479,71 @@ export default function LecturerLiveFlow({
 
     const onFinal = (p: any) => {
       (async () => {
-        const { data: authData } = await supabase.auth.getUser();
-        if (!authData?.user) {
-          console.warn("Not logged in - cannot save report");
-          return;
-        }
-
         const lb = Array.isArray(p?.leaderboard) ? p.leaderboard : [];
         if (lb.length > 0) setRanked(lb);
         setStatus("final");
 
-        const rows: LiveReportRow[] = [...lb]
-          .sort((a: any, b: any) => Number(b.points ?? 0) - Number(a.points ?? 0))
-          .map((r: any, idx: number) => ({
-            rank: idx + 1,
-            studentId: String(r.studentId ?? ""),
-            name: String(r.name ?? ""),
-            score: Number(r.correct ?? 0),
-            points: Number(r.points ?? 0),
-            totalTime: Number(r.totalTime ?? 0),
-          }));
+        
 
         const nowIso = new Date().toISOString();
 
-        // inside onFinal
-        const sid = sessionId ?? (await getLiveStateByPin(pin))?.sessionId ?? null;
+        // 1) Get latest sessionId by pin (you already do this)
+        let sessionId: string | null = null;
+        try {
+          if (pin) {
+            const st = await getLiveStateByPin(pin);
+            sessionId = st?.sessionId ?? null;
+          }
+        } catch {}
 
-        if (!sid) {
-          console.error("Cannot save report: sessionId is null (pin not found / session ended?)");
+        if (!sessionId) {
+          console.warn("Missing sessionId; cannot save report with rows mapping.");
           return;
         }
 
+        // 2) Build studentId -> profileId map from live_participants
+
+        const { data: parts } = await supabase
+          .from("live_participants")
+          .select("profile_id, student_id")
+          .eq("session_id", sessionId);
+
+        const profileByStudentId = new Map(
+          (parts ?? [])
+            .filter((p) => p.student_id)
+            .map((p) => [String(p.student_id), String(p.profile_id)])
+        );
+
+        // 3) Build rows AFTER map exists
+        const rows = [...lb]
+          .sort((a: any, b: any) => Number(b.points ?? 0) - Number(a.points ?? 0))
+          .map((r: any, idx: number) => {
+            const studentId = String(r.studentId ?? "").trim();
+            return {
+              rank: idx + 1,
+              studentId,
+              name: String(r.name ?? ""),
+              score: Number(r.correct ?? 0),
+              points: Number(r.points ?? 0),
+              totalTime: Number(r.totalTime ?? 0),
+              profileId: profileByStudentId.get(studentId) ?? null,
+            };
+          });
+
+        // 4) Save report via your RPC (recommended to bypass RLS pain)
         await saveLiveReport({
-          id: crypto.randomUUID(),
-          sessionId: sid,
+          sessionId,
           quizId: gameId,
-          pin,
+          pin: pin || "(missing)",
           courseCode: course?.courseCode ?? null,
           courseName: course?.courseName ?? null,
           section: course?.section ?? null,
           semester: course?.semester ?? null,
           quizTitle: game?.quizNumber ?? null,
           totalQuestions: questions.length,
-          rows,                 // ✅ REQUIRED by your saveLiveReport signature
-          stats: undefined,      // optional; function will compute
-          finishedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
+          finishedAt: nowIso,
+          rows,
         });
-
       })();
     };
 

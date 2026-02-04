@@ -119,6 +119,119 @@ function AttemptCard({
   );
 }
 
+function SkeletonLine({ w = "w-full", h = "h-3" }: { w?: string; h?: string }) {
+  return (
+    <div
+      className={[
+        "rounded-full bg-slate-200/80 animate-pulse",
+        "dark:bg-slate-800/70",
+        w,
+        h,
+      ].join(" ")}
+    />
+  );
+}
+
+function SkeletonBox({ w = "w-10", h = "h-10" }: { w?: string; h?: string }) {
+  return (
+    <div
+      className={[
+        "rounded-xl bg-slate-200/80 animate-pulse",
+        "dark:bg-slate-800/70",
+        w,
+        h,
+      ].join(" ")}
+    />
+  );
+}
+
+function ToolbarSkeleton() {
+  return (
+    <div
+      className="
+        rounded-2xl border border-slate-200/70 bg-white/60 p-3 shadow-sm backdrop-blur
+        dark:border-slate-800/70 dark:bg-slate-950/45
+        w-full sm:w-auto
+      "
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="w-full sm:w-72">
+          <SkeletonBox w="w-full" h="h-10" />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <SkeletonBox w="w-44" h="h-10" /> {/* select */}
+          <SkeletonBox w="w-10" h="h-10" /> {/* toggle */}
+          <SkeletonBox w="w-24" h="h-10" /> {/* wallet */}
+          <SkeletonBox w="w-28" h="h-10" /> {/* view all */}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AttemptCardSkeleton() {
+  return (
+    <div
+      className="
+        relative w-full overflow-hidden rounded-3xl p-[1px] text-left
+        bg-gradient-to-r from-[#00D4FF] via-[#38BDF8] to-[#2563EB]
+        shadow-[0_12px_30px_rgba(37,99,235,0.10)]
+      "
+    >
+      <div
+        className="
+          relative rounded-[23px] bg-white ring-1 ring-slate-200/70
+          dark:bg-[#071A33] dark:ring-slate-700/60
+          p-6
+        "
+      >
+        {/* dots */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+            backgroundSize: "18px 18px",
+          }}
+        />
+
+        {/* subtle glow (static) */}
+        <div className="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-[#00D4FF]/10 blur-3xl opacity-40" />
+        <div className="pointer-events-none absolute -right-20 -bottom-20 h-56 w-56 rounded-full bg-[#2563EB]/10 blur-3xl opacity-40 dark:bg-[#3B82F6]/18" />
+
+        <div className="relative flex items-start gap-3">
+          {/* icon placeholder */}
+          <div className="h-12 w-12 rounded-2xl border border-slate-200/80 bg-white/80 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60" />
+
+          <div className="min-w-0 flex-1">
+            {/* top row */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1 space-y-2">
+                <SkeletonLine w="w-2/3" h="h-4" />
+                <SkeletonLine w="w-1/2" />
+              </div>
+
+              <div className="shrink-0 space-y-2 text-right">
+                <SkeletonLine w="w-20" h="h-4" />
+                <SkeletonLine w="w-28" />
+              </div>
+            </div>
+
+            {/* chips */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <div className="h-6 w-24 rounded-full bg-slate-200/80 animate-pulse dark:bg-slate-800/70" />
+              <div className="h-6 w-20 rounded-full bg-slate-200/80 animate-pulse dark:bg-slate-800/70" />
+              <div className="h-6 w-20 rounded-full bg-slate-200/80 animate-pulse dark:bg-slate-800/70" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function MePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -318,10 +431,37 @@ export default function MePage() {
           </div>
         </div>
 
-        {loadingAttempts && (
-          <div className="mt-6 text-sm text-slate-500 dark:text-slate-300">
-            Loading attempts...
-          </div>
+        {loadingAttempts ? (
+          <>
+            <div className="mt-6">
+              <ToolbarSkeleton />
+            </div>
+
+            <div className="mt-6 grid items-start gap-4 sm:mt-8 sm:grid-cols-2 lg:grid-cols-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <AttemptCardSkeleton key={i} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-6 grid items-start gap-4 sm:mt-8 sm:grid-cols-2 lg:grid-cols-2">
+              {last.map((a) => (
+                <AttemptCard key={a.id} a={a} onOpen={() => router.push("/me/reports")} />
+              ))}
+            </div>
+
+            {filteredSorted.length === 0 && (
+              <div
+                className="
+                  mt-10 rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-center text-sm text-slate-600 backdrop-blur
+                  dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-300
+                "
+              >
+                No quiz attempts yet. Join a live quiz with PIN.
+              </div>
+            )}
+          </>
         )}
 
         {/* grid */}

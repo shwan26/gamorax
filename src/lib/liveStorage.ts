@@ -159,7 +159,6 @@ function round2(n: number) {
 
 export function computeLiveReportStats(rows: LiveReportRow[]): LiveReportStats {
   const students = rows.length;
-
   const scores = rows.map((r) => Number(r.score || 0));
   const points = rows.map((r) => Number(r.points || 0));
   const times = rows.map((r) => Number(r.totalTime || 0));
@@ -182,75 +181,55 @@ export function computeLiveReportStats(rows: LiveReportRow[]): LiveReportStats {
 
 /** ✅ Save full report into live_reports (rows + stats are jsonb columns in your table) */
 export async function saveLiveReport(args: {
-  id?: string;
-  sessionId: string | null;
+  sessionId: string;
   quizId: string;
   pin: string;
-
+  totalQuestions: number;
+  finishedAt?: string;
   courseCode?: string | null;
   courseName?: string | null;
   section?: string | null;
   semester?: string | null;
   quizTitle?: string | null;
 
-  totalQuestions: number;
-
-  rows: LiveReportRow[];
-  stats?: LiveReportStats;
-
-  finishedAt?: string;
-  createdAt?: string;
+  rows: Array<{
+    rank: number;
+    studentId: string;
+    name: string;
+    score: number;
+    points: number;
+    totalTime: number;
+    profileId?: string | null;
+  }>;
 }) {
-  const nowIso = new Date().toISOString();
-  const rows = Array.isArray(args.rows) ? args.rows : [];
-  const stats = args.stats ?? computeLiveReportStats(rows);
+  const p_rows = (args.rows ?? []).map((r) => ({
+    rank: r.rank,
+    student_id: r.studentId ?? null,
+    display_name: r.name ?? null,
+    score: r.score ?? 0,
+    points: r.points ?? 0,
+    total_time: r.totalTime ?? 0,
+    profile_id: r.profileId ?? null, // ✅ IMPORTANT: snake_case
+  }));
 
-  const payload = {
-    id: args.id ?? crypto.randomUUID(),
-    session_id: args.sessionId,
-    quiz_id: args.quizId,
-    pin: args.pin,
-
-    course_code: args.courseCode ?? null,
-    course_name: args.courseName ?? null,
-    section: args.section ?? null,
-    semester: args.semester ?? null,
-    quiz_title: args.quizTitle ?? null,
-
-    total_questions: args.totalQuestions ?? 0,
-    finished_at: args.finishedAt ?? nowIso,
-    created_at: args.createdAt ?? nowIso,
-
-    rows,
-    stats,
-  };
-
-  const { error } = await supabase
-    .from("live_reports")
-    .upsert(payload, { onConflict: "id" });
+  const { data, error } = await supabase.rpc("save_live_report_with_rows", {
+    p_session_id: args.sessionId,
+    p_quiz_id: args.quizId,
+    p_pin: args.pin,
+    p_course_code: args.courseCode ?? null,
+    p_course_name: args.courseName ?? null,
+    p_section: args.section ?? null,
+    p_semester: args.semester ?? null,
+    p_quiz_title: args.quizTitle ?? null,
+    p_total_questions: args.totalQuestions ?? 0,
+    p_finished_at: args.finishedAt ?? new Date().toISOString(),
+    p_rows,
+  });
 
   if (error) throwNice(error);
-
-  return {
-    id: String(payload.id),
-    sessionId: payload.session_id ?? null,
-    quizId: String(payload.quiz_id),
-    pin: String(payload.pin),
-
-    courseCode: payload.course_code ?? null,
-    courseName: payload.course_name ?? null,
-    section: payload.section ?? null,
-    semester: payload.semester ?? null,
-    quizTitle: payload.quiz_title ?? null,
-
-    totalQuestions: Number(payload.total_questions ?? 0),
-    finishedAt: String(payload.finished_at),
-    createdAt: String(payload.created_at),
-
-    rows,
-    stats,
-  } satisfies LiveReport;
+  return String(data);
 }
+
 
 
 /** ✅ List reports by quiz_id */

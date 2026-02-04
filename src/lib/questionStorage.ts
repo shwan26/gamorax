@@ -47,23 +47,40 @@ type AnswerApiRow = {
 };
 
 // helpers
+const MC_MIN = 3;
+const MC_MAX = 5;
+
 function emptyAnswers(n = 4): Answer[] {
   return Array.from({ length: n }, () => ({ text: "", correct: false, image: null }));
 }
+
 
 function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Question {
   const qType = row.type ?? "multiple_choice";
 
   let localAnswers: Answer[] = [];
-  if (qType === "multiple_choice" || qType === "true_false") {
+
+  if (qType === "multiple_choice") {
     const sorted = [...answers].sort((a, b) => a.answerIndex - b.answerIndex);
     localAnswers = sorted.map((a) => ({
       text: a.text ?? "",
       correct: !!a.correct,
       image: a.image ?? null,
     }));
-    while (localAnswers.length < 4) localAnswers.push({ text: "", correct: false, image: null });
-    if (localAnswers.length > 4) localAnswers = localAnswers.slice(0, 4);
+
+    // clamp to 3..5, but DO NOT auto-pad back to 4
+    if (localAnswers.length > MC_MAX) localAnswers = localAnswers.slice(0, MC_MAX);
+
+    // If DB has <3 (old data), pad up to 3 so editor doesn’t break
+    while (localAnswers.length < MC_MIN) {
+      localAnswers.push({ text: "", correct: false, image: null });
+    }
+  } else if (qType === "true_false") {
+    // TF should be fixed 2
+    localAnswers = [
+      { text: "True", correct: true, image: null },
+      { text: "False", correct: false, image: null },
+    ];
   } else {
     localAnswers = emptyAnswers(4);
   }
@@ -74,12 +91,15 @@ function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Questi
     text: row.text ?? "",
     image: row.image ?? null,
     answers: localAnswers,
-    matches: Array.isArray(row.matches) ? row.matches : Array.from({ length: 5 }, () => ({ left: "", right: "" })),
+    matches: Array.isArray(row.matches)
+      ? row.matches
+      : Array.from({ length: 5 }, () => ({ left: "", right: "" })),
     acceptedAnswers: Array.isArray(row.acceptedAnswers) ? row.acceptedAnswers : [""],
     timeMode: row.timeMode ?? "specific",
     time: Number(row.time ?? 60),
   };
 }
+
 
 // ✅ Supabase-backed reads
 export async function getQuestions(gameId: string): Promise<Question[]> {
@@ -155,7 +175,7 @@ export async function saveQuestions(gameId: string, questions: Question[]): Prom
       if (delErr) throw delErr;
 
       const payload = (q.answers ?? emptyAnswers(4))
-        .slice(0, 4)
+        .slice(0, MC_MAX)
         .map((a, idx) => ({
           questionId: q.id,
           answerIndex: idx,
@@ -194,7 +214,7 @@ export function isQuestionComplete(q: Question): boolean {
 
   const accepted = (q.acceptedAnswers ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
 
-  if (type === "multiple_choice") return hasQuestion && mcNonEmpty.length >= 2 && mcHasCorrect;
+  if (type === "multiple_choice") return hasQuestion && mcNonEmpty.length >= 3 && mcHasCorrect;
   if (type === "true_false") return hasQuestion && tfHasCorrect;
   if (type === "matching") return hasQuestion && pairCompleteCount >= 2 && !pairHasBroken;
   if (type === "input") return hasQuestion && accepted.length >= 1;
@@ -206,3 +226,4 @@ export async function getTotalQuestions(gameId: string): Promise<number> {
   const qs = await getQuestions(gameId);
   return qs.length;
 }
+

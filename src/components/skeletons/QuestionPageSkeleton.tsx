@@ -15,7 +15,7 @@ export default function QuestionPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="h-9 w-36 rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
           <div className="flex items-center gap-2">
-            <div className="h-9 w-24 rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
+            
             <div className="h-9 w-24 rounded-xl bg-slate-200/70 dark:bg-slate-800/70 animate-pulse" />
           </div>
         </div>

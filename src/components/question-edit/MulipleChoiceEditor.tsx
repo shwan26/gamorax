@@ -4,8 +4,6 @@ import { Question } from "@/src/lib/questionStorage";
 import AnswerInput from "./AnswerInput";
 import { Plus } from "lucide-react";
 
-const MAX_CHOICES = 5;
-
 export default function MultipleChoiceEditor({
   question,
   onUpdate,
@@ -13,8 +11,13 @@ export default function MultipleChoiceEditor({
   question: Question;
   onUpdate: (patch: Partial<Question>) => void;
 }) {
+
+  const MIN_CHOICES = 3;
+  const MAX_CHOICES = 5;
   const answers = question.answers ?? [];
   const canAdd = answers.length < MAX_CHOICES;
+
+  const isOdd = answers.length % 2 === 1;
 
   function addAnswer() {
     if (!canAdd) return;
@@ -24,11 +27,10 @@ export default function MultipleChoiceEditor({
   }
 
   function removeAnswer(index: number) {
-    if (answers.length <= 2) return; // keep minimum 2
-    onUpdate({
-      answers: answers.filter((_, i) => i !== index),
-    });
+    if (answers.length <= MIN_CHOICES) return; // keep minimum 3
+    onUpdate({ answers: answers.filter((_, i) => i !== index) });
   }
+
 
   return (
     <div className="space-y-3">
@@ -55,26 +57,40 @@ export default function MultipleChoiceEditor({
         </button>
       </div>
 
+      
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-5">
-        {answers.map((ans, i) => (
-          <AnswerInput
-            key={i}
-            index={i}
-            answer={ans}
-            onChange={(ansPatch) => {
-              const next = [...answers];
-              next[i] = { ...next[i], ...ansPatch };
-              onUpdate({ answers: next });
-            }}
-            onCorrect={() => {
-              const next = [...answers];
-              next[i] = { ...next[i], correct: !next[i].correct };
-              onUpdate({ answers: next });
-            }}
-            onRemove={answers.length > 2 ? () => removeAnswer(i) : undefined}
-          />
-        ))}
+        {answers.map((ans, i) => {
+          const isLast = i === answers.length - 1;
+          const centerLast = isOdd && isLast;
+
+          return (
+            <div
+              key={i}
+              className={centerLast ? "md:col-span-2 md:flex md:justify-center" : ""}
+            >
+              <div className={centerLast ? "md:w-[min(520px,48%)] w-full" : "w-full"}>
+                <AnswerInput
+                  index={i}
+                  answer={ans}
+                  onChange={(ansPatch) => {
+                    const next = [...answers];
+                    next[i] = { ...next[i], ...ansPatch };
+                    onUpdate({ answers: next });
+                  }}
+                  onCorrect={() => {
+                    const next = [...answers];
+                    next[i] = { ...next[i], correct: !next[i].correct };
+                    onUpdate({ answers: next });
+                  }}
+                  onRemove={answers.length > MIN_CHOICES ? () => removeAnswer(i) : undefined}
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
+
     </div>
   );
 }
