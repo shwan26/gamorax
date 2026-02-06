@@ -261,7 +261,6 @@ export default function LobbyPage() {
     };
   }, [mounted, pin, ready, accessToken, s]);
 
-  // ✅ join socket + redirect when lecturer starts
   useEffect(() => {
     if (!mounted || !pin || !ready || !student) return;
     if (!accessToken) return;
@@ -273,24 +272,42 @@ export default function LobbyPage() {
       if (!sid || !nm) return;
 
       const studentToJoin = { ...student, studentId: sid, name: nm };
-
-      // keep session in sync
       writeLiveStudent(studentToJoin);
-
       s.emit("join", { pin, student: studentToJoin });
+    };
+
+    const goQuestion = () => router.push(`/join/${encodeURIComponent(pin)}/question`);
+    
+    // ✅ Handle being kicked
+    const onKicked = (data: { message: string }) => {
+      alert(data.message || "You have been removed from the lobby");
+      
+      // Clean up session storage
+      try {
+        sessionStorage.removeItem("gamorax_live_student");
+        if (lockKey) sessionStorage.removeItem(lockKey);
+      } catch {}
+      
+      // Disconnect socket
+      try {
+        s.disconnect();
+      } catch {}
+      
+      // Redirect to home
+      router.push("/me");
     };
 
     if (s.connected) doJoin();
     s.on("connect", doJoin);
-
-    const goQuestion = () => router.push(`/join/${encodeURIComponent(pin)}/question`);
     s.on("question:show", goQuestion);
+    s.on("kicked", onKicked); // ✅ Add this
 
     return () => {
       s.off("connect", doJoin);
       s.off("question:show", goQuestion);
+      s.off("kicked", onKicked); // ✅ Add this
     };
-  }, [mounted, pin, ready, student, accessToken, pinStatus, effectiveStudentId, displayName, router, s]);
+  }, [mounted, pin, ready, student, accessToken, pinStatus, effectiveStudentId, displayName, router, lockKey, s]);
 
   // ✅ Random avatar (disabled after save)
   const handleChangeAvatar = async () => {

@@ -14,7 +14,6 @@ import {
   ArrowUpAZ,
   ArrowDownZA,
   Trophy,
-  BookOpen,
 } from "lucide-react";
 import type { StudentAccount } from "@/src/lib/studentAuthStorage";
 
@@ -504,29 +503,6 @@ export default function MeReportsPage() {
             )}
           </div>
         )}
-
-
-        {/* list */}
-        <div className="mt-6 space-y-3 sm:mt-8">
-          {filteredSorted.length === 0 ? (
-            <div
-              className="
-                rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-center text-sm text-slate-600 backdrop-blur
-                dark:border-slate-800/70 dark:bg-slate-950/45 dark:text-slate-300
-              "
-            >
-              No reports found.
-            </div>
-          ) : (
-            filteredSorted.map((a) => (
-              <AttemptRowCard
-                key={a.id}
-                a={a}
-                onOpen={() => router.push(`/me/reports`)}
-              />
-            ))
-          )}
-        </div>
       </main>
     </div>
   );

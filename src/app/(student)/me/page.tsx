@@ -8,24 +8,13 @@ import {
   getAttemptsByStudent,
   type StudentAttempt,
 } from "@/src/lib/studentReportStorage";
-import {
-  Search,
-  Filter,
-  ArrowUpAZ,
-  ArrowDownZA,
-  BookOpen,
-  Trophy,
-  Wallet,
-} from "lucide-react";
+import { BookOpen, Trophy, Wallet } from "lucide-react";
 import type { StudentAccount } from "@/src/lib/studentAuthStorage";
 
 function fmt(iso: string) {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
 }
-
-type SortKey = "finishedAt" | "score" | "courseCode" | "quizTitle";
-type SortDir = "asc" | "desc";
 
 function AttemptCard({
   a,
@@ -236,27 +225,36 @@ export default function MePage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [me, setMe] = useState<StudentAccount | null>(null);
-
-  const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<SortKey>("finishedAt");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [loadingMe, setLoadingMe] = useState(true);
 
   useEffect(() => {
     setMounted(true);
 
     (async () => {
+      setLoadingMe(true);
       const cur = await getCurrentStudent();
       if (!cur) {
         router.push("/login?role=student");
         return;
       }
       setMe(cur);
+      setLoadingMe(false);
     })();
   }, [router]);
+
 
   // add state
   const [attempts, setAttempts] = useState<StudentAttempt[]>([]);
   const [loadingAttempts, setLoadingAttempts] = useState(false);
+  const recent6 = useMemo(() => {
+      return [...attempts]
+        .sort((a, b) => {
+          const av = new Date(a.finishedAt).getTime() || 0;
+          const bv = new Date(b.finishedAt).getTime() || 0;
+          return bv - av; // newest first
+        })
+        .slice(0, 6);
+    }, [attempts]);
 
   useEffect(() => {
     let alive = true;
@@ -281,41 +279,7 @@ export default function MePage() {
     };
   }, [me]);
 
-
-  const filteredSorted = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
-    const filtered = attempts.filter((a) => {
-      const haystack =
-        `${a.quizTitle ?? ""} ${a.courseCode ?? ""} ${a.correct}/${a.totalQuestions} ${a.points ?? ""}`.toLowerCase();
-      return haystack.includes(q);
-    });
-
-    const dir = sortDir === "asc" ? 1 : -1;
-
-    return filtered.sort((a, b) => {
-      if (sortKey === "finishedAt") {
-        const av = new Date(a.finishedAt).getTime() || 0;
-        const bv = new Date(b.finishedAt).getTime() || 0;
-        return (av - bv) * dir;
-      }
-
-      if (sortKey === "score") {
-        const av = (a.totalQuestions ? a.correct / a.totalQuestions : 0) || 0;
-        const bv = (b.totalQuestions ? b.correct / b.totalQuestions : 0) || 0;
-        return (av - bv) * dir;
-      }
-
-      const av = ((a as any)[sortKey] ?? "").toString();
-      const bv = ((b as any)[sortKey] ?? "").toString();
-      return av.localeCompare(bv, undefined, { sensitivity: "base", numeric: true }) * dir;
-    });
-  }, [attempts, query, sortKey, sortDir]);
-
-  const last = filteredSorted.slice(0, 6);
-
   if (!mounted) return null;
-  if (!me) return null;
 
   return (
     <div className="min-h-screen app-surface app-bg">
@@ -328,13 +292,20 @@ export default function MePage() {
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
               My Dashboard
             </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              {[me.firstName, me.lastName].filter(Boolean).join(" ").trim() || "Student"}
-              {me.studentId ? ` • ${me.studentId}` : ""} • {me.email}
-            </p>
+
+            {loadingMe ? (
+              <div className="mt-2 space-y-2">
+                <SkeletonLine w="w-64" h="h-4" />
+                <SkeletonLine w="w-80" h="h-3" />
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {[me?.firstName, me?.lastName].filter(Boolean).join(" ").trim() || "Student"}
+                {me?.studentId ? ` • ${me.studentId}` : ""} • {me?.email}
+              </p>
+            )}
           </div>
 
-          {/* toolbar (same feel as lecturer dashboard) */}
           <div
             className="
               rounded-2xl border border-slate-200/70 bg-white/60 p-3 shadow-sm backdrop-blur
@@ -342,66 +313,13 @@ export default function MePage() {
               w-full sm:w-auto
             "
           >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              {/* search */}
-              
-              <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  type="text"
-                  placeholder="Search quizzes / course code"
-                  className="
-                    w-full rounded-xl border border-slate-200/80 bg-white/80 pl-9 pr-3 py-2.5 text-sm
-                    shadow-sm outline-none
-                    focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
-                    dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100
-                    placeholder:text-slate-400 dark:placeholder:text-slate-500
-                  "
-                />
+            {loadingMe ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                <SkeletonBox w="w-24" h="h-10" />
+                <SkeletonBox w="w-28" h="h-10" />
               </div>
-
-              {/* sort */}
-              <div className="flex gap-2">
-                <div className="relative">
-                  <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <select
-                    value={sortKey}
-                    onChange={(e) => setSortKey(e.target.value as SortKey)}
-                    className="
-                      rounded-xl border border-slate-200/80 bg-white/80 pl-9 pr-8 py-2.5 text-sm
-                      shadow-sm outline-none
-                      focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
-                      dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-100
-                    "
-                  >
-                    <option value="finishedAt">Finished time</option>
-                    <option value="score">Score</option>
-                    <option value="courseCode">Course code</option>
-                    <option value="quizTitle">Quiz title</option>
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-                  className="
-                    inline-flex items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
-                    text-slate-700 shadow-sm hover:bg-white transition-colors
-                    dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-950/80
-                  "
-                  aria-label="Toggle sort direction"
-                  title="Toggle sort direction"
-                >
-                  {sortDir === "asc" ? (
-                    <ArrowUpAZ className="h-4 w-4" />
-                  ) : (
-                    <ArrowDownZA className="h-4 w-4" />
-                  )}
-                </button>
-
-                {/* wallet */}
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                 <div
                   className="
                     inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
@@ -411,14 +329,14 @@ export default function MePage() {
                   title="Wallet points"
                 >
                   <Wallet className="h-4 w-4 text-slate-700 dark:text-slate-200" />
-                  <span className="font-semibold">{me.points ?? 0}</span>
+                  <span className="font-semibold">{me?.points ?? 0}</span>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => router.push("/me/reports")}
                   className="
-                    inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
+                    inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
                     text-slate-700 shadow-sm hover:bg-white transition-colors
                     dark:border-slate-800/70 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:bg-slate-950/80
                   "
@@ -427,11 +345,12 @@ export default function MePage() {
                   View all
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
-        {loadingAttempts ? (
+
+        {loadingMe || loadingAttempts ? (
           <>
             <div className="mt-6">
               <ToolbarSkeleton />
@@ -446,12 +365,12 @@ export default function MePage() {
         ) : (
           <>
             <div className="mt-6 grid items-start gap-4 sm:mt-8 sm:grid-cols-2 lg:grid-cols-2">
-              {last.map((a) => (
+              {recent6.map((a) => (
                 <AttemptCard key={a.id} a={a} onOpen={() => router.push("/me/reports")} />
               ))}
             </div>
 
-            {filteredSorted.length === 0 && (
+            {attempts.length === 0 && (
               <div
                 className="
                   mt-10 rounded-2xl border border-slate-200/70 bg-white/60 p-6 text-center text-sm text-slate-600 backdrop-blur

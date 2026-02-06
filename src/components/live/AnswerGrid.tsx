@@ -51,6 +51,12 @@ export default function AnswerGrid({
   const pairsRef = useRef<Pair[]>([]);
   const matchingSubmittedRef = useRef(false);
 
+  const isAssignment = mode === "assignment";
+
+  const btnClass = isAssignment
+    ? "px-4 py-3 text-sm sm:text-base rounded-2xl min-h-[56px]"
+    : "px-6 py-5 text-lg rounded-3xl min-h-[120px]";
+
   useEffect(() => {
     pairsRef.current = pairs;
   }, [pairs]);
@@ -366,7 +372,7 @@ export default function AnswerGrid({
                 onClick={() => submitSingleChoice(idx)}
                 type="button"
                 className={[
-                  "w-full min-h-[96px] rounded-2xl border px-4 py-4 text-left shadow-sm transition",
+                  "w-full min-h-[96px] rounded-2xl border px-4 py-3 text-left shadow-sm transition",
                   isSelected ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25" : "border-slate-200/70",
                   "bg-white/80 hover:bg-white dark:bg-slate-950/45 dark:border-slate-800/70 dark:hover:bg-slate-950/60",
                   disabled ? "opacity-70 cursor-not-allowed" : "",

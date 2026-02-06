@@ -12,7 +12,7 @@ import { supabase } from "@/src/lib/supabaseClient";
 import { socket, setSocketAccessToken } from "@/src/lib/socket";
 
 import QRCode from "react-qr-code";
-import { Users, Play, Link2, KeyRound } from "lucide-react";
+import { Users, Play, Link2, KeyRound, X } from "lucide-react";
 
 
 /* ------------------------------ types ------------------------------ */
@@ -50,6 +50,7 @@ type LiveStudent = {
 };
 
 /* ------------------------------ helpers ------------------------------ */
+
 function SkeletonLine({ w = "w-full", h = "h-4" }: { w?: string; h?: string }) {
   return (
     <div
@@ -106,6 +107,8 @@ function StudentAvatar({ s, size = 44 }: { s: LiveStudent; size?: number }) {
   );
 }
 
+
+
 /* ------------------------------ page ------------------------------ */
 
 export default function LivePage() {
@@ -155,6 +158,16 @@ export default function LivePage() {
     }
 
     return true;
+  }
+
+  function handleRemoveStudent(studentId: string) {
+    if (!pin) return;
+    socket.emit("lecturer:remove-student", { pin, studentId });
+  }
+
+  function handleClearAllStudents() {
+    if (!pin || !confirm("Remove all students from the lobby?")) return;
+    socket.emit("lecturer:clear-all", { pin });
   }
 
   /* ------------------------------ auth token ------------------------------ */
@@ -589,7 +602,23 @@ export default function LivePage() {
                 >
                   {students.length}
                 </span>
+                {hasStudents && (
+                  <button
+                    onClick={handleClearAllStudents}
+                    className="
+                      rounded-full border border-red-200/70 bg-red-50/70 
+                      px-3 py-1 text-xs font-medium text-red-600
+                      hover:bg-red-100 transition-colors
+                      dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400
+                      dark:hover:bg-red-950/50
+                    "
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
+
+              
 
               {!hasStudents ? (
                 <div
@@ -604,26 +633,39 @@ export default function LivePage() {
               ) : (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {students.map((st) => (
-                    <div
-                      key={st.studentId}
-                      className="
-                        rounded-3xl border border-slate-200/70 bg-white/70 p-3 shadow-sm backdrop-blur
-                        dark:border-slate-800/70 dark:bg-slate-950/55
-                      "
-                    >
-                      <div className="flex items-center gap-3">
-                        <StudentAvatar s={st} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
-                            {st.name || "Student"}
-                          </p>
-                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                            {st.studentId}
-                          </p>
-                        </div>
+                  <div
+                    key={st.studentId}
+                    className="
+                      rounded-3xl border border-slate-200/70 bg-white/70 p-3 shadow-sm backdrop-blur
+                      dark:border-slate-800/70 dark:bg-slate-950/55
+                    "
+                  >
+                    <div className="flex items-center gap-3">
+                      <StudentAvatar s={st} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+                          {st.name || "Student"}
+                        </p>
+                        <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                          {st.studentId}
+                        </p>
                       </div>
+                      <button
+                        onClick={() => handleRemoveStudent(st.studentId)}
+                        className="
+                          flex h-8 w-8 items-center justify-center rounded-full
+                          border border-red-200/70 bg-red-50/70 text-red-600
+                          hover:bg-red-100 transition-colors
+                          dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400
+                          dark:hover:bg-red-950/50
+                        "
+                        aria-label="Remove student"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
-                  ))}
+                  </div>
+                ))}
                 </div>
               )}
 

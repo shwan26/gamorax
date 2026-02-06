@@ -945,6 +945,81 @@ socket.on(
       .eq("id", session.id);
   });
 
+  // REMOVE STUDENT (lecturer only)
+  socket.on("lecturer:remove-student", async ({ pin, studentId }: { pin: string; studentId: string }) => {
+    const p = String(pin ?? "").trim();
+    const targetId = String(studentId ?? "").trim();
+    
+    if (!p || !targetId) return;
+
+    const session = await getActiveSessionByPin(p);
+    if (!session) return;
+
+    // Only lecturer can remove students
+    if (role !== "lecturer" || session.lecturer_id !== uid) return;
+
+    const room = rooms.get(p);
+    if (!room) return;
+
+    // Remove the student from the room
+    room.students.delete(targetId);
+    room.connections.delete(targetId);
+
+    // Emit updated student list
+    io.to(p).emit(
+      "students:update",
+      Array.from(room.students.values()).map((x) => ({
+        studentId: x.studentId ?? x.profileId,
+        name: x.displayName,
+        avatarSrc: x.avatarUrl ?? undefined,
+      }))
+    );
+
+    emitRoomCount(io, p, room);
+
+    // Optionally: kick the student out by emitting a disconnect event to them
+    // Find all sockets for this student and disconnect them
+    const socketsInRoom = await io.in(p).fetchSockets();
+    for (const s of socketsInRoom) {
+      if (s.data.uid === targetId) {
+        s.emit("kicked", { message: "You have been removed from the lobby" });
+        s.leave(p);
+      }
+    }
+  });
+
+  // CLEAR ALL STUDENTS (lecturer only)
+  socket.on("lecturer:clear-all", async ({ pin }: { pin: string }) => {
+    const p = String(pin ?? "").trim();
+    if (!p) return;
+
+    const session = await getActiveSessionByPin(p);
+    if (!session) return;
+
+    // Only lecturer can clear all
+    if (role !== "lecturer" || session.lecturer_id !== uid) return;
+
+    const room = rooms.get(p);
+    if (!room) return;
+
+    // Clear all students
+    room.students.clear();
+    room.connections.clear();
+
+    // Emit empty student list
+    io.to(p).emit("students:update", []);
+    emitRoomCount(io, p, room);
+
+    // Optionally: kick all students out
+    const socketsInRoom = await io.in(p).fetchSockets();
+    for (const s of socketsInRoom) {
+      if (s.data.role === "student") {
+        s.emit("kicked", { message: "The lobby has been cleared" });
+        s.leave(p);
+      }
+    }
+  });
+
   // LEAVE
   socket.on("leave", async ({ pin }: { pin: string }) => {
     const p = String(pin ?? "").trim();
