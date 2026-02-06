@@ -1,4 +1,4 @@
-# Gamorax 🎮 Version 1.4⚡
+# Gamorax 🎮 Version 1.0⚡
 A real-time quiz game built for classroom live sessions with lobby PIN join, live questions, scoring, and downloadable reports.
 
 > Built with Next.js + Socket.IO + Supabase. Designed to be simple to host, fast to join, and fun to play.
