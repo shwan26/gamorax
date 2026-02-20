@@ -236,9 +236,14 @@ export async function saveLiveReport(args: {
 export async function getReportsByQuiz(quizId: string): Promise<LiveReport[]> {
   const { data, error } = await supabase
     .from("live_reports")
-    .select(
-      "id, session_id, quiz_id, pin, course_code, course_name, section, semester, quiz_title, total_questions, finished_at, created_at, rows, stats"
-    )
+    .select(`
+      id, session_id, quiz_id, pin,
+      course_code, course_name, section, semester, quiz_title,
+      total_questions, finished_at, created_at, stats,
+      live_report_rows:live_report_rows (
+        rank, student_id, display_name, score, points, total_time
+      )
+    `)
     .eq("quiz_id", quizId)
     .order("finished_at", { ascending: false });
 
@@ -246,7 +251,16 @@ export async function getReportsByQuiz(quizId: string): Promise<LiveReport[]> {
 
   const arr = Array.isArray(data) ? data : [];
   return arr.map((r: any) => {
-    const rows: LiveReportRow[] = Array.isArray(r.rows) ? r.rows : [];
+    const joined = Array.isArray(r.live_report_rows) ? r.live_report_rows : [];
+    const rows: LiveReportRow[] = joined.map((x: any) => ({
+      rank: Number(x.rank ?? 0),
+      studentId: String(x.student_id ?? ""),
+      name: String(x.display_name ?? ""),
+      score: Number(x.score ?? 0),
+      points: Number(x.points ?? 0),
+      totalTime: Number(x.total_time ?? 0),
+    }));
+
     const stats: LiveReportStats = r.stats ?? computeLiveReportStats(rows);
 
     return {
@@ -254,17 +268,14 @@ export async function getReportsByQuiz(quizId: string): Promise<LiveReport[]> {
       sessionId: r.session_id ?? null,
       quizId: String(r.quiz_id),
       pin: String(r.pin ?? ""),
-
       courseCode: r.course_code ?? null,
       courseName: r.course_name ?? null,
       section: r.section ?? null,
       semester: r.semester ?? null,
       quizTitle: r.quiz_title ?? null,
-
       totalQuestions: Number(r.total_questions ?? 0),
       finishedAt: String(r.finished_at ?? r.created_at ?? ""),
       createdAt: String(r.created_at ?? ""),
-
       rows,
       stats,
     } satisfies LiveReport;
@@ -275,16 +286,31 @@ export async function getReportsByQuiz(quizId: string): Promise<LiveReport[]> {
 export async function getReportById(reportId: string): Promise<LiveReport | null> {
   const { data, error } = await supabase
     .from("live_reports")
-    .select(
-      "id, session_id, quiz_id, pin, course_code, course_name, section, semester, quiz_title, total_questions, finished_at, created_at, rows, stats"
-    )
+    .select(`
+      id, session_id, quiz_id, pin,
+      course_code, course_name, section, semester, quiz_title,
+      total_questions, finished_at, created_at, stats,
+      live_report_rows:live_report_rows (
+        rank, student_id, display_name, score, points, total_time
+      )
+    `)
     .eq("id", reportId)
     .maybeSingle();
 
   if (error) throwNice(error);
   if (!data) return null;
 
-  const rows: LiveReportRow[] = Array.isArray((data as any).rows) ? (data as any).rows : [];
+  const joined = Array.isArray((data as any).live_report_rows) ? (data as any).live_report_rows : [];
+
+  const rows: LiveReportRow[] = joined.map((r: any) => ({
+    rank: Number(r.rank ?? 0),
+    studentId: String(r.student_id ?? ""),
+    name: String(r.display_name ?? ""),
+    score: Number(r.score ?? 0),
+    points: Number(r.points ?? 0),
+    totalTime: Number(r.total_time ?? 0),
+  }));
+
   const stats: LiveReportStats = (data as any).stats ?? computeLiveReportStats(rows);
 
   return {
@@ -292,20 +318,17 @@ export async function getReportById(reportId: string): Promise<LiveReport | null
     sessionId: (data as any).session_id ?? null,
     quizId: String((data as any).quiz_id),
     pin: String((data as any).pin ?? ""),
-
     courseCode: (data as any).course_code ?? null,
     courseName: (data as any).course_name ?? null,
     section: (data as any).section ?? null,
     semester: (data as any).semester ?? null,
     quizTitle: (data as any).quiz_title ?? null,
-
     totalQuestions: Number((data as any).total_questions ?? 0),
     finishedAt: String((data as any).finished_at ?? (data as any).created_at ?? ""),
     createdAt: String((data as any).created_at ?? ""),
-
     rows,
     stats,
-  } satisfies LiveReport;
+  };
 }
 
 /* =========================

@@ -21,6 +21,7 @@ export type Question = {
   acceptedAnswers?: string[];
   timeMode: "default" | "specific";
   time: number;
+  score?: number;
 };
 
 // -------------------- Supabase rows --------------------

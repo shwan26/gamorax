@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+
 import { getGameById, updateGameTimer, type Game } from "@/src/lib/gameStorage";
 import { getQuestions, saveQuestions } from "@/src/lib/questionStorage";
-import { Clock3, TimerReset, SlidersHorizontal } from "lucide-react";
 
-export default function TimerSettingPage() {
+import { Clock3, TimerReset, SlidersHorizontal, BadgeDollarSign } from "lucide-react";
+
+export default function TimerAndScoreSettingPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
 
@@ -15,7 +17,9 @@ export default function TimerSettingPage() {
   const [mode, setMode] = useState<"automatic" | "manual">("automatic");
   const [defaultTime, setDefaultTime] = useState<number>(60);
 
-  // load on client (localStorage / supabase safe)
+  // NEW: score default for questions
+  const [defaultScore, setDefaultScore] = useState<number>(1);
+
   useEffect(() => {
     let alive = true;
 
@@ -23,7 +27,7 @@ export default function TimerSettingPage() {
       if (!gameId) return;
 
       try {
-        const g = await getGameById(gameId); // ✅ await
+        const g = await getGameById(gameId);
         if (!alive) return;
 
         setGame(g);
@@ -32,6 +36,10 @@ export default function TimerSettingPage() {
           setMode(g.timer.mode);
           setDefaultTime(g.timer.defaultTime);
         }
+
+        // If you later store game-level score default, load it here.
+        // For now, default to 1 (or you can infer from first question)
+        setDefaultScore(1);
       } catch (e) {
         console.error(e);
         if (!alive) return;
@@ -43,7 +51,6 @@ export default function TimerSettingPage() {
       alive = false;
     };
   }, [gameId]);
-
 
   if (!gameId) {
     return (
@@ -66,42 +73,51 @@ export default function TimerSettingPage() {
     return Math.max(5, Math.min(600, Math.floor(n)));
   }
 
-  async function handleSave() {
-    const safeDefault = clampSeconds(defaultTime);
+  function clampScore(n: number) {
+    if (!Number.isFinite(n)) return 1;
+    return Math.max(1, Math.min(10, Math.floor(n)));
+  }
 
-    // keep your game timer update (local)
-    updateGameTimer(gameId, { mode, defaultTime: safeDefault });
-    
-    // ✅ await async questions fetch
+  async function handleSave() {
+    const safeDefaultTime = clampSeconds(defaultTime);
+    const safeDefaultScore = clampScore(defaultScore);
+
+    // update game timer (local / your storage)
+    updateGameTimer(gameId, { mode, defaultTime: safeDefaultTime });
+
     const existing = await getQuestions(gameId);
 
     const updated = existing.map((q) => {
       if (mode === "automatic") {
+        // ✅ OVERWRITE ALL
         return {
           ...q,
           timeMode: "default" as const,
-          time: safeDefault,
+          time: safeDefaultTime,
+          score: safeDefaultScore,
         };
       }
 
-    const t = Number(q.time);
-    return {
-      ...q,
-      timeMode: "specific" as const,
-      time: Number.isFinite(t) && t > 0 ? t : safeDefault,
-    };
-  });
+      // ✅ MANUAL: keep per-question, fill missing
+      const t = Number(q.time);
+      const s = Number(q.score);
 
-  // ✅ await async save
-  await saveQuestions(gameId, updated);
+      return {
+        ...q,
+        timeMode: "specific" as const,
+        time: Number.isFinite(t) && t > 0 ? clampSeconds(t) : safeDefaultTime,
+        score: Number.isFinite(s) ? clampScore(s) : safeDefaultScore,
+      };
+    });
 
-  alert("Timer setting saved");
-}
+    await saveQuestions(gameId, updated);
+
+    alert("Timer + score setting saved");
+  }
 
 
   return (
-    <div
-    >
+    <div>
       {/* dot pattern */}
       <div
         className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
@@ -123,10 +139,10 @@ export default function TimerSettingPage() {
           </div>
           <div className="min-w-0">
             <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">
-              Timer
+              Timer & Score
             </h3>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Choose how questions are timed in this game.
+              Configure how questions are timed and scored in this game.
             </p>
           </div>
         </div>
@@ -170,9 +186,10 @@ export default function TimerSettingPage() {
                 </div>
 
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Apply the same time to all questions.
+                  Apply the same time and default score to all questions.
                 </p>
 
+                {/* Default Time */}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="text-sm text-slate-600 dark:text-slate-300">
                     Default time:
@@ -183,9 +200,7 @@ export default function TimerSettingPage() {
                     min={5}
                     max={600}
                     value={defaultTime}
-                    onChange={(e) =>
-                      setDefaultTime(clampSeconds(Number(e.target.value) || 0))
-                    }
+                    onChange={(e) => setDefaultTime(clampSeconds(Number(e.target.value) || 0))}
                     disabled={mode !== "automatic"}
                     className="
                       w-24 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-sm
@@ -202,6 +217,33 @@ export default function TimerSettingPage() {
 
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     (5–600)
+                  </span>
+                </div>
+
+                {/* Default Score */}
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-slate-600 dark:text-slate-300">
+                    Default score:
+                  </span>
+
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
+                    <BadgeDollarSign className="h-4 w-4 text-slate-500 dark:text-slate-300" />
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={defaultScore}
+                      onChange={(e) => setDefaultScore(clampScore(Number(e.target.value) || 0))}
+                      disabled={mode !== "automatic"} // keep consistent: automatic page controls defaults
+                      className="
+                        w-16 bg-transparent text-sm font-semibold text-slate-900 outline-none text-center
+                        dark:text-slate-100
+                      "
+                    />
+                  </div>
+
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    (1–10)
                   </span>
                 </div>
               </div>
@@ -245,8 +287,12 @@ export default function TimerSettingPage() {
                 </div>
 
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Each question can have its own time. Existing questions will keep
-                  their current time (fallback to default if missing).
+                  Each question can have its own time and score in the question editor.
+                  Saving will fill missing values using the defaults above.
+                </p>
+
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Tip: Set per-question score beside the timer inside each question.
                 </p>
               </div>
             </div>
@@ -256,8 +302,8 @@ export default function TimerSettingPage() {
         {/* actions */}
         <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Automatic sets all questions to default time. Manual keeps per-question
-            time (and fills missing values).
+            Automatic overwrites all question times and scores. Manual keeps per-question
+            values (fills missing ones if needed).
           </p>
 
           <button
