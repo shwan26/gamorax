@@ -170,71 +170,127 @@ export default function QuestionEditorForm({
         )}
       </div>
 
-      {/* TIMER */}
-      <div className="mx-auto mt-6 w-full max-w-2xl">
-        <div
-          className="
-            rounded-2xl border border-slate-200/70 bg-white/60 p-4 shadow-sm backdrop-blur
-            dark:border-slate-800/70 dark:bg-slate-950/45
-          "
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <div className="rounded-xl border border-slate-200/80 bg-white/70 p-2 dark:border-slate-800/70 dark:bg-slate-950/40">
+      {/* TIMER & SCORE */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* TIMER & SCORE (two equal cards) */}
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {/* Timer Card */}
+          <div
+            className="
+              flex items-center justify-between gap-4 rounded-2xl
+              border border-slate-200/80 bg-white/75 px-4 py-3 shadow-sm
+              dark:border-slate-800/70 dark:bg-slate-950/40
+            "
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-2.5 dark:border-slate-800/70 dark:bg-slate-950/45">
                 <Timer className="h-4 w-4 text-slate-700 dark:text-[#A7F3FF]" />
               </div>
-              <div>
+
+              <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
-                  Timer (seconds)
+                  Timer
                 </p>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  Set a specific time for this question.
+                <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                  Seconds per question
                 </p>
               </div>
             </div>
 
-            <input
-              type="number"
-              min={5}
-              max={600}
-              step={1}
-              value={question.time ?? gameDefaultTime}
-              onChange={(e) => {
-                const raw = Number(e.target.value);
-
-                // clamp to 5..600 (and handle NaN)
-                const clamped = Number.isFinite(raw)
-                  ? Math.max(5, Math.min(600, raw))
-                  : Math.max(5, Math.min(600, gameDefaultTime));
-
-                onUpdate({
-                  timeMode: "specific",
-                  time: clamped,
-                });
-              }}
-              onBlur={(e) => {
-                // ensure empty / invalid becomes a valid value when leaving the field
-                const raw = Number(e.target.value);
-                const clamped = Number.isFinite(raw)
-                  ? Math.max(5, Math.min(600, raw))
-                  : Math.max(5, Math.min(600, gameDefaultTime));
-
-                if (String(clamped) !== e.target.value) {
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={5}
+                max={600}
+                step={1}
+                value={question.time ?? gameDefaultTime}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  const clamped = Number.isFinite(raw)
+                    ? Math.max(5, Math.min(600, raw))
+                    : Math.max(5, Math.min(600, gameDefaultTime));
                   onUpdate({ timeMode: "specific", time: clamped });
-                }
-              }}
-              className="
-                w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
-                shadow-sm outline-none
-                focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
-                dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
-                sm:w-32
-              "
-            />
+                }}
+                onBlur={(e) => {
+                  const raw = Number(e.target.value);
+                  const clamped = Number.isFinite(raw)
+                    ? Math.max(5, Math.min(600, raw))
+                    : Math.max(5, Math.min(600, gameDefaultTime));
+                  if (String(clamped) !== e.target.value) onUpdate({ timeMode: "specific", time: clamped });
+                }}
+                className="
+                  w-28 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm
+                  text-center font-semibold text-slate-900 shadow-sm outline-none
+                  focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
+                  dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
+                "
+              />
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                sec
+              </span>
+            </div>
+          </div>
 
+          {/* Score Card */}
+          <div
+            className="
+              flex items-center justify-between gap-4 rounded-2xl
+              border border-slate-200/80 bg-white/75 px-4 py-3 shadow-sm
+              dark:border-slate-800/70 dark:bg-slate-950/40
+            "
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-2.5 dark:border-slate-800/70 dark:bg-slate-950/45">
+                {/* reuse Timer icon or swap to something else if you want */}
+                <Timer className="h-4 w-4 text-slate-700 dark:text-[#A7F3FF]" />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                  Score
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                  Points for correct answer
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={10}
+                step={1}
+                value={question.score ?? 1}
+                onChange={(e) => {
+                  const raw = Number(e.target.value);
+                  const clamped = Number.isFinite(raw)
+                    ? Math.max(1, Math.min(10, Math.floor(raw)))
+                    : 1;
+                  onUpdate({ score: clamped });
+                }}
+                onBlur={(e) => {
+                  const raw = Number(e.target.value);
+                  const clamped = Number.isFinite(raw)
+                    ? Math.max(1, Math.min(10, Math.floor(raw)))
+                    : 1;
+                  if (String(clamped) !== e.target.value) onUpdate({ score: clamped });
+                }}
+                className="
+                  w-28 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-sm
+                  text-center font-semibold text-slate-900 shadow-sm outline-none
+                  focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
+                  dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
+                "
+              />
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                pts
+              </span>
+            </div>
           </div>
         </div>
       </div>
+
     </div>
   );
 }
