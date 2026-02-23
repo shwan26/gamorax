@@ -93,8 +93,10 @@ export default function RegisterPage() {
         throw new Error("Student ID is required if you use a personal email.");
       }
 
-      const emailRedirectTo = `${process.env.NEXT_PUBLIC_SITE_URL}/callback`;
+      const base =
+        process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
 
+      const emailRedirectTo = `${base}/callback?role=${encodeURIComponent(role)}`;
       const { error } = await supabase.auth.signUp({
         email: e,
         password: pw,

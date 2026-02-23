@@ -236,7 +236,30 @@ export default function HomePage() {
         </div>
 
         <footer className="mt-10 text-center text-xs text-slate-500 dark:text-slate-400">
-          © {new Date().getFullYear()} GAMORAX
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            <Link
+              href="/about"
+              className="underline underline-offset-4 hover:text-slate-900 dark:hover:text-slate-50"
+            >
+              About
+            </Link>
+            <span className="opacity-40">•</span>
+            <Link
+              href="/contact"
+              className="underline underline-offset-4 hover:text-slate-900 dark:hover:text-slate-50"
+            >
+              Contact
+            </Link>
+            <span className="opacity-40">•</span>
+            <Link
+              href="/privacy"
+              className="underline underline-offset-4 hover:text-slate-900 dark:hover:text-slate-50"
+            >
+              Privacy
+            </Link>
+          </div>
+
+          <div className="mt-3">© {new Date().getFullYear()} GAMORAX</div>
         </footer>
       </main>
     </div>

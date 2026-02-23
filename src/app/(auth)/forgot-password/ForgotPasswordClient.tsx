@@ -70,9 +70,9 @@ export default function ForgotPasswordPage() {
 
     setSubmitting(true);
     try {
-      const redirectTo = `${window.location.origin}/reset-password?role=${role}`;
+      const redirectTo = `${window.location.origin}/reset-password`;
       const { error } = await supabase.auth.resetPasswordForEmail(e, {
-        redirectTo,
+        redirectTo: `${redirectTo}?role=${encodeURIComponent(role)}`,
       });
       if (error) throw error;
 

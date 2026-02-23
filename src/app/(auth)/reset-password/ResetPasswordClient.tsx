@@ -37,24 +37,38 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     (async () => {
+      try {
         const url = new URL(window.location.href);
+
+        // 1) PKCE flow (newer): ?code=...
         const code = url.searchParams.get("code");
-
         if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) {
-            console.error(error.message);
-            setReady(false);
-            return;
-        }
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+        } else {
+          // 2) Token hash flow (common in recovery emails):
+          // Supabase redirects to your page with ?token_hash=...&type=recovery
+          const token_hash = url.searchParams.get("token_hash");
+          const type = url.searchParams.get("type");
+
+          if (token_hash && type === "recovery") {
+            const { error } = await supabase.auth.verifyOtp({
+              type: "recovery",
+              token_hash,
+            });
+            if (error) throw error;
+          }
         }
 
+        // finally check session
         const { data } = await supabase.auth.getSession();
         setReady(!!data.session);
+      } catch (e: any) {
+        console.error(e?.message ?? e);
+        setReady(false);
+      }
     })();
   }, []);
-
-
 
   async function onSetPassword() {
     if (submitting) return;

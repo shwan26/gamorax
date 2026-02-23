@@ -2,32 +2,35 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  if (!serviceKey) {
-    return NextResponse.json(
-      { error: "Missing SUPABASE_SERVICE_ROLE_KEY" },
-      { status: 500 }
+  try {
+    // ✅ Use service role key (server only!)
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    const { userId } = await req.json();
+    if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+
+    // ✅ OPTIONAL BUT IMPORTANT: verify the requester is the same user
+    // Use the user's access token from Authorization header
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.replace("Bearer ", "");
+    if (!token) return NextResponse.json({ error: "Missing auth token" }, { status: 401 });
+
+    const { data: me, error: meErr } = await supabaseAdmin.auth.getUser(token);
+    if (meErr || !me?.user?.id) return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+
+    if (me.user.id !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // ✅ Delete auth user (this deletes from auth.users)
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Server error" }, { status: 500 });
   }
-
-  const { userId } = await req.json().catch(() => ({}));
-
-  if (!userId) {
-    return NextResponse.json({ error: "Missing userId" }, { status: 400 });
-  }
-
-  const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  // Delete auth user (DB rows should cascade if FK is set up)
-  const { error } = await admin.auth.admin.deleteUser(userId);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
-  }
-
-  return NextResponse.json({ ok: true });
 }

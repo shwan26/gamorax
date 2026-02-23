@@ -13,8 +13,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GamoRax",
-  description: "A Gamified Quiz Application",
+  metadataBase: new URL("https://gamorax.app"),
+  title: {
+    default: "GamoRax",
+    template: "%s • GamoRax",
+  },
+  description: "Create and join interactive quiz sessions — minimal, fast, classroom-friendly.",
+  openGraph: {
+    title: "GamoRax",
+    description: "Gamified quiz sessions for classrooms.",
+    url: "https://gamorax.app",
+    siteName: "GamoRax",
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
