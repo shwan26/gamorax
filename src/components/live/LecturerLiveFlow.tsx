@@ -190,8 +190,9 @@ export default function LecturerLiveFlow({
       const options =
         baseQ.type === "true_false"
           ? [
-              { text: "True", correct: true },
-              { text: "False", correct: false },
+              // force order True (index 0), False (index 1) but keep correctness from DB
+              { text: "True",  correct: !!baseQ.answers?.[0]?.correct },
+              { text: "False", correct: !!baseQ.answers?.[1]?.correct },
             ]
           : (baseQ.answers ?? []).slice(0, 5);
 
