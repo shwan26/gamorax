@@ -67,12 +67,12 @@ export default function QuestionList({
           let complete = false;
 
           if (type === "multiple_choice") {
-            complete = hasQuestion && mcNonEmpty.length >= 2 && mcHasCorrect;
+            complete = hasQuestion && mcNonEmpty.length >= 3 && mcHasCorrect;
           } else if (type === "true_false") {
             complete = hasQuestion && tfHasCorrect;
           } else if (type === "matching") {
             // require at least 2 full pairs, no half-filled rows
-            complete = hasQuestion && pairCompleteCount >= 2 && !pairHasBroken;
+            complete = hasQuestion && pairCompleteCount === 5 && !pairHasBroken;
           } else if (type === "input") {
             complete = hasQuestion && accepted.length >= 1;
           }

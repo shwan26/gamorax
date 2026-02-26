@@ -844,12 +844,20 @@ socket.on(
         const allowMultiple = Boolean(room.current.allowMultiple) || correctIndices.length > 1;
 
         if (rec.kind === "choice") {
+          const mine = Array.isArray(rec.indices) ? rec.indices.map(Number).filter(Number.isFinite) : [];
+
           if (allowMultiple) {
-            const mine = Array.isArray(rec.indices) ? rec.indices : [];
-            isCorrect = mine.some((i) => correctIndices.includes(i));
+            // ✅ "Choose ALL" = must match EXACT set of correct indices
+            isCorrect = sameSet(mine, correctIndices);
           } else {
-            isCorrect = sameSet(rec.indices ?? [], correctIndices ?? []);
+            const picked0 = mine[0];
+
+            isCorrect =
+              mine.length === 1 &&
+              typeof picked0 === "number" &&
+              correctIndices.includes(picked0);
           }
+
           timeUsed = safeInt(rec.timeUsed, maxTime);
         } else {
           isCorrect = false;

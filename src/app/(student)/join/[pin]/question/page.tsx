@@ -290,8 +290,12 @@ export default function StudentQuestionPage() {
         setCorrectCount(0);
       }
 
+      console.log("question.show payload:", question);
+      console.log("allowMultiple:", question?.allowMultiple, "type:", question?.type);
 
     };
+    let earnedPoints = 0;
+    let earnedCorrectIncrement = 0; // 1 only when fully correct (for correctCount)
 
     const onReveal = (payload: any) => {
     setReveal(payload);
@@ -304,6 +308,7 @@ export default function StudentQuestionPage() {
 
     let isCorrect: boolean | null = null;
 
+    // Choice (MC/TF)
     if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
       const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
       const mine = myChoiceRef.current ?? [];
@@ -311,14 +316,25 @@ export default function StudentQuestionPage() {
       if (!correct.length) {
         isCorrect = null;
       } else {
-        const allowMultiple = Boolean(payload?.allowMultiple) || correct.length > 1;
+        const allowMultiple = Boolean(payload?.allowMultiple);
 
         if (allowMultiple) {
-          isCorrect = mine.length > 0 ? mine.some((i) => correct.includes(i)) : false;
+          // ✅ multi-select: must match EXACT set
+          isCorrect = mine.length > 0 ? sameSet(correct, mine) : false;
         } else {
-          isCorrect = sameSet(correct, mine);
+          // ✅ single-select: must pick exactly 1 and be correct
+          isCorrect = mine.length === 1 ? correct.includes(mine[0]) : false;
         }
       }
+      if (isCorrect === null) {
+        setLastWasCorrect(null);
+        setLastEarnedPoints(0);
+        return;
+      }
+
+      earnedPoints = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
+      earnedCorrectIncrement = isCorrect ? 1 : 0;
+
     }
 
     if (payload?.type === "input") {
@@ -327,12 +343,48 @@ export default function StudentQuestionPage() {
       const normAccepted = accepted
         .map((x: any) => String(x ?? "").trim().toLowerCase())
         .filter(Boolean);
+
       isCorrect = mine ? normAccepted.includes(mine) : false;
+
+      earnedPoints = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
+      earnedCorrectIncrement = isCorrect ? 1 : 0;
     }
 
     if (payload?.type === "matching") {
-      const totalPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs.length : 0;
-      isCorrect = totalPairs > 0 ? matchedPairsRef.current.size === totalPairs : null;
+      const correctPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs : [];
+      const totalPairs = correctPairs.length;
+
+      if (totalPairs === 0) {
+        isCorrect = null;
+      } else {
+        // build correct set
+        const correctSet = new Set(
+          correctPairs.map((p: any) => `${String(p?.left ?? "").trim()}|||${String(p?.right ?? "").trim()}`)
+        );
+
+        // student matched pairs (leftIndex->rightIndex) -> convert to text pairs
+        let correctCountPairs = 0;
+
+        for (const [lIdx, rIdx] of matchedPairsRef.current.entries()) {
+          const left = String(curQ?.left?.[lIdx] ?? "");
+          const right = String(curQ?.right?.[rIdx] ?? "");
+          const key = `${left.trim()}|||${right.trim()}`;
+          if (correctSet.has(key)) correctCountPairs++;
+        }
+
+        // fully correct?
+        isCorrect = correctCountPairs === totalPairs;
+
+        // ✅ partial points: distribute base points across pairs
+        const base = 100; // or use q.score later if you want
+        const perPair = base / totalPairs;
+        earnedPoints = correctCountPairs * perPair;
+
+        // optional: add time bonus ONLY if fully correct (recommended)
+        if (isCorrect) earnedPoints += Math.max(0, maxTime - timeUsed);
+
+        earnedCorrectIncrement = isCorrect ? 1 : 0;
+      }
     }
 
     // ✅ now calculate points AFTER isCorrect is known
@@ -342,14 +394,12 @@ export default function StudentQuestionPage() {
       return;
     }
 
-    const pointsEarned = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
-
     setLastWasCorrect(isCorrect);
-    setLastEarnedPoints(pointsEarned);
+    setLastEarnedPoints(Math.round(earnedPoints)); // display nice integer
 
-    setCorrectCount((c) => c + (isCorrect ? 1 : 0));
+    setCorrectCount((c) => c + earnedCorrectIncrement);
     setTotalPoints((p) => {
-      const next = p + pointsEarned;
+      const next = p + earnedPoints;
       totalPointsRef.current = next;
       return next;
     });

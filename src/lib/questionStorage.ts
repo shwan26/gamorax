@@ -22,6 +22,8 @@ export type Question = {
   timeMode: "default" | "specific";
   time: number;
   score?: number;
+
+  allowMultiple?: boolean; 
 };
 
 // -------------------- Supabase rows --------------------
@@ -36,6 +38,8 @@ type QuestionApiRow = {
   time: number;
   matches: any | null;
   acceptedAnswers: string[] | null;
+  allowMultiple?: boolean | null;
+  score?: number | null;
 };
 
 type AnswerApiRow = {
@@ -69,30 +73,22 @@ function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Questi
       image: a.image ?? null,
     }));
 
-    // clamp to 3..5, but DO NOT auto-pad back to 4
     if (localAnswers.length > MC_MAX) localAnswers = localAnswers.slice(0, MC_MAX);
-
-    // If DB has <3 (old data), pad up to 3 so editor doesn’t break
     while (localAnswers.length < MC_MIN) {
       localAnswers.push({ text: "", correct: false, image: null });
     }
   } else if (qType === "true_false") {
-      const sorted = [...answers].sort((a, b) => a.answerIndex - b.answerIndex);
+    const sorted = [...answers].sort((a, b) => a.answerIndex - b.answerIndex);
+    const tRow = sorted[0];
+    const fRow = sorted[1];
 
-      // Expect 2 rows (index 0 True, index 1 False). Fallback if missing.
-      const tRow = sorted[0];
-      const fRow = sorted[1];
+    localAnswers = [
+      { text: "True", correct: !!tRow?.correct, image: tRow?.image ?? null },
+      { text: "False", correct: !!fRow?.correct, image: fRow?.image ?? null },
+    ];
 
-      localAnswers = [
-        { text: "True",  correct: !!tRow?.correct, image: tRow?.image ?? null },
-        { text: "False", correct: !!fRow?.correct, image: fRow?.image ?? null },
-      ];
-
-      // If both are false (or no rows), default to True correct (optional)
-      if (!localAnswers.some(a => a.correct)) {
-        localAnswers[0].correct = true;
-      }
-    } else {
+    if (!localAnswers.some((a) => a.correct)) localAnswers[0].correct = true;
+  } else {
     localAnswers = emptyAnswers(4);
   }
 
@@ -102,6 +98,11 @@ function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Questi
     text: row.text ?? "",
     image: row.image ?? null,
     answers: localAnswers,
+
+    // ✅ IMPORTANT: persist allowMultiple on question
+    allowMultiple: !!row.allowMultiple,
+    score: Number(row.score ?? 1),
+
     matches: Array.isArray(row.matches)
       ? row.matches
       : Array.from({ length: 5 }, () => ({ left: "", right: "" })),
@@ -111,14 +112,13 @@ function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Questi
   };
 }
 
-
 // ✅ Supabase-backed reads
 export async function getQuestions(gameId: string): Promise<Question[]> {
   if (!gameId) return [];
 
   const { data: qs, error: qErr } = await supabase
     .from("questions_api")
-    .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers")
+    .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers, allowMultiple, score")
     .eq("gameId", gameId)
     .order("position", { ascending: true });
 
@@ -145,98 +145,78 @@ export async function getQuestions(gameId: string): Promise<Question[]> {
   });
 }
 
-// ✅ Supabase-backed save (replaces localStorage)
+// ✅ Supabase-backed save (VIEW-safe, no upsert/onConflict)
 export async function saveQuestions(gameId: string, questions: Question[]): Promise<void> {
   if (!gameId) return;
 
-  // ensure positions 1..n
+  // normalize final order 1..n
   const normalized = questions.map((q, i) => ({ ...q, _pos: i + 1 }));
 
-  const tempBase = 1000000 + Math.floor(Date.now() / 1000);
+  // ✅ 1) Upsert into REAL TABLE: public.questions
+  const qRows = normalized.map((q) => ({
+    id: q.id,
+    quiz_id: gameId,
+    position: q._pos,
 
-  await Promise.all(
-    normalized.map((q, i) =>
-      supabase
-        .from("questions_api")
-        .update({ position: tempBase - i })
-        .eq("id", q.id)
-        .eq("gameId", gameId) // ✅ important
-    )
-  );
+    q_type: q.type,                 // enum question_kind
+    text: q.text ?? "",
+    image_url: q.image ?? null,
 
-  // STEP 2: final positions (DO THIS SEQUENTIALLY)
-  for (let i = 0; i < normalized.length; i++) {
-    const q = normalized[i];
-    const { error } = await supabase
-      .from("questions_api")
-      .update({ position: i + 1 })
-      .eq("id", q.id)
-      .eq("gameId", gameId);
+    time_mode: q.timeMode ?? "specific",
+    time_seconds: Number(q.time ?? 60),
 
-    if (error) throw error;
-  }
+    matches: q.type === "matching" ? (q.matches ?? null) : null,
+    accepted_answers: q.type === "input" ? (q.acceptedAnswers ?? null) : null,
 
+    score: Number(q.score ?? 1),
+    allow_multiple: q.type === "multiple_choice" ? !!q.allowMultiple : false,
+  }));
+
+  const { error: qErr } = await supabase.from("questions").upsert(qRows, { onConflict: "id" });
+  if (qErr) throw qErr;
+
+  // ✅ 2) Answers -> REAL TABLE: public.question_answers
+  // We do delete + insert to avoid leftover rows after reducing choices.
   for (const q of normalized) {
-    const qPayload = {
-      id: q.id,
-      gameId,
-      type: q.type,
-      text: q.text ?? "",
-      image: q.image ?? null,
-      timeMode: q.timeMode,
-      time: q.time,
-      matches: q.type === "matching" ? (q.matches ?? null) : null,
-      acceptedAnswers: q.type === "input" ? (q.acceptedAnswers ?? null) : null,
-    };
+    const { error: delErr } = await supabase
+      .from("question_answers")
+      .delete()
+      .eq("question_id", q.id);
 
-    // update -> if 0 rows -> insert
-    const { error } = await supabase
-      .from("questions_api")
-      .update(qPayload)
-      .eq("id", q.id);
+    if (delErr) throw delErr;
 
-    if (error) throw error;
-
-    // if (!updRows || updRows.length === 0) {
-    //   const { error: insErr } = await supabase.from("questions_api").insert(qPayload);
-    //   if (insErr) throw insErr;
-    // }
-
-    // answers table
+    // Only MC + TF store rows in question_answers
     if (q.type === "multiple_choice" || q.type === "true_false") {
-      const { error: delErr } = await supabase.from("answers_api").delete().eq("questionId", q.id);
-      if (delErr) throw delErr;
-
       const payload =
         q.type === "true_false"
           ? [
               {
-                questionId: q.id,
-                answerIndex: 0,
+                question_id: q.id,
+                position: 0,
                 text: "True",
-                image: null,
-                correct: !!q.answers?.[0]?.correct,
+                image_url: null,
+                is_correct: !!q.answers?.[0]?.correct,
               },
               {
-                questionId: q.id,
-                answerIndex: 1,
+                question_id: q.id,
+                position: 1,
                 text: "False",
-                image: null,
-                correct: !!q.answers?.[1]?.correct,
+                image_url: null,
+                is_correct: !!q.answers?.[1]?.correct,
               },
             ]
-          : (q.answers ?? emptyAnswers(4)).slice(0, MC_MAX).map((a, idx) => ({
-              questionId: q.id,
-              answerIndex: idx,
-              text: a.text ?? "",
-              image: a.image ?? null,
-              correct: !!a.correct,
-            }));
+          : (q.answers ?? emptyAnswers(4))
+              .slice(0, MC_MAX)
+              .map((a, idx) => ({
+                question_id: q.id,
+                position: idx,              // ✅ your answerIndex
+                text: a.text ?? "",
+                image_url: a.image ?? null,
+                is_correct: !!a.correct,
+              }));
 
-      const { error: insErr } = await supabase.from("answers_api").insert(payload);
+      const { error: insErr } = await supabase.from("question_answers").insert(payload);
       if (insErr) throw insErr;
-    } else {
-      await supabase.from("answers_api").delete().eq("questionId", q.id);
     }
   }
 }

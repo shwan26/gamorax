@@ -118,7 +118,7 @@ export default function LecturerLiveFlow({
     if (!pinKey || !gameId) return;
     if (!questions.length) return;
 
-    const key = `gamorax_live_qorder_${pinKey}_${gameId}`;
+    const key = `gamorax_live_qorder_${pinKey}_${gameId}_sq${Number(shuffleQuestions)}`;
     const saved = sessionStorage.getItem(key);
 
     if (saved) {
@@ -145,7 +145,7 @@ export default function LecturerLiveFlow({
 
   // ✅ stable answer order for MC (per pinKey)
   const getOrCreateAnswerOrder = (liveQIndex: number, optionCount: number) => {
-    const key = `gamorax_live_aorder_${pinKey}_${gameId}_${liveQIndex}_${optionCount}`;
+    const key = `gamorax_live_aorder_${pinKey}_${gameId}_${liveQIndex}_${optionCount}_sa${Number(shuffleAnswers)}`;
     const saved = sessionStorage.getItem(key);
     if (saved) {
       try {
@@ -165,7 +165,7 @@ export default function LecturerLiveFlow({
     liveQIndex: number,
     optionCount: number
   ) => {
-    const key = `gamorax_live_match_v2_${side}_${pinKey}_${gameId}_${liveQIndex}_${optionCount}`;
+    const key = `gamorax_live_match_v2_${side}_${pinKey}_${gameId}_${liveQIndex}_${optionCount}_sa${Number(shuffleAnswers)}`;
     const saved = sessionStorage.getItem(key);
 
     if (saved) {
@@ -212,7 +212,7 @@ export default function LecturerLiveFlow({
         correct: correctInDisplay.has(idx),
       }));
 
-      return { ...baseQ, answers: displayAnswers };
+      return { ...baseQ, answers: displayAnswers, allowMultiple: !!baseQ.allowMultiple };
     }
 
     // Matching
@@ -371,13 +371,18 @@ export default function LecturerLiveFlow({
     if (q.type === "multiple_choice" || q.type === "true_false") {
       const answersText = ((q as any).answers ?? []).map((a: any) => a.text ?? "");
       const correctIndices = toCorrectIndices(q);
+
+      // ✅ For MC: use lecturer’s setting; for TF always false
+
       s.emit("question:show", {
         pin,
         question: {
           ...common,
           answers: answersText,
-          allowMultiple: correctIndices.length > 1,
+          allowMultiple: q.type === "multiple_choice" ? !!q.allowMultiple : false,
+          correctCount: correctIndices.length,                 // ✅ send it
           correctIndices,
+          
         },
       });
       return;
