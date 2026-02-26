@@ -13,6 +13,7 @@ import { getAvatarSrc } from "@/src/lib/studentAvatar";
 import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
 import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
 import { getLiveMeta, saveLiveMeta } from "@/src/lib/liveStorage";
+import TimerBar from "@/src/components/live/TimerBar";
 
 type Phase = "question" | "waiting" | "answer" | "final";
 
@@ -194,6 +195,7 @@ export default function StudentQuestionPage() {
 
   const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
   const [lastEarnedPoints, setLastEarnedPoints] = useState<number>(0);
+  const [totalQuizScore, setTotalQuizScore] = useState<number>(0);
 
   const [finalPoints, setFinalPoints] = useState<number>(0);
 
@@ -214,9 +216,12 @@ export default function StudentQuestionPage() {
     if (p.studentId !== me.studentId) return;
 
     const total = p.total ?? {};
-    setCorrectCount(Number(total.correct ?? 0));
-    setTotalPoints(Number(total.points ?? 0));
-    totalPointsRef.current = Number(total.points ?? 0);
+    const scoreEarned = Number(total.score ?? 0);     // ✅ was total.correct
+    const points = Number(total.points ?? 0);
+
+    setCorrectCount(scoreEarned);                     // (you can rename state later)
+    setTotalPoints(points);
+    totalPointsRef.current = points;
 
     // last question feedback
     const last = p.last;
@@ -283,12 +288,6 @@ export default function StudentQuestionPage() {
       setLastEarnedPoints(0);
 
       setNow(Date.now());
-      
-      if (question?.number === 1 || question?.questionIndex === 0) {
-        totalPointsRef.current = 0;
-        setTotalPoints(0);
-        setCorrectCount(0);
-      }
 
       console.log("question.show payload:", question);
       console.log("allowMultiple:", question?.allowMultiple, "type:", question?.type);
@@ -316,7 +315,7 @@ export default function StudentQuestionPage() {
       if (!correct.length) {
         isCorrect = null;
       } else {
-        const allowMultiple = Boolean(payload?.allowMultiple);
+        const allowMultiple = Boolean(payload?.allowMultiple ?? curQ?.allowMultiple);
 
         if (allowMultiple) {
           // ✅ multi-select: must match EXACT set
@@ -332,8 +331,10 @@ export default function StudentQuestionPage() {
         return;
       }
 
-      earnedPoints = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
-      earnedCorrectIncrement = isCorrect ? 1 : 0;
+      const baseScore = Number(curQ?.score ?? 1);
+      const timeLeft = Math.max(0, maxTime - timeUsed);
+      earnedPoints = isCorrect ? baseScore * 100 + 10 * timeLeft : 0;
+      earnedCorrectIncrement = isCorrect ? baseScore : 0; // ✅ score earned, not +1
 
     }
 
@@ -346,8 +347,10 @@ export default function StudentQuestionPage() {
 
       isCorrect = mine ? normAccepted.includes(mine) : false;
 
-      earnedPoints = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
-      earnedCorrectIncrement = isCorrect ? 1 : 0;
+      const baseScore = Number(curQ?.score ?? 1);
+      const timeLeft = Math.max(0, maxTime - timeUsed);
+      earnedPoints = isCorrect ? baseScore * 100 + 10 * timeLeft : 0;
+      earnedCorrectIncrement = isCorrect ? baseScore : 0;
     }
 
     if (payload?.type === "matching") {
@@ -397,22 +400,20 @@ export default function StudentQuestionPage() {
     setLastWasCorrect(isCorrect);
     setLastEarnedPoints(Math.round(earnedPoints)); // display nice integer
 
-    setCorrectCount((c) => c + earnedCorrectIncrement);
-    setTotalPoints((p) => {
-      const next = p + earnedPoints;
-      totalPointsRef.current = next;
-      return next;
-    });
-
     const qNumber = Number(curQ?.number ?? curQ?.questionIndex ?? 0) || 0;
     setScoredCount((prev) => Math.max(prev, qNumber));
   };
 
-    const onFinal = async () => {
-    setPhase("final");
+    
 
-    const final = totalPointsRef.current;
-    setFinalPoints(final);
+    const onFinal = async (p: any) => {
+    setPhase("final");
+  
+    const denom = Number(p?.totalScore ?? 0);
+    setTotalQuizScore(denom);
+
+    const pointsFinal = totalPointsRef.current; // ✅ points
+    setFinalPoints(pointsFinal);
 
     const cur = await getCurrentStudent(); // ✅ await
     if (!cur || !me) return;
@@ -440,7 +441,7 @@ export default function StudentQuestionPage() {
 
       totalQuestions,
       correct: Number(correctCountRef.current ?? 0),
-      points: Number(final ?? 0),
+      points: Number(pointsFinal ?? 0),
 
       finishedAt: new Date().toISOString(),
     });
@@ -470,8 +471,9 @@ export default function StudentQuestionPage() {
       if (p.studentId !== me.studentId) return;
 
       const total = p.total ?? {};
-      const correct = Number(total.correct ?? 0);
+      const correct = Number(total.score ?? 0);
       const points = Number(total.points ?? 0);
+      
 
       setCorrectCount(correct);
       setTotalPoints(points);
@@ -684,31 +686,11 @@ export default function StudentQuestionPage() {
                   {/* timer only during question phase */}
                   {phase === "question" ? (
                     <div className="w-full sm:w-[360px]">
-                      <div className="flex items-center justify-between">
-                        <div className="inline-flex items-center gap-2">
-                          <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                            Time remaining
-                          </span>
-                        </div>
-                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                          {q?.startAt ? `${timeLeft}s` : "-"}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                        <div
-                          className="h-full transition-[width] duration-100"
-                          style={{
-                            width:
-                              q?.startAt && maxSec > 0
-                                ? `${(timeLeft / maxSec) * 100}%`
-                                : "0%",
-                            background:
-                              "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                          }}
-                        />
-                      </div>
+                      {q?.startAt && q?.durationSec ? (
+                        <TimerBar mode="computed" startAt={Number(q.startAt)} duration={Number(q.durationSec)} />
+                      ) : (
+                        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Time remaining</div>
+                      )}
                     </div>
                   ) : (
                     <div className="w-full sm:w-[360px]" />
@@ -778,7 +760,7 @@ export default function StudentQuestionPage() {
                   </div>
 
                   <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
-                    {correctCount}/{Number(q?.total ?? scoredCount ?? 1) || 1}
+                    {correctCount}/{Math.max(1, totalQuizScore )}
                   </div>
 
                   <div className="text-sm text-slate-600 dark:text-slate-300">

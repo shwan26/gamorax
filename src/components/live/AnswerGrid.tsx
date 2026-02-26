@@ -304,7 +304,18 @@ export default function AnswerGrid({
     onSubmitInput({ value: v });
   }
 
-  const grad = `bg-gradient-to-br ${BADGE_ACCENT}`;
+    const grad = `bg-gradient-to-br ${BADGE_ACCENT}`;
+
+    // ✅ default = solid blue, selected = gradient
+    const blueDefault = "bg-[#2563EB]"; // tailwind blue-600 (solid)
+    const pickBase = [
+      PICK_BTN_BASE,
+      blueDefault,
+      "shadow-[0_10px_25px_rgba(37,99,235,0.18)]",
+      "hover:brightness-110",
+    ].join(" ");
+
+    const pickSelected = [PICK_BTN_BASE, grad, "brightness-110 ring-4 ring-white/70"].join(" ");
 
   /* -------------------- INPUT -------------------- */
   if (type === "input") {
@@ -364,9 +375,15 @@ export default function AnswerGrid({
                   onClick={() => clickLeft(i)}
                   className={[
                     "w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold border shadow-sm transition",
-                    isSelected ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25" : "border-slate-200/70",
-                    "bg-white/80 dark:bg-slate-950/45 dark:border-slate-800/70",
-                    isMatched ? "opacity-35 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
+                    // ✅ selected highlight (distinct)
+                    isSelected
+                      ? "border-[#2563EB] ring-2 ring-[#2563EB]/35 bg-[#2563EB]/10"
+                      : "border-slate-200/70 bg-white/80",
+                    // ✅ matched/correct state (green border)
+                    isMatched ? "border-emerald-500 ring-2 ring-emerald-500/25 bg-emerald-500/10" : "",
+                    "dark:border-slate-800/70 dark:bg-slate-950/45",
+                    // keep hover only if not matched
+                    isMatched ? "opacity-60 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
                     disabled ? "opacity-70 cursor-not-allowed" : "",
                   ].join(" ")}
                 >
@@ -390,9 +407,12 @@ export default function AnswerGrid({
                   onClick={() => clickRight(i)}
                   className={[
                     "w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold border shadow-sm transition",
-                    isSelected ? "border-[#00D4FF]/60 ring-2 ring-[#00D4FF]/25" : "border-slate-200/70",
-                    "bg-white/80 dark:bg-slate-950/45 dark:border-slate-800/70",
-                    isMatched ? "opacity-35 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
+                    isSelected
+                      ? "border-[#2563EB] ring-2 ring-[#2563EB]/35 bg-[#2563EB]/10"
+                      : "border-slate-200/70 bg-white/80",
+                    isMatched ? "border-emerald-500 ring-2 ring-emerald-500/25 bg-emerald-500/10" : "",
+                    "dark:border-slate-800/70 dark:bg-slate-950/45",
+                    isMatched ? "opacity-60 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
                     disabled ? "opacity-70 cursor-not-allowed" : "",
                   ].join(" ")}
                 >
@@ -423,7 +443,6 @@ export default function AnswerGrid({
             {[0, 1].map((idx) => {
               const isSelected = pickedSet.has(idx);
               const dimClass = pickedSet.size > 0 && !isSelected ? "opacity-40" : "opacity-100";
-              const selected = isSelected ? "brightness-110 ring-4 ring-white/70" : "";
 
               return (
                 <button
@@ -431,7 +450,12 @@ export default function AnswerGrid({
                   disabled={disabled || submittedOnceRef.current}
                   onClick={() => togglePick(idx)}
                   type="button"
-                  className={[PICK_BTN_BASE, "min-h-[120px] sm:min-h-[140px]", grad, selected, dimClass].join(" ")}
+                  className={[
+                    isSelected ? pickSelected : pickBase,
+                    "min-h-[120px] sm:min-h-[140px]",
+                    dimClass,
+                    disabled ? "opacity-70 cursor-not-allowed" : "",
+                  ].join(" ")}
                 >
                   <span className="text-white font-extrabold text-6xl sm:text-7xl">{tfLabels[idx]}</span>
                 </button>
@@ -511,7 +535,6 @@ export default function AnswerGrid({
           {labels.map((lab, idx) => {
             const isSelected = pickedSet.has(idx);
             const dimClass = pickedSet.size > 0 && !isSelected ? "opacity-40" : "opacity-100";
-            const selected = isSelected ? "brightness-110 ring-4 ring-white/70" : "";
 
             return (
               <button
@@ -520,11 +543,10 @@ export default function AnswerGrid({
                 onClick={() => togglePick(idx)}
                 type="button"
                 className={[
-                  PICK_BTN_BASE,
+                  isSelected ? pickSelected : pickBase,
                   "min-h-[120px] sm:min-h-[140px] md:min-h-[170px]",
-                  grad,
-                  selected,
                   dimClass,
+                  disabled ? "opacity-70 cursor-not-allowed" : "",
                 ].join(" ")}
                 aria-pressed={isSelected}
               >

@@ -7,6 +7,7 @@ import { Link2, Trash2, Copy } from "lucide-react";
 import type { Question } from "@/src/lib/questionStorage";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
 import { getQuestions } from "@/src/lib/questionStorage";
+import QRCode from "react-qr-code";
 
 import {
   createAssignment,

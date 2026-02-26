@@ -271,8 +271,30 @@ export default function ReportDetailPage() {
     };
   }, [gameId]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!gameId) return;
+      try {
+        const qs = await getQuestions(gameId);
+        if (alive) setQuestions(qs ?? []);
+      } catch {
+        if (alive) setQuestions([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [gameId]);
 
-  const totalQ = questions.length || report?.totalQuestions || 0;
+
+  const totalQuestions = questions.length || report?.totalQuestions || 0;
+
+  const totalScore = useMemo(() => {
+    if (questions.length) {
+      return questions.reduce((sum, q) => sum + Number(q?.score ?? 1), 0);
+    }
+    // fallback if questions not loaded: store it in report later (recommended)
+    return 0;
+  }, [questions]);
 
   const finishIso = report?.finishedAt || report?.createdAt || "";
 
@@ -533,7 +555,7 @@ export default function ReportDetailPage() {
                         Report Detail
                     </h3>
                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                        {game?.quizNumber ?? "-"} • {totalQ} questions • PIN {report.pin}
+                        {game?.quizNumber ?? "-"} • {totalQuestions} questions • PIN {report.pin}
                     </p>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         Report ID: <span className="font-mono">{report.id}</span>
@@ -612,7 +634,7 @@ export default function ReportDetailPage() {
 
           <StatCard
             icon={BarChart3}
-            label={`Score (out of ${totalQ})`}
+            label={`Score (out of ${totalQuestions})`}
             min={s.score.min}
             avg={s.score.avg}
             max={s.score.max}
@@ -651,7 +673,7 @@ export default function ReportDetailPage() {
                   <Th label="Rank" sort="rank" />
                   <Th label="Student ID" sort="studentId" />
                   <Th label="Name" sort="name" />
-                  <Th label={`Score (${totalQ})`} sort="score" right />
+                  <Th label={`Score (${totalQuestions})`} sort="score" right />
                   <Th label="Points" sort="points" right />
                   <Th label="Time Spent (min)" sort="timeSpent" right />
                 </tr>
