@@ -13,6 +13,7 @@ import { getAvatarSrc } from "@/src/lib/studentAvatar";
 import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
 import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
 import { getLiveMeta, saveLiveMeta } from "@/src/lib/liveStorage";
+import TimerBar from "@/src/components/live/TimerBar";
 
 type Phase = "question" | "waiting" | "answer" | "final";
 
@@ -194,6 +195,7 @@ export default function StudentQuestionPage() {
 
   const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
   const [lastEarnedPoints, setLastEarnedPoints] = useState<number>(0);
+  const [totalQuizScore, setTotalQuizScore] = useState<number>(0);
 
   const [finalPoints, setFinalPoints] = useState<number>(0);
 
@@ -214,9 +216,12 @@ export default function StudentQuestionPage() {
     if (p.studentId !== me.studentId) return;
 
     const total = p.total ?? {};
-    setCorrectCount(Number(total.correct ?? 0));
-    setTotalPoints(Number(total.points ?? 0));
-    totalPointsRef.current = Number(total.points ?? 0);
+    const scoreEarned = Number(total.score ?? 0);     // ✅ was total.correct
+    const points = Number(total.points ?? 0);
+
+    setCorrectCount(scoreEarned);                     // (you can rename state later)
+    setTotalPoints(points);
+    totalPointsRef.current = points;
 
     // last question feedback
     const last = p.last;
@@ -283,15 +288,13 @@ export default function StudentQuestionPage() {
       setLastEarnedPoints(0);
 
       setNow(Date.now());
-      
-      if (question?.number === 1 || question?.questionIndex === 0) {
-        totalPointsRef.current = 0;
-        setTotalPoints(0);
-        setCorrectCount(0);
-      }
 
+      console.log("question.show payload:", question);
+      console.log("allowMultiple:", question?.allowMultiple, "type:", question?.type);
 
     };
+    let earnedPoints = 0;
+    let earnedCorrectIncrement = 0; // 1 only when fully correct (for correctCount)
 
     const onReveal = (payload: any) => {
     setReveal(payload);
@@ -304,6 +307,7 @@ export default function StudentQuestionPage() {
 
     let isCorrect: boolean | null = null;
 
+    // Choice (MC/TF)
     if (payload?.type === "multiple_choice" || payload?.type === "true_false") {
       const correct = Array.isArray(payload?.correctIndices) ? payload.correctIndices : [];
       const mine = myChoiceRef.current ?? [];
@@ -311,14 +315,27 @@ export default function StudentQuestionPage() {
       if (!correct.length) {
         isCorrect = null;
       } else {
-        const allowMultiple = Boolean(payload?.allowMultiple) || correct.length > 1;
+        const allowMultiple = Boolean(payload?.allowMultiple ?? curQ?.allowMultiple);
 
         if (allowMultiple) {
-          isCorrect = mine.length > 0 ? mine.some((i) => correct.includes(i)) : false;
+          // ✅ multi-select: must match EXACT set
+          isCorrect = mine.length > 0 ? sameSet(correct, mine) : false;
         } else {
-          isCorrect = sameSet(correct, mine);
+          // ✅ single-select: must pick exactly 1 and be correct
+          isCorrect = mine.length === 1 ? correct.includes(mine[0]) : false;
         }
       }
+      if (isCorrect === null) {
+        setLastWasCorrect(null);
+        setLastEarnedPoints(0);
+        return;
+      }
+
+      const baseScore = Number(curQ?.score ?? 1);
+      const timeLeft = Math.max(0, maxTime - timeUsed);
+      earnedPoints = isCorrect ? baseScore * 100 + 10 * timeLeft : 0;
+      earnedCorrectIncrement = isCorrect ? baseScore : 0; // ✅ score earned, not +1
+
     }
 
     if (payload?.type === "input") {
@@ -327,12 +344,50 @@ export default function StudentQuestionPage() {
       const normAccepted = accepted
         .map((x: any) => String(x ?? "").trim().toLowerCase())
         .filter(Boolean);
+
       isCorrect = mine ? normAccepted.includes(mine) : false;
+
+      const baseScore = Number(curQ?.score ?? 1);
+      const timeLeft = Math.max(0, maxTime - timeUsed);
+      earnedPoints = isCorrect ? baseScore * 100 + 10 * timeLeft : 0;
+      earnedCorrectIncrement = isCorrect ? baseScore : 0;
     }
 
     if (payload?.type === "matching") {
-      const totalPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs.length : 0;
-      isCorrect = totalPairs > 0 ? matchedPairsRef.current.size === totalPairs : null;
+      const correctPairs = Array.isArray(payload?.correctPairs) ? payload.correctPairs : [];
+      const totalPairs = correctPairs.length;
+
+      if (totalPairs === 0) {
+        isCorrect = null;
+      } else {
+        // build correct set
+        const correctSet = new Set(
+          correctPairs.map((p: any) => `${String(p?.left ?? "").trim()}|||${String(p?.right ?? "").trim()}`)
+        );
+
+        // student matched pairs (leftIndex->rightIndex) -> convert to text pairs
+        let correctCountPairs = 0;
+
+        for (const [lIdx, rIdx] of matchedPairsRef.current.entries()) {
+          const left = String(curQ?.left?.[lIdx] ?? "");
+          const right = String(curQ?.right?.[rIdx] ?? "");
+          const key = `${left.trim()}|||${right.trim()}`;
+          if (correctSet.has(key)) correctCountPairs++;
+        }
+
+        // fully correct?
+        isCorrect = correctCountPairs === totalPairs;
+
+        // ✅ partial points: distribute base points across pairs
+        const base = 100; // or use q.score later if you want
+        const perPair = base / totalPairs;
+        earnedPoints = correctCountPairs * perPair;
+
+        // optional: add time bonus ONLY if fully correct (recommended)
+        if (isCorrect) earnedPoints += Math.max(0, maxTime - timeUsed);
+
+        earnedCorrectIncrement = isCorrect ? 1 : 0;
+      }
     }
 
     // ✅ now calculate points AFTER isCorrect is known
@@ -342,27 +397,23 @@ export default function StudentQuestionPage() {
       return;
     }
 
-    const pointsEarned = isCorrect ? 100 + Math.max(0, maxTime - timeUsed) : 0;
-
     setLastWasCorrect(isCorrect);
-    setLastEarnedPoints(pointsEarned);
-
-    setCorrectCount((c) => c + (isCorrect ? 1 : 0));
-    setTotalPoints((p) => {
-      const next = p + pointsEarned;
-      totalPointsRef.current = next;
-      return next;
-    });
+    setLastEarnedPoints(Math.round(earnedPoints)); // display nice integer
 
     const qNumber = Number(curQ?.number ?? curQ?.questionIndex ?? 0) || 0;
     setScoredCount((prev) => Math.max(prev, qNumber));
   };
 
-    const onFinal = async () => {
-    setPhase("final");
+    
 
-    const final = totalPointsRef.current;
-    setFinalPoints(final);
+    const onFinal = async (p: any) => {
+    setPhase("final");
+  
+    const denom = Number(p?.totalScore);
+    setTotalQuizScore(Number.isFinite(denom) && denom > 0 ? denom : 0);
+
+    const pointsFinal = totalPointsRef.current; // ✅ points
+    setFinalPoints(pointsFinal);
 
     const cur = await getCurrentStudent(); // ✅ await
     if (!cur || !me) return;
@@ -389,8 +440,10 @@ export default function StudentQuestionPage() {
       quizTitle: meta?.quizTitle,
 
       totalQuestions,
+      //totalScore: Number.isFinite(totalQuizScore) ? totalQuizScore : 0, // ✅ add
+  
       correct: Number(correctCountRef.current ?? 0),
-      points: Number(final ?? 0),
+      points: Number(pointsFinal ?? 0),
 
       finishedAt: new Date().toISOString(),
     });
@@ -420,8 +473,9 @@ export default function StudentQuestionPage() {
       if (p.studentId !== me.studentId) return;
 
       const total = p.total ?? {};
-      const correct = Number(total.correct ?? 0);
+      const correct = Number(total.score ?? 0);
       const points = Number(total.points ?? 0);
+      
 
       setCorrectCount(correct);
       setTotalPoints(points);
@@ -634,31 +688,11 @@ export default function StudentQuestionPage() {
                   {/* timer only during question phase */}
                   {phase === "question" ? (
                     <div className="w-full sm:w-[360px]">
-                      <div className="flex items-center justify-between">
-                        <div className="inline-flex items-center gap-2">
-                          <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-                          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                            Time remaining
-                          </span>
-                        </div>
-                        <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                          {q?.startAt ? `${timeLeft}s` : "-"}
-                        </span>
-                      </div>
-
-                      <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
-                        <div
-                          className="h-full transition-[width] duration-100"
-                          style={{
-                            width:
-                              q?.startAt && maxSec > 0
-                                ? `${(timeLeft / maxSec) * 100}%`
-                                : "0%",
-                            background:
-                              "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
-                          }}
-                        />
-                      </div>
+                      {q?.startAt && q?.durationSec ? (
+                        <TimerBar mode="computed" startAt={Number(q.startAt)} duration={Number(q.durationSec)} />
+                      ) : (
+                        <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Time remaining</div>
+                      )}
                     </div>
                   ) : (
                     <div className="w-full sm:w-[360px]" />
@@ -728,7 +762,7 @@ export default function StudentQuestionPage() {
                   </div>
 
                   <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
-                    {correctCount}/{Number(q?.total ?? scoredCount ?? 1) || 1}
+                    {correctCount}/{Math.max(1, totalQuizScore )}
                   </div>
 
                   <div className="text-sm text-slate-600 dark:text-slate-300">

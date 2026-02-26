@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Link2, Trash2, Copy } from "lucide-react";
+import { Link2, Trash2, Copy, Download, KeyRound } from "lucide-react";
 
 import type { Question } from "@/src/lib/questionStorage";
 import { getGameById, type Game } from "@/src/lib/gameStorage";
@@ -14,6 +14,8 @@ import {
   listAssignmentsByGame,
   type Assignment,
 } from "@/src/lib/assignmentStorage";
+
+import QRCode from "react-qr-code";
 
 /* ---------------- helpers ---------------- */
 
@@ -56,6 +58,60 @@ function SkeletonCards() {
   );
 }
 
+/** Convert react-qr-code SVG -> PNG download */
+async function downloadQrPng(svgId: string, filename: string) {
+  const svg = document.getElementById(svgId) as SVGElement | null;
+  if (!svg) {
+    alert("QR not ready yet.");
+    return;
+  }
+
+  const xml = new XMLSerializer().serializeToString(svg);
+  const svg64 = btoa(unescape(encodeURIComponent(xml)));
+  const imgSrc = `data:image/svg+xml;base64,${svg64}`;
+
+  const img = new Image();
+  img.onload = () => {
+    const size = 1024; // nice crisp
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    // white background
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, size, size);
+
+    // draw qr
+    const pad = 60;
+    ctx.drawImage(img, pad, pad, size - pad * 2, size - pad * 2);
+
+    const pngUrl = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = pngUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  img.onerror = () => alert("QR download failed.");
+  img.src = imgSrc;
+}
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Copied!");
+  } catch {
+    alert("Copy failed. You can manually select and copy.");
+  }
+}
+
+/* ---------------- page ---------------- */
+
 export default function AssignmentSettingPage() {
   const params = useParams<{ courseId?: string; gameId?: string }>();
   const courseId = String(params?.courseId ?? "");
@@ -71,16 +127,24 @@ export default function AssignmentSettingPage() {
 
   const titleTouchedRef = useRef(false);
 
-  // questions (optional: just to ensure quiz has questions)
+  // questions
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loadingQs, setLoadingQs] = useState(true);
 
-  // assignments list from DB
+  // assignments list
   const [list, setList] = useState<Assignment[]>([]);
   const [loadingList, setLoadingList] = useState(true);
 
   // create animation
   const [creating, setCreating] = useState(false);
+
+  // show once after create
+  const [createdPanel, setCreatedPanel] = useState<{
+    link: string;
+    publicToken: string;
+    passcodePlain?: string;
+  } | null>(null);
+  const [showPasscode, setShowPasscode] = useState(false);
 
   // load game
   useEffect(() => {
@@ -163,17 +227,13 @@ export default function AssignmentSettingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
-  function buildLink(a: Assignment) {
-    return `${window.location.origin}/assignment/${a.publicToken}`;
-  }
+  const origin = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return window.location.origin;
+  }, []);
 
-  async function copyText(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      alert("Copied!");
-    } catch {
-      alert("Copy failed. You can manually select and copy.");
-    }
+  function buildLink(a: Assignment) {
+    return `${origin}/assignment/${a.publicToken}`;
   }
 
   async function handleCreate() {
@@ -189,7 +249,8 @@ export default function AssignmentSettingPage() {
 
     setCreating(true);
     try {
-      await createAssignment({
+      // IMPORTANT: createAssignment should return the created row (with publicToken)
+      const created = await createAssignment({
         courseId,
         gameId,
         title: title.trim() || "Assignment",
@@ -201,8 +262,15 @@ export default function AssignmentSettingPage() {
 
       setPasscode("");
 
-      // ✅ wait until list refresh so lecturer sees the new link appear
       await reloadList();
+
+      const link = `${origin}/assignment/${created.publicToken}`;
+      setCreatedPanel({
+        link,
+        publicToken: created.publicToken,
+        passcodePlain: raw || undefined,
+      });
+      setShowPasscode(false);
 
       alert("Assignment created.");
     } catch (e: any) {
@@ -228,9 +296,11 @@ export default function AssignmentSettingPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-50">Assignment</h2>
+        <h2 className="text-lg font-extrabold text-slate-900 dark:text-slate-50">
+          Assignment
+        </h2>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Create a timed assignment with open/expire dates and share the link to students.
+          Create a timed assignment with open/expire dates and share the link + QR code to students.
         </p>
       </div>
 
@@ -240,10 +310,134 @@ export default function AssignmentSettingPage() {
         </div>
       ) : null}
 
+      {/* ✅ Share panel (same QR card style as Live lobby) */}
+      {createdPanel ? (
+        <section
+          className="
+            relative overflow-hidden rounded-3xl
+            border border-slate-200/70 bg-white/60 p-5 shadow-sm backdrop-blur
+            dark:border-slate-800/70 dark:bg-slate-950/45
+          "
+        >
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.06] dark:opacity-[0.10]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 1px 1px, var(--dot-color) 1px, transparent 0)",
+              backgroundSize: "18px 18px",
+            }}
+          />
+          <div className="pointer-events-none absolute -left-20 -top-20 h-56 w-56 rounded-full bg-[#00D4FF]/14 blur-3xl" />
+          <div className="pointer-events-none absolute -right-24 -bottom-24 h-56 w-56 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
+
+          <div className="relative grid gap-4 lg:grid-cols-[320px_1fr]">
+            {/* left qr */}
+            <div
+              className="
+                rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm
+                dark:border-slate-800/70 dark:bg-slate-950/55
+                flex items-center justify-center
+              "
+            >
+              <div className="bg-white p-2 rounded-2xl">
+                <QRCode id={`qr-created-${createdPanel.publicToken}`} value={createdPanel.link} size={260} />
+              </div>
+            </div>
+
+            {/* right details */}
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
+                  <Link2 className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                    Share this assignment link
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 break-all font-mono">
+                    {createdPanel.link.replace(/^https?:\/\//, "")}
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void copyText(createdPanel.link)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
+                    >
+                      <Copy className="h-4 w-4" /> Copy link
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void downloadQrPng(
+                          `qr-created-${createdPanel.publicToken}`,
+                          `assignment-${createdPanel.publicToken}.png`
+                        )
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
+                    >
+                      <Download className="h-4 w-4" /> Download QR
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* passcode show once */}
+              {createdPanel.passcodePlain ? (
+                <div className="flex items-start gap-3">
+                  <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
+                    <KeyRound className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                      Passcode (save now — cannot be recovered)
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowPasscode((v) => !v)}
+                        className="rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
+                      >
+                        {showPasscode ? "Hide" : "Show"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void copyText(createdPanel.passcodePlain!)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
+                      >
+                        <Copy className="h-4 w-4" /> Copy passcode
+                      </button>
+                    </div>
+
+                    <div className="mt-2 rounded-xl border border-slate-200/70 bg-white/70 px-3 py-2 text-xs font-mono text-slate-900 dark:border-slate-800/70 dark:bg-slate-950/40 dark:text-slate-100">
+                      {showPasscode ? createdPanel.passcodePlain : "••••••"}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  No passcode set for this assignment.
+                </p>
+              )}
+
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Tip: download the QR and paste it into slides/LINE/Teams.
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* create form */}
       <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/50">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Title</label>
+            <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              Title
+            </label>
             <input
               value={title}
               onChange={(e) => {
@@ -347,24 +541,32 @@ export default function AssignmentSettingPage() {
         </div>
       </div>
 
+      {/* existing list */}
       <div className="space-y-3">
-        <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-50">Existing</h3>
+        <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
+          Existing
+        </h3>
 
         {loadingList || creating ? (
           <SkeletonCards />
         ) : list.length === 0 ? (
-          <div className="text-sm text-slate-600 dark:text-slate-300">No assignments yet.</div>
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            No assignments yet.
+          </div>
         ) : (
           <div className="space-y-2">
             {list.map((a) => {
-              const link = typeof window !== "undefined" ? buildLink(a) : "";
+              const link = buildLink(a);
+              const qrId = `qr-existing-${a.publicToken}`;
+
               return (
                 <div
                   key={a.id}
-                  className="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/50"
+                  className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/50"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    {/* left info */}
+                    <div className="min-w-0 flex-1">
                       <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
                         {a.title}
                       </div>
@@ -386,20 +588,42 @@ export default function AssignmentSettingPage() {
                           onClick={() => void copyText(link)}
                           className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
                         >
-                          <Copy className="h-4 w-4" /> Copy
+                          <Copy className="h-4 w-4" /> Copy link
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void downloadQrPng(qrId, `assignment-${a.publicToken}.png`)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-bold hover:bg-white dark:border-slate-800/70 dark:bg-slate-950/35"
+                        >
+                          <Download className="h-4 w-4" /> Download QR
                         </button>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => void handleDelete(a.id)}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200/80 bg-white/70 text-red-600 shadow-sm hover:bg-white dark:border-red-900/40 dark:bg-slate-950/40 dark:text-red-400"
-                      title="Delete"
-                      disabled={creating}
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </button>
+                    {/* right qr + delete */}
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="
+                          rounded-2xl border border-slate-200/70 bg-white/70 p-3 shadow-sm
+                          dark:border-slate-800/70 dark:bg-slate-950/40
+                        "
+                      >
+                        <div className="bg-white p-2 rounded-xl">
+                          <QRCode id={qrId} value={link} size={140} />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(a.id)}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-red-200/80 bg-white/70 text-red-600 shadow-sm hover:bg-white dark:border-red-900/40 dark:bg-slate-950/40 dark:text-red-400"
+                        title="Delete"
+                        disabled={creating}
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

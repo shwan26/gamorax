@@ -44,6 +44,7 @@ export default function LecturerLiveLayout({
   q,
   qIndex,
   totalQuestions,
+  totalScore,
 
   startAt,
   durationSec,
@@ -68,6 +69,7 @@ export default function LecturerLiveLayout({
   q: LiveDisplayQuestion;
   qIndex: number;
   totalQuestions: number;
+  totalScore: number;
 
   startAt: number | null;
   durationSec: number;
@@ -394,7 +396,8 @@ export default function LecturerLiveLayout({
               >
                 <FinalBoard
                   ranked={ranked}
-                  total={totalQuestions}
+                  totalQuestions={totalQuestions}
+                  totalScore={totalScore}
                   reportHref={`/course/${courseId}/game/${gameId}/setting/reports`}
                   onReportClick={() => onDisconnectAfterReportClick?.()}
                 />

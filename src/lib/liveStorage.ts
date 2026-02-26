@@ -14,6 +14,7 @@ export type LiveQuestionPayloadBase = {
   text: string;
   type: LiveQuestionType;
   image?: string | null;
+  score?: number; // max score for the question
 
   startAt: number; // ms epoch
   durationSec: number;

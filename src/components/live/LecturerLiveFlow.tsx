@@ -118,7 +118,7 @@ export default function LecturerLiveFlow({
     if (!pinKey || !gameId) return;
     if (!questions.length) return;
 
-    const key = `gamorax_live_qorder_${pinKey}_${gameId}`;
+    const key = `gamorax_live_qorder_${pinKey}_${gameId}_sq${Number(shuffleQuestions)}`;
     const saved = sessionStorage.getItem(key);
 
     if (saved) {
@@ -145,7 +145,7 @@ export default function LecturerLiveFlow({
 
   // ✅ stable answer order for MC (per pinKey)
   const getOrCreateAnswerOrder = (liveQIndex: number, optionCount: number) => {
-    const key = `gamorax_live_aorder_${pinKey}_${gameId}_${liveQIndex}_${optionCount}`;
+    const key = `gamorax_live_aorder_${pinKey}_${gameId}_${liveQIndex}_${optionCount}_sa${Number(shuffleAnswers)}`;
     const saved = sessionStorage.getItem(key);
     if (saved) {
       try {
@@ -165,7 +165,7 @@ export default function LecturerLiveFlow({
     liveQIndex: number,
     optionCount: number
   ) => {
-    const key = `gamorax_live_match_v2_${side}_${pinKey}_${gameId}_${liveQIndex}_${optionCount}`;
+    const key = `gamorax_live_match_v2_${side}_${pinKey}_${gameId}_${liveQIndex}_${optionCount}_sa${Number(shuffleAnswers)}`;
     const saved = sessionStorage.getItem(key);
 
     if (saved) {
@@ -187,22 +187,30 @@ export default function LecturerLiveFlow({
 
     // MC / TF
     if (baseQ.type === "multiple_choice" || baseQ.type === "true_false") {
-      const options =
-        baseQ.type === "true_false"
-          ? [
-              // force order True (index 0), False (index 1) but keep correctness from DB
-              { text: "True",  correct: !!baseQ.answers?.[0]?.correct },
-              { text: "False", correct: !!baseQ.answers?.[1]?.correct },
-            ]
-          : (baseQ.answers ?? []).slice(0, 5);
+      if (baseQ.type === "true_false") {
+        const options = [
+          { text: "True", correct: !!baseQ.answers?.[0]?.correct },
+          { text: "False", correct: !!baseQ.answers?.[1]?.correct },
+        ];
+        return { ...baseQ, answers: options, allowMultiple: false };
+      }
 
-      const order =
-        baseQ.type === "true_false" ? [0, 1] : getOrCreateAnswerOrder(qIndex, options.length);
+      // ✅ MULTIPLE CHOICE: keep only non-empty options
+      const raw = (baseQ.answers ?? [])
+        .map((a: any) => ({ text: String(a?.text ?? ""), correct: !!a?.correct }))
+        .filter((a: any) => a.text.trim().length > 0)
+        .slice(0, 5);
 
-      const ordered = order.map((i) => options[i]).filter(Boolean);
+      // ✅ enforce at least 3 choices (do NOT start this question)
+      if (raw.length < 3) {
+        return { ...baseQ, answers: [], __invalidMC: true };
+      }
 
-      const originalCorrect = options
-        .map((a: any, i: number) => (a?.correct ? i : -1))
+      const order = getOrCreateAnswerOrder(qIndex, raw.length);
+      const ordered = order.map((i) => raw[i]).filter(Boolean);
+
+      const originalCorrect = raw
+        .map((a: any, i: number) => (a.correct ? i : -1))
         .filter((i: number) => i >= 0);
 
       const correctInDisplay = new Set(originalCorrect.map((i) => order.indexOf(i)));
@@ -212,7 +220,7 @@ export default function LecturerLiveFlow({
         correct: correctInDisplay.has(idx),
       }));
 
-      return { ...baseQ, answers: displayAnswers };
+      return { ...baseQ, answers: displayAnswers, allowMultiple: !!baseQ.allowMultiple };
     }
 
     // Matching
@@ -240,7 +248,9 @@ export default function LecturerLiveFlow({
     return { ...baseQ };
   }, [baseQ?.id, baseQ?.type, qIndex, gameId, shuffleAnswers, pinKey]);
 
-  
+  const totalScore = useMemo(() => {
+    return (questions ?? []).reduce((sum, q) => sum + Number(q?.score ?? 1), 0);
+  }, [questions]);
 
   /* ---------------- socket + counts ---------------- */
 
@@ -371,13 +381,18 @@ export default function LecturerLiveFlow({
     if (q.type === "multiple_choice" || q.type === "true_false") {
       const answersText = ((q as any).answers ?? []).map((a: any) => a.text ?? "");
       const correctIndices = toCorrectIndices(q);
+
+      // ✅ For MC: use lecturer’s setting; for TF always false
+
       s.emit("question:show", {
         pin,
         question: {
           ...common,
           answers: answersText,
-          allowMultiple: correctIndices.length > 1,
+          allowMultiple: q.type === "multiple_choice" ? !!q.allowMultiple : false,
+          correctCount: correctIndices.length,                 // ✅ send it
           correctIndices,
+          score: Number((q as any).score ?? 1),
         },
       });
       return;
@@ -393,7 +408,7 @@ export default function LecturerLiveFlow({
         : pairs.map((p: any) => String(p?.right ?? ""));
       s.emit("question:show", {
         pin,
-        question: { ...common, left, right, correctPairs: pairs },
+        question: { ...common, left, right, correctPairs: pairs, score: Number((q as any).score ?? 1) },
       });
       return;
     }
@@ -404,6 +419,7 @@ export default function LecturerLiveFlow({
       question: {
         ...common,
         acceptedAnswers: (((q as any).acceptedAnswers ?? []) as string[]).filter(Boolean),
+        score: Number((q as any).score ?? 1),
       },
     });
   }, [mode, pin, pinKey, gameId, q?.id, q?.type, status, qIndex, questions.length, s]);
@@ -524,7 +540,7 @@ export default function LecturerLiveFlow({
               rank: idx + 1,
               studentId,
               name: String(r.name ?? ""),
-              score: Number(r.correct ?? 0),
+              score: Number(r.score ?? 0),
               points: Number(r.points ?? 0),
               totalTime: Number(r.totalTime ?? 0),
               profileId: profileByStudentId.get(studentId) ?? null,
@@ -565,7 +581,13 @@ export default function LecturerLiveFlow({
 
     if (qIndex + 1 >= questions.length) {
       if (mode === "live" && pin) {
-        s.emit("finish", { pin, payload: { total: questions.length } });
+       s.emit("finish", {
+        pin,
+        payload: {
+          total: questions.length,   // ✅ MUST be `total`
+          totalScore,                // ✅ sum of question.score
+        },
+      });
       }
       setStatus("final");
       return;
@@ -601,6 +623,7 @@ export default function LecturerLiveFlow({
         q={q as any}
         qIndex={qIndex}
         totalQuestions={questions.length}
+        totalScore={totalScore} 
         startAt={startAt}
         durationSec={durationSec}
         joinedCount={mode === "preview" ? 0 : joinedCount}

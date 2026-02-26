@@ -9,7 +9,7 @@ type RankedRow = {
   studentId?: string;
   name?: string;
   avatarSrc?: string;
-  correct?: number;
+  score?: number;
   points?: number;
   totalTime?: number; // seconds
 };
@@ -33,10 +33,6 @@ function medalEmoji(rank: number) {
   return "";
 }
 
-function scoreLabel(r: RankedRow, total: number) {
-  const c = safeNum(r.correct, 0);
-  return `${c}/${Math.max(1, total)}`;
-}
 
 function DotPattern() {
   return (
@@ -237,7 +233,7 @@ function PodiumCard({
                 Score
               </div>
               <div className="text-2xl font-extrabold text-slate-900 dark:text-slate-50">
-                {scoreLabel(r, total)}
+                {safeNum(r.score, 0)}/{Math.max(1, safeNum(total, 0))}
               </div>
             </div>
 
@@ -263,15 +259,23 @@ function PodiumCard({
 
 export default function FinalBoard({
   ranked,
-  total,
+  totalQuestions,
+  totalScore,
   reportHref,
   onReportClick,
 }: {
   ranked: RankedRow[];
-  total: number;
+  totalQuestions: number; // ✅ for Questions pill
+  totalScore: number;     // ✅ score denominator
   reportHref: string;
   onReportClick?: () => void;
-}) {
+})  {
+
+  const safeTotalScore = Number.isFinite(Number(totalScore)) ? Number(totalScore) : 0;
+  const denomScore = Math.max(1, safeTotalScore);
+
+  const safeTotalQuestions = Number.isFinite(Number(totalQuestions)) ? Number(totalQuestions) : 0;
+
   const rows = useMemo(() => {
     const arr = Array.isArray(ranked) ? [...ranked] : [];
 
@@ -281,8 +285,8 @@ export default function FinalBoard({
       const hasPoints = ap >= 0 || bp >= 0;
       if (hasPoints && bp !== ap) return bp - ap;
 
-      const ac = safeNum(a.correct, 0);
-      const bc = safeNum(b.correct, 0);
+      const ac = safeNum(a.score, 0);
+      const bc = safeNum(b.score, 0);
       if (bc !== ac) return bc - ac;
 
       const at = safeNum(a.totalTime, 999999);
@@ -299,6 +303,11 @@ export default function FinalBoard({
   const top2 = rows[1];
   const top3 = rows[2];
   const players = rows.length;
+
+  function scoreLabel(r: RankedRow, totalScore: number) {
+    const c = safeNum(r.score, 0);
+    return `${c}/${denomScore}`;
+  }
 
   return (
     <div className="w-full">
@@ -327,7 +336,7 @@ export default function FinalBoard({
           </div>
 
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <StatPill icon={ListOrdered} label="Questions" value={total} />
+            <StatPill icon={ListOrdered} label="Questions" value={totalQuestions} />
             <StatPill icon={Users} label="Players" value={players} />
           </div>
         </div>
@@ -336,13 +345,13 @@ export default function FinalBoard({
       {/* PODIUM */}
       <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
         <div className="md:order-1 order-2">
-          <PodiumCard r={top2} place={2} total={total} />
+          <PodiumCard r={top2} place={2} total={denomScore} />
         </div>
         <div className="md:order-2 order-1">
-          <PodiumCard r={top1} place={1} total={total} big />
+          <PodiumCard r={top1} place={1} total={denomScore} big />
         </div>
         <div className="md:order-3 order-3">
-          <PodiumCard r={top3} place={3} total={total} />
+          <PodiumCard r={top3} place={3} total={denomScore} />
         </div>
       </div>
 
@@ -374,7 +383,7 @@ export default function FinalBoard({
             const rank = safeNum(r.rank, 0);
             const name = String(r.name ?? "");
             const sid = String(r.studentId ?? "");
-            const c = safeNum(r.correct, 0);
+            const c = safeNum(r.score, 0);
             const pts = typeof r.points === "number" ? safeNum(r.points, 0) : null;
 
             const isTop = rank <= 3;
@@ -431,7 +440,7 @@ export default function FinalBoard({
                       Score
                     </div>
                     <div className="font-extrabold text-slate-900 dark:text-slate-50">
-                      {c}/{Math.max(1, total)}
+                      {c}/{Math.max(1, totalScore)}
                     </div>
                   </div>
 
