@@ -25,10 +25,12 @@ function AttemptCard({
 }) {
   const title = a.quizTitle || "Quiz";
   const course = a.courseCode || "No course";
-  const scoreText = `${a.correct}/${a.totalQuestions}`;
-  const pct =
-    a.totalQuestions > 0 ? Math.round((a.correct / a.totalQuestions) * 100) : 0;
+  const denom = Number.isFinite(Number(a.totalScore)) && Number(a.totalScore) > 0
+  ? Number(a.totalScore)
+  : a.totalQuestions; // fallback for old records
 
+const scoreText = `${a.correct}/${denom}`;
+const pct = denom > 0 ? Math.round((a.correct / denom) * 100) : 0;
   return (
     <button
       type="button"

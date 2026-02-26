@@ -288,13 +288,13 @@ export default function ReportDetailPage() {
 
   const totalQuestions = questions.length || report?.totalQuestions || 0;
 
-  const totalScore = useMemo(() => {
-    if (questions.length) {
-      return questions.reduce((sum, q) => sum + Number(q?.score ?? 1), 0);
-    }
-    // fallback if questions not loaded: store it in report later (recommended)
-    return 0;
+  const totalQuizScore = useMemo(() => {
+  const qs = questions ?? [];
+    if (!qs.length) return 0;
+    return qs.reduce((sum, q) => sum + Number((q as any)?.score ?? 1), 0);
   }, [questions]);
+
+  const scoreDenom = Math.max(1, Number.isFinite(totalQuizScore) ? totalQuizScore : 0);
 
   const finishIso = report?.finishedAt || report?.createdAt || "";
 
@@ -378,6 +378,8 @@ export default function ReportDetailPage() {
 
     const quizTitle = game?.quizNumber ?? "";
     const totalQuestions = questions.length || report.totalQuestions || 0;
+    const scoreDenom = (questions ?? []).reduce((sum, q) => sum + Number((q as any)?.score ?? 1), 0);
+    const safeScoreDenom = Math.max(1, Number.isFinite(scoreDenom) ? scoreDenom : 0);
     const s = stats ?? computeLiveReportStats(report.rows ?? []);
 
     const meta: string[][] = [
@@ -400,6 +402,7 @@ export default function ReportDetailPage() {
       ["Quiz Title", quizTitle],
       ["PIN", report.pin],
       ["Total Questions", String(totalQuestions)],
+      ["Total Score", String(safeScoreDenom)],
       ["Point Rule", "points += (correct answers * 100) + (10 * time bonus)"],
       ["", ""],
       ["STATISTICS", ""],
@@ -416,7 +419,7 @@ export default function ReportDetailPage() {
       ["", ""]
     );
 
-    const header = ["Rank", "Student ID", "Name", `Score (${totalQuestions})`, "Points", "Time Spent (s)"];
+    const header = ["Rank", "Student ID", "Name", `Score (${safeScoreDenom})`, "Points", "Time Spent (s)"];
     const rows = rankedRows.map((r) => [
       String(r.rank),
       r.studentId,
@@ -634,7 +637,7 @@ export default function ReportDetailPage() {
 
           <StatCard
             icon={BarChart3}
-            label={`Score (out of ${totalQuestions})`}
+            label={`Score (out of ${scoreDenom})`}
             min={s.score.min}
             avg={s.score.avg}
             max={s.score.max}
@@ -673,7 +676,7 @@ export default function ReportDetailPage() {
                   <Th label="Rank" sort="rank" />
                   <Th label="Student ID" sort="studentId" />
                   <Th label="Name" sort="name" />
-                  <Th label={`Score (${totalQuestions})`} sort="score" right />
+                  <Th label={`Score (${scoreDenom})`} sort="score" right />
                   <Th label="Points" sort="points" right />
                   <Th label="Time Spent (min)" sort="timeSpent" right />
                 </tr>

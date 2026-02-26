@@ -22,6 +22,7 @@ export type StudentAttempt = {
   quizTitle?: string;
 
   totalQuestions: number;
+  totalScore?: number;
   correct: number;
   points: number;
 
@@ -52,6 +53,7 @@ type DbInsert = {
   quiz_title?: string | null;
 
   total_questions: number;
+  total_score?: number | null; 
   correct: number;
   points: number;
   finished_at?: string; // timestamptz
@@ -73,6 +75,7 @@ function mapRowToAttempt(r: any): StudentAttempt {
     quizTitle: r.quizTitle ?? undefined,
 
     totalQuestions: Number(r.totalQuestions ?? 0),
+    totalScore: Number(r.totalScore ?? 0), 
     correct: Number(r.correct ?? 0),
     points: Number(r.points ?? 0),
 
@@ -100,6 +103,7 @@ export async function getAttemptsByStudent(_email: string): Promise<StudentAttem
       semester,
       quizTitle,
       totalQuestions,
+      totalScore,
       correct,
       points,
       finishedAt,
@@ -136,6 +140,7 @@ export async function saveStudentAttemptSupabase(attempt: StudentAttempt) {
     quiz_title: attempt.quizTitle ?? null,
 
     total_questions: Number(attempt.totalQuestions ?? 0),
+    total_score: Number.isFinite(Number(attempt.totalScore)) ? Number(attempt.totalScore) : null, // ✅ add
     correct: Number(attempt.correct ?? 0),
     points: Number(attempt.points ?? 0),
 

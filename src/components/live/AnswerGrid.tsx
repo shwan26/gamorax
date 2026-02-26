@@ -55,6 +55,11 @@ export default function AnswerGrid({
   const [pairs, setPairs] = useState<Pair[]>([]);
   const pairsRef = useRef<Pair[]>([]);
   const matchingSubmittedRef = useRef(false);
+  const [wrongLeft, setWrongLeft] = useState<number | null>(null);
+  const [wrongRight, setWrongRight] = useState<number | null>(null);
+  const wrongTimerRef = useRef<number | null>(null);
+
+  
 
   const isAssignment = mode === "assignment";
 
@@ -81,6 +86,13 @@ export default function AnswerGrid({
     setPairs([]);
     pairsRef.current = [];
     matchingSubmittedRef.current = false;
+
+    setWrongLeft(null);
+    setWrongRight(null);
+    if (wrongTimerRef.current) {
+      window.clearTimeout(wrongTimerRef.current);
+      wrongTimerRef.current = null;
+    }
   }, [qKey]);
 
   const answers = useMemo(() => {
@@ -142,6 +154,19 @@ export default function AnswerGrid({
 
     return 0;
   }, [q?.correctCount, q?.correctIndices, type, allowMultiple]);
+
+  function flashWrong(leftIndex: number | null, rightIndex: number | null) {
+    if (wrongTimerRef.current) window.clearTimeout(wrongTimerRef.current);
+
+    setWrongLeft(leftIndex);
+    setWrongRight(rightIndex);
+
+    wrongTimerRef.current = window.setTimeout(() => {
+      setWrongLeft(null);
+      setWrongRight(null);
+      wrongTimerRef.current = null;
+    }, 450);
+  }
 
   function togglePick(idx: number) {
     if (disabled) return;
@@ -226,7 +251,16 @@ export default function AnswerGrid({
     matchingBusyRef.current = true;
     try {
       const res = await onAttemptMatch({ leftIndex, rightIndex });
-      if (!res?.correct) return;
+
+      if (!res?.correct) {
+        // ✅ red shake feedback (no storing)
+        flashWrong(leftIndex, rightIndex);
+
+        // ✅ A: clear both selections so they can try again
+        setSelSide(null);
+        setSelIndex(null);
+        return;
+      }
 
       setMatchedLeft((prev) => {
         const nx = new Set(prev);
@@ -366,6 +400,7 @@ export default function AnswerGrid({
             {leftItems.map((t, i) => {
               const isMatched = matchedLeft.has(i);
               const isSelected = selSide === "L" && selIndex === i;
+              const isWrong = wrongLeft === i; // ✅ ADD THIS
 
               return (
                 <button
@@ -375,14 +410,15 @@ export default function AnswerGrid({
                   onClick={() => clickLeft(i)}
                   className={[
                     "w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold border shadow-sm transition",
-                    // ✅ selected highlight (distinct)
-                    isSelected
+                    // ✅ wrong flash (priority)
+                    isWrong
+                      ? "border-rose-500 ring-2 ring-rose-500/25 bg-rose-500/10 animate-[shake_0.25s_ease-in-out_1]"
+                      : isSelected
                       ? "border-[#2563EB] ring-2 ring-[#2563EB]/35 bg-[#2563EB]/10"
                       : "border-slate-200/70 bg-white/80",
-                    // ✅ matched/correct state (green border)
+                    // ✅ matched/correct
                     isMatched ? "border-emerald-500 ring-2 ring-emerald-500/25 bg-emerald-500/10" : "",
                     "dark:border-slate-800/70 dark:bg-slate-950/45",
-                    // keep hover only if not matched
                     isMatched ? "opacity-60 cursor-not-allowed" : "hover:bg-white dark:hover:bg-slate-950/60",
                     disabled ? "opacity-70 cursor-not-allowed" : "",
                   ].join(" ")}
@@ -398,6 +434,7 @@ export default function AnswerGrid({
             {rightItems.map((t, i) => {
               const isMatched = matchedRight.has(i);
               const isSelected = selSide === "R" && selIndex === i;
+              const isWrong = wrongRight === i; // ✅ ADD THIS
 
               return (
                 <button
@@ -407,7 +444,9 @@ export default function AnswerGrid({
                   onClick={() => clickRight(i)}
                   className={[
                     "w-full rounded-2xl px-3 py-3 text-left text-sm font-semibold border shadow-sm transition",
-                    isSelected
+                    isWrong
+                      ? "border-rose-500 ring-2 ring-rose-500/25 bg-rose-500/10 animate-[shake_0.25s_ease-in-out_1]"
+                      : isSelected
                       ? "border-[#2563EB] ring-2 ring-[#2563EB]/35 bg-[#2563EB]/10"
                       : "border-slate-200/70 bg-white/80",
                     isMatched ? "border-emerald-500 ring-2 ring-emerald-500/25 bg-emerald-500/10" : "",

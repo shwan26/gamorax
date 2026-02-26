@@ -409,8 +409,8 @@ export default function StudentQuestionPage() {
     const onFinal = async (p: any) => {
     setPhase("final");
   
-    const denom = Number(p?.totalScore ?? 0);
-    setTotalQuizScore(denom);
+    const denom = Number(p?.totalScore);
+    setTotalQuizScore(Number.isFinite(denom) && denom > 0 ? denom : 0);
 
     const pointsFinal = totalPointsRef.current; // ✅ points
     setFinalPoints(pointsFinal);
@@ -440,6 +440,8 @@ export default function StudentQuestionPage() {
       quizTitle: meta?.quizTitle,
 
       totalQuestions,
+      //totalScore: Number.isFinite(totalQuizScore) ? totalQuizScore : 0, // ✅ add
+  
       correct: Number(correctCountRef.current ?? 0),
       points: Number(pointsFinal ?? 0),
 
