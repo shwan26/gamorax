@@ -77,12 +77,22 @@ function normalizeQuestion(row: QuestionApiRow, answers: AnswerApiRow[]): Questi
       localAnswers.push({ text: "", correct: false, image: null });
     }
   } else if (qType === "true_false") {
-    // TF should be fixed 2
-    localAnswers = [
-      { text: "True", correct: true, image: null },
-      { text: "False", correct: false, image: null },
-    ];
-  } else {
+      const sorted = [...answers].sort((a, b) => a.answerIndex - b.answerIndex);
+
+      // Expect 2 rows (index 0 True, index 1 False). Fallback if missing.
+      const tRow = sorted[0];
+      const fRow = sorted[1];
+
+      localAnswers = [
+        { text: "True",  correct: !!tRow?.correct, image: tRow?.image ?? null },
+        { text: "False", correct: !!fRow?.correct, image: fRow?.image ?? null },
+      ];
+
+      // If both are false (or no rows), default to True correct (optional)
+      if (!localAnswers.some(a => a.correct)) {
+        localAnswers[0].correct = true;
+      }
+    } else {
     localAnswers = emptyAnswers(4);
   }
 
@@ -142,11 +152,34 @@ export async function saveQuestions(gameId: string, questions: Question[]): Prom
   // ensure positions 1..n
   const normalized = questions.map((q, i) => ({ ...q, _pos: i + 1 }));
 
+  const tempBase = 1000000 + Math.floor(Date.now() / 1000);
+
+  await Promise.all(
+    normalized.map((q, i) =>
+      supabase
+        .from("questions_api")
+        .update({ position: tempBase - i })
+        .eq("id", q.id)
+        .eq("gameId", gameId) // ✅ important
+    )
+  );
+
+  // STEP 2: final positions (DO THIS SEQUENTIALLY)
+  for (let i = 0; i < normalized.length; i++) {
+    const q = normalized[i];
+    const { error } = await supabase
+      .from("questions_api")
+      .update({ position: i + 1 })
+      .eq("id", q.id)
+      .eq("gameId", gameId);
+
+    if (error) throw error;
+  }
+
   for (const q of normalized) {
     const qPayload = {
       id: q.id,
       gameId,
-      position: (q as any)._pos,
       type: q.type,
       text: q.text ?? "",
       image: q.image ?? null,
@@ -157,33 +190,48 @@ export async function saveQuestions(gameId: string, questions: Question[]): Prom
     };
 
     // update -> if 0 rows -> insert
-    const { data: updRows, error: updErr } = await supabase
+    const { error } = await supabase
       .from("questions_api")
       .update(qPayload)
-      .eq("id", q.id)
-      .select("id");
+      .eq("id", q.id);
 
-    if (updErr) throw updErr;
+    if (error) throw error;
 
-    if (!updRows || updRows.length === 0) {
-      const { error: insErr } = await supabase.from("questions_api").insert(qPayload);
-      if (insErr) throw insErr;
-    }
+    // if (!updRows || updRows.length === 0) {
+    //   const { error: insErr } = await supabase.from("questions_api").insert(qPayload);
+    //   if (insErr) throw insErr;
+    // }
 
     // answers table
     if (q.type === "multiple_choice" || q.type === "true_false") {
       const { error: delErr } = await supabase.from("answers_api").delete().eq("questionId", q.id);
       if (delErr) throw delErr;
 
-      const payload = (q.answers ?? emptyAnswers(4))
-        .slice(0, MC_MAX)
-        .map((a, idx) => ({
-          questionId: q.id,
-          answerIndex: idx,
-          text: a.text ?? "",
-          image: a.image ?? null,
-          correct: !!a.correct,
-        }));
+      const payload =
+        q.type === "true_false"
+          ? [
+              {
+                questionId: q.id,
+                answerIndex: 0,
+                text: "True",
+                image: null,
+                correct: !!q.answers?.[0]?.correct,
+              },
+              {
+                questionId: q.id,
+                answerIndex: 1,
+                text: "False",
+                image: null,
+                correct: !!q.answers?.[1]?.correct,
+              },
+            ]
+          : (q.answers ?? emptyAnswers(4)).slice(0, MC_MAX).map((a, idx) => ({
+              questionId: q.id,
+              answerIndex: idx,
+              text: a.text ?? "",
+              image: a.image ?? null,
+              correct: !!a.correct,
+            }));
 
       const { error: insErr } = await supabase.from("answers_api").insert(payload);
       if (insErr) throw insErr;

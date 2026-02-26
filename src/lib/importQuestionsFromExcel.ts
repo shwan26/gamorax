@@ -34,9 +34,15 @@ function parseCsvList(v: any) {
     .filter(Boolean);
 }
 
-function isTrue(v: any) {
+function parseTF(v: any): boolean | null {
+  if (typeof v === "boolean") return v;
+
   const s = String(v ?? "").trim().toLowerCase();
-  return ["true", "t", "yes", "y", "1"].includes(s);
+
+  if (["true", "t", "yes", "y", "1"].includes(s)) return true;
+  if (["false", "f", "no", "n", "0"].includes(s)) return false;
+
+  return null; // invalid
 }
 
 function correctMaskFromValue(correctRaw: any, answers: string[]) {
@@ -183,7 +189,9 @@ function rowsToTrueFalse(rows: any[][], defaultTime: number): Question[] {
     const text = String(r[qCol] ?? "").trim();
     if (!text) continue;
 
-    const correctTrue = isTrue(r[ansCol]);
+    const tf = parseTF(r[ansCol]);
+    if (tf === null) continue; // skip invalid TF rows
+    const correctTrue = tf;
 
     out.push({
       id: crypto.randomUUID(),

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 
 import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getQuestions, saveQuestions } from "@/src/lib/questionStorage";
+import { getQuestions, saveQuestions, type Question } from "@/src/lib/questionStorage";
 import { importQuestionsFromExcel } from "@/src/lib/importQuestionsFromExcel";
 import { UploadCloud, FileSpreadsheet, Info, CheckCircle2 } from "lucide-react";
+import { supabase } from "@/src/lib/supabaseClient";
 
 type ImportMeta = {
   fileName: string;
@@ -100,7 +101,6 @@ function TemplateFormatCard() {
         </a>
       </div>
 
-      {/* Tabs */}
       <div className="mt-4 flex flex-wrap gap-2">
         {TEMPLATE_SHEETS.map((s) => {
           const isOn = s.key === active;
@@ -123,7 +123,6 @@ function TemplateFormatCard() {
         })}
       </div>
 
-      {/* Table preview */}
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200/70 dark:border-slate-800/70">
         <div className="overflow-x-auto bg-white/70 dark:bg-slate-950/40">
           <table className="min-w-full text-left text-xs">
@@ -141,10 +140,7 @@ function TemplateFormatCard() {
             </thead>
             <tbody>
               {sheet.rows.map((r, i) => (
-                <tr
-                  key={i}
-                  className="border-t border-slate-200/60 dark:border-slate-800/60"
-                >
+                <tr key={i} className="border-t border-slate-200/60 dark:border-slate-800/60">
                   {r.map((cell, j) => (
                     <td key={j} className="whitespace-nowrap px-3 py-2 text-slate-700 dark:text-slate-200">
                       {cell === null ? "" : String(cell)}
@@ -166,7 +162,6 @@ function TemplateFormatCard() {
   );
 }
 
-
 function metaKey(gameId: string) {
   return `gamorax_import_meta_${gameId}`;
 }
@@ -177,7 +172,6 @@ function fmt(iso: string) {
 }
 
 export default function AddFileSetting() {
-  const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastMeta, setLastMeta] = useState<ImportMeta | null>(null);
@@ -185,28 +179,29 @@ export default function AddFileSetting() {
   const params = useParams<{ gameId?: string }>();
   const gameId = (params?.gameId ?? "").toString();
 
-  // ✅ async game fetch (Supabase)
   const [game, setGame] = useState<Game | null>(null);
 
-  const [phase, setPhase] = useState<
-      "idle" | "reading" | "parsing" | "saving" | "done"
-    >("idle");
-    const [fakePct, setFakePct] = useState(0);
+  const [phase, setPhase] = useState<"idle" | "reading" | "parsing" | "saving" | "done">("idle");
+  const [fakePct, setFakePct] = useState(0);
 
-    function phaseLabel(p: typeof phase) {
-      switch (p) {
-        case "reading":
-          return "Reading file…";
-        case "parsing":
-          return "Parsing sheets…";
-        case "saving":
-          return "Saving questions…";
-        case "done":
-          return "Done!";
-        default:
-          return "";
-      }
+  // simple import lock
+  const importingRef = useRef(false);
+
+  function phaseLabel(p: typeof phase) {
+    switch (p) {
+      case "reading":
+        return "Reading file…";
+      case "parsing":
+        return "Parsing sheets…";
+      case "saving":
+        return "Saving questions…";
+      case "done":
+        return "Done!";
+      default:
+        return "";
     }
+  }
+
   useEffect(() => {
     if (!loading) {
       setFakePct(0);
@@ -217,14 +212,11 @@ export default function AddFileSetting() {
     let alive = true;
     let pct = 0;
 
-    // start in reading
     setPhase("reading");
     setFakePct(10);
 
     const t = setInterval(() => {
       if (!alive) return;
-
-      // creep up to 92% while loading
       pct = Math.min(92, pct + Math.random() * 6 + 2);
       setFakePct(Math.floor(pct));
     }, 220);
@@ -235,10 +227,8 @@ export default function AddFileSetting() {
     };
   }, [loading]);
 
-
   useEffect(() => {
     let alive = true;
-
     (async () => {
       if (!gameId) return;
       try {
@@ -248,30 +238,44 @@ export default function AddFileSetting() {
         if (alive) setGame(null);
       }
     })();
-
     return () => {
       alive = false;
     };
   }, [gameId]);
 
-  // ✅ defaultTime derived safely
   const defaultTime = game?.timer?.defaultTime ?? 60;
 
   useEffect(() => {
     if (!gameId) return;
-
     const raw = localStorage.getItem(metaKey(gameId));
     if (!raw) return;
     try {
       setLastMeta(JSON.parse(raw));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [gameId]);
 
   function saveMeta(meta: ImportMeta) {
     setLastMeta(meta);
     localStorage.setItem(metaKey(gameId), JSON.stringify(meta));
+  }
+
+  async function insertQuestionsRowsFirst(gameId: string, existingCount: number, imported: Question[]) {
+    // IMPORTANT: Insert rows into questions_api so answers insert (question_answers) passes RLS join checks
+    const payload = imported.map((q, idx) => ({
+      id: q.id,
+      gameId,
+      position: existingCount + idx + 1, // temporary positions
+      type: q.type,
+      text: q.text ?? "",
+      image: q.image ?? null,
+      timeMode: q.timeMode,
+      time: q.time,
+      matches: q.type === "matching" ? (q.matches ?? null) : null,
+      acceptedAnswers: q.type === "input" ? (q.acceptedAnswers ?? null) : null,
+    }));
+
+    const { error } = await supabase.from("questions_api").insert(payload);
+    if (error) throw error;
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -282,23 +286,25 @@ export default function AddFileSetting() {
       alert("Missing gameId");
       return;
     }
-
     if (!file.name.endsWith(".xlsx")) {
       alert("Please upload an Excel (.xlsx) file");
       return;
     }
+    if (importingRef.current) return;
+    importingRef.current = true;
 
     setLoading(true);
     setNotice(null);
+
     setPhase("reading");
     setFakePct(12);
 
     try {
       setPhase("parsing");
 
-      const { questions, breakdown } = await importQuestionsFromExcel(file, defaultTime);
+      const { questions: imported, breakdown } = await importQuestionsFromExcel(file, defaultTime);
 
-      if (questions.length === 0) {
+      if (imported.length === 0) {
         alert(
           "No valid questions imported.\n\nExpected sheets (any subset):\n- MultipleChoice\n- TrueFalse\n- Matching\n- AnswerInput"
         );
@@ -307,33 +313,39 @@ export default function AddFileSetting() {
 
       setPhase("saving");
 
+      // load existing from DB
       const existing = await getQuestions(gameId);
-      await saveQuestions(gameId, [...existing, ...questions]);
 
-      // finish progress
+      // ✅ STEP A: insert new question rows first (so answer inserts pass RLS)
+      await insertQuestionsRowsFirst(gameId, existing.length, imported);
+
+      // ✅ STEP B: now saveQuestions can safely write answers
+      await saveQuestions(gameId, [...existing, ...imported]);
+
       setFakePct(100);
       setPhase("done");
 
       const meta: ImportMeta = {
         fileName: file.name,
-        importedCount: questions.length,
+        importedCount: imported.length,
         importedAtIso: new Date().toISOString(),
         breakdown,
       };
       saveMeta(meta);
 
       setNotice(
-        `✅ Done! Added ${questions.length} questions. ` +
+        `✅ Done! Added ${imported.length} questions. ` +
           `(MC: ${breakdown.multipleChoice}, TF: ${breakdown.trueFalse}, Matching: ${breakdown.matching}, Input: ${breakdown.answerInput})`
       );
       setTimeout(() => setNotice(null), 5000);
     } catch (err: any) {
+      console.error(err);
       alert(err?.message ?? "Failed to import Excel file");
     } finally {
       setLoading(false);
+      importingRef.current = false;
       e.target.value = "";
     }
-
   }
 
   return (
@@ -409,7 +421,6 @@ export default function AddFileSetting() {
           />
 
           <div className="relative mx-auto max-w-sm min-h-[170px]">
-            {/* CONTENT */}
             <div className={loading ? "opacity-30 select-none" : ""}>
               <div className="mx-auto flex flex-col items-center gap-2 text-center">
                 <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/55">
@@ -423,16 +434,9 @@ export default function AddFileSetting() {
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Tabs can include: MultipleChoice / TrueFalse / Matching / AnswerInput
                 </p>
-
-                {fileName && (
-                  <p className="mt-1 text-xs font-medium text-slate-700 dark:text-slate-200">
-                    Selected: <span className="font-semibold">{fileName}</span>
-                  </p>
-                )}
               </div>
             </div>
 
-            {/* LOADING OVERLAY */}
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div
@@ -449,7 +453,6 @@ export default function AddFileSetting() {
                     </span>
                   </div>
 
-                  {/* progress bar */}
                   <div className="mt-3">
                     <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800/70">
                       <div
@@ -467,10 +470,9 @@ export default function AddFileSetting() {
               </div>
             )}
           </div>
-
         </label>
-        <TemplateFormatCard />
 
+        <TemplateFormatCard />
       </div>
     </div>
   );

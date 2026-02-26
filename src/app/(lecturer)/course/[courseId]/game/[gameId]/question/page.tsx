@@ -87,6 +87,7 @@ export default function QuestionPage() {
 
   // debounce save
   const saveTimer = useRef<number | null>(null);
+  const skipNextAutosave = useRef(false);
 
   const valid = !!courseId && !!gameId && !!course && !!game && game.courseId === courseId;
   const activeQuestion = questions[activeIndex];
@@ -201,6 +202,10 @@ export default function QuestionPage() {
     if (!questions.length) return;
 
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    if (skipNextAutosave.current) {
+      skipNextAutosave.current = false;
+      return;
+    }
 
     saveTimer.current = window.setTimeout(async () => {
       try {
@@ -284,15 +289,17 @@ export default function QuestionPage() {
     });
   }
 
-  function handleDrop(targetIndex: number) {
+  async function handleDrop(targetIndex: number) {
     if (dragIndex === null || dragIndex === targetIndex) return;
 
-    setQuestions((prev) => {
-      const updated = [...prev];
-      const [moved] = updated.splice(dragIndex, 1);
-      updated.splice(targetIndex, 0, moved);
-      return updated;
-    });
+    // build the new ordered array from CURRENT state
+    const next = [...questions];
+    const [moved] = next.splice(dragIndex, 1);
+    next.splice(targetIndex, 0, moved);
+
+    // update UI immediately
+    skipNextAutosave.current = true;
+    setQuestions(next);
 
     setActiveIndex((curr) => {
       if (curr === dragIndex) return targetIndex;
@@ -302,6 +309,17 @@ export default function QuestionPage() {
     });
 
     setDragIndex(null);
+
+    // ✅ save the reordered order RIGHT NOW (not waiting for debounced autosave)
+    try {
+      setSaving(true);
+      await saveQuestions(gameId, next);
+    } catch (e: any) {
+      console.error(e);
+      alert("Reorder save error: " + (e?.message ?? String(e)));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) return <QuestionPageSkeleton />;

@@ -82,21 +82,38 @@ export default function LecturerLiveLayout({
   onNext: () => void;
   onDisconnectAfterReportClick?: () => void;
 }) {
-  const isChoice = q.type === "multiple_choice" || q.type === "true_false";
+  const isTF = q.type === "true_false";
+  const isChoice = q.type === "multiple_choice" || isTF;
 
-  const correctIndices = isChoice
-    ? (q as any).answers
-        ?.map((a: any, i: number) => (a?.correct ? i : -1))
-        .filter((i: number) => i >= 0) ?? []
-    : [];
+  const rawAnswers: any[] = isChoice ? ((q as any).answers ?? []) : [];
 
-  const answersText = isChoice ? ((q as any).answers ?? []).map((a: any) => String(a?.text ?? "")) : [];
+  // ---- Force TF display order: [True, False] ----
+  const tfTrue = rawAnswers.find((a) => String(a?.text ?? "").trim().toLowerCase() === "true");
+  const tfFalse = rawAnswers.find((a) => String(a?.text ?? "").trim().toLowerCase() === "false");
 
-  const optionCount = isChoice ? guessOptionCountForChoice(q) : 0;
+  // answersText in DISPLAY order
+  const answersText = isTF
+    ? ["True", "False"]
+    : rawAnswers.map((a) => String(a?.text ?? ""));
 
-  // slice counts exactly to optionCount
+  // correctIndices in DISPLAY order
+  const correctIndices = isTF
+    ? [
+        tfTrue?.correct ? 0 : -1,
+        tfFalse?.correct ? 1 : -1,
+      ].filter((i) => i >= 0)
+    : rawAnswers
+        .map((a, i) => (a?.correct ? i : -1))
+        .filter((i) => i >= 0);
+
+  // optionCount
+  const optionCount = isChoice ? (isTF ? 2 : guessOptionCountForChoice(q)) : 0;
+
+  // counts must also be [True, False] for TF
   const safeCounts = isChoice
-    ? Array.from({ length: optionCount }, (_, i) => Number((counts as any)?.[i] ?? 0))
+    ? isTF
+      ? [Number((counts as any)?.[0] ?? 0), Number((counts as any)?.[1] ?? 0)]
+      : Array.from({ length: optionCount }, (_, i) => Number((counts as any)?.[i] ?? 0))
     : [];
 
   return (
