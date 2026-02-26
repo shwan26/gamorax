@@ -53,7 +53,7 @@ type DbInsert = {
   quiz_title?: string | null;
 
   total_questions: number;
-  total_score?: number | null; 
+  total_score: number; 
   correct: number;
   points: number;
   finished_at?: string; // timestamptz
@@ -113,7 +113,7 @@ export async function getAttemptsByStudent(_email: string): Promise<StudentAttem
     .order("finishedAt", { ascending: false });
 
   if (error) {
-    console.error("getAttemptsByStudent error:", error);
+    console.error("getAttemptsByStudent error:", JSON.stringify(error, null, 2));
     return [];
   }
 
@@ -140,7 +140,7 @@ export async function saveStudentAttemptSupabase(attempt: StudentAttempt) {
     quiz_title: attempt.quizTitle ?? null,
 
     total_questions: Number(attempt.totalQuestions ?? 0),
-    total_score: Number.isFinite(Number(attempt.totalScore)) ? Number(attempt.totalScore) : null, // ✅ add
+    total_score: Number(attempt.totalScore ?? 0),
     correct: Number(attempt.correct ?? 0),
     points: Number(attempt.points ?? 0),
 
@@ -178,9 +178,14 @@ export async function saveStudentAttempt(attempt: StudentAttempt) {
 
 /** ✅ READ from the camelCase view */
 export async function getMyAttemptsSupabase(): Promise<StudentAttempt[]> {
+  const { data: authData } = await supabase.auth.getUser();
+  const uid = authData.user?.id;
+  if (!uid) return [];
+
   const { data, error } = await supabase
     .from("student_attempts_api")
     .select("*")
+    .eq("profile_id", uid)
     .order("finishedAt", { ascending: false });
 
   if (error) throw error;
