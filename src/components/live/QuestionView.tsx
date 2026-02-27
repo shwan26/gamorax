@@ -119,6 +119,14 @@ export default function QuestionView({
                     <div className="text-lg font-extrabold leading-snug text-slate-900 sm:text-xl md:text-2xl dark:text-slate-50">
                       {a?.text ?? ""}
                     </div>
+
+                    {a?.image ? (
+                      <img
+                        src={a.image}
+                        alt={`Answer ${i + 1}`}
+                        className="mt-3 max-h-40 w-full rounded-2xl object-contain"
+                      />
+                    ) : null}
                   </div>
                 </div>
               </div>

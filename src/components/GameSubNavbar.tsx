@@ -120,6 +120,8 @@ export default function GameSubNavbar({
 
             <Link
               href={`${base}/preview/question`}
+              target="_blank"
+              rel="noopener noreferrer"
               className={`${common} ${isPreview ? activeCls : inactiveCls}`}
             >
               <Eye className="h-4 w-4" />
@@ -129,6 +131,8 @@ export default function GameSubNavbar({
             {/* ✅ Live blocks navigation when quiz not ready */}
             <Link
               href={`${base}/live`}
+              target="_blank"
+              rel="noopener noreferrer"
               onClick={handleClickLive}
               aria-disabled={!canStartLive}
               className={`${common} ${isLive ? activeCls : inactiveCls} ${

@@ -118,7 +118,9 @@ export async function getQuestions(gameId: string): Promise<Question[]> {
 
   const { data: qs, error: qErr } = await supabase
     .from("questions_api")
-    .select("id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers, allowMultiple, score")
+    .select(
+      "id, gameId, position, type, text, image, timeMode, time, matches, acceptedAnswers, allowMultiple, score"
+    )
     .eq("gameId", gameId)
     .order("position", { ascending: true });
 
@@ -144,21 +146,41 @@ export async function getQuestions(gameId: string): Promise<Question[]> {
     return normalizeQuestion(qr, thisAnswers);
   });
 }
-
 // ✅ Supabase-backed save (VIEW-safe, no upsert/onConflict)
 export async function saveQuestions(gameId: string, questions: Question[]): Promise<void> {
   if (!gameId) return;
 
-  // normalize final order 1..n
+  // delete answers for questions that are NOT in the new list
+  const keepIds = new Set(questions.map(q => q.id));
+  const { data: existing } = await supabase
+    .from("questions")
+    .select("id")
+    .eq("quiz_id", gameId);
+
+  const removedIds = (existing ?? [])
+    .map((r: any) => r.id)
+    .filter((id: string) => !keepIds.has(id));
+
+  if (removedIds.length > 0) {
+    await supabase.from("question_answers").delete().in("question_id", removedIds);
+    await supabase.from("questions").delete().in("id", removedIds);
+  }
+
+  if (!Array.isArray(questions) || questions.length === 0) return;
+
   const normalized = questions.map((q, i) => ({ ...q, _pos: i + 1 }));
 
-  // ✅ 1) Upsert into REAL TABLE: public.questions
+  const TMP_OFFSET = 1_000_000;
+
+  // ✅ 1) Upsert questions with TEMP positions (no collisions, passes position>=1)
   const qRows = normalized.map((q) => ({
     id: q.id,
     quiz_id: gameId,
-    position: q._pos,
 
-    q_type: q.type,                 // enum question_kind
+    // ✅ temp, unique, valid
+    position: TMP_OFFSET + q._pos,
+
+    q_type: q.type,
     text: q.text ?? "",
     image_url: q.image ?? null,
 
@@ -175,51 +197,49 @@ export async function saveQuestions(gameId: string, questions: Question[]): Prom
   const { error: qErr } = await supabase.from("questions").upsert(qRows, { onConflict: "id" });
   if (qErr) throw qErr;
 
-  // ✅ 2) Answers -> REAL TABLE: public.question_answers
-  // We do delete + insert to avoid leftover rows after reducing choices.
+  // ✅ 2) Now safely reorder to positions 1..n
+  const orderedQuestionIds = normalized.map((q) => q.id);
+  const { error: rErr } = await supabase.rpc("reorder_questions_safe", {
+    p_quiz_id: gameId,
+    p_ids: orderedQuestionIds,
+  });
+  if (rErr) throw rErr;
+
+  // ✅ 3) answers (atomic per question via RPC)
   for (const q of normalized) {
-    const { error: delErr } = await supabase
-      .from("question_answers")
-      .delete()
-      .eq("question_id", q.id);
+    if (q.type !== "multiple_choice" && q.type !== "true_false") continue;
 
-    if (delErr) throw delErr;
+    const payload =
+      q.type === "true_false"
+        ? [
+            { position: 0, text: "True", image_url: null, is_correct: !!q.answers?.[0]?.correct },
+            { position: 1, text: "False", image_url: null, is_correct: !!q.answers?.[1]?.correct },
+          ]
+        : (q.answers ?? emptyAnswers(4))
+            .slice(0, MC_MAX)
+            .map((a, idx) => ({
+              position: idx,
+              text: a.text ?? "",
+              image_url: a.image ?? null,
+              is_correct: !!a.correct,
+            }));
 
-    // Only MC + TF store rows in question_answers
-    if (q.type === "multiple_choice" || q.type === "true_false") {
-      const payload =
-        q.type === "true_false"
-          ? [
-              {
-                question_id: q.id,
-                position: 0,
-                text: "True",
-                image_url: null,
-                is_correct: !!q.answers?.[0]?.correct,
-              },
-              {
-                question_id: q.id,
-                position: 1,
-                text: "False",
-                image_url: null,
-                is_correct: !!q.answers?.[1]?.correct,
-              },
-            ]
-          : (q.answers ?? emptyAnswers(4))
-              .slice(0, MC_MAX)
-              .map((a, idx) => ({
-                question_id: q.id,
-                position: idx,              // ✅ your answerIndex
-                text: a.text ?? "",
-                image_url: a.image ?? null,
-                is_correct: !!a.correct,
-              }));
-
-      const { error: insErr } = await supabase.from("question_answers").insert(payload);
-      if (insErr) throw insErr;
+    // sanity check: unique positions
+    const posSet = new Set(payload.map((x) => x.position));
+    if (posSet.size !== payload.length) {
+      throw new Error("Duplicate answer positions in payload");
     }
+
+    const { error: aErr } = await supabase.rpc("replace_question_answers", {
+      p_question_id: q.id,
+      p_items: payload,
+    });
+
+    if (aErr) throw aErr;
   }
 }
+
+
 
 export function isQuestionComplete(q: Question): boolean {
   const type = q.type ?? "multiple_choice";
@@ -256,3 +276,28 @@ export async function getTotalQuestions(gameId: string): Promise<number> {
   return qs.length;
 }
 
+// ✅ serialize saves to avoid overlapping autosave + reorder saves
+let saving = false;
+let queued: { gameId: string; questions: Question[] } | null = null;
+
+export async function saveQuestionsSerialized(gameId: string, questions: Question[]) {
+  // always keep latest queued state
+  if (saving) {
+    queued = { gameId, questions };
+    return;
+  }
+
+  saving = true;
+  try {
+    await saveQuestions(gameId, questions);
+  } finally {
+    saving = false;
+
+    // if something queued while saving, run once more with latest snapshot
+    if (queued) {
+      const next = queued;
+      queued = null;
+      await saveQuestionsSerialized(next.gameId, next.questions);
+    }
+  }
+}

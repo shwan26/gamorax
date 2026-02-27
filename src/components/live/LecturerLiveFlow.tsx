@@ -197,7 +197,11 @@ export default function LecturerLiveFlow({
 
       // ✅ MULTIPLE CHOICE: keep only non-empty options
       const raw = (baseQ.answers ?? [])
-        .map((a: any) => ({ text: String(a?.text ?? ""), correct: !!a?.correct }))
+        .map((a: any) => ({
+          text: String(a?.text ?? ""),
+          correct: !!a?.correct,
+          image: a?.image ?? null, // ✅ KEEP IMAGE
+        }))
         .filter((a: any) => a.text.trim().length > 0)
         .slice(0, 5);
 

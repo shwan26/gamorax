@@ -25,12 +25,16 @@ function AttemptCard({
 }) {
   const title = a.quizTitle || "Quiz";
   const course = a.courseCode || "No course";
-  const denom = Number.isFinite(Number(a.totalScore)) && Number(a.totalScore) > 0
-  ? Number(a.totalScore)
-  : a.totalQuestions; // fallback for old records
+  const totalQ = Number(a.totalQuestions ?? 0);
+  const maxScore = Number(a.totalScore ?? 0);
 
-const scoreText = `${a.correct}/${denom}`;
-const pct = denom > 0 ? Math.round((a.correct / denom) * 100) : 0;
+  const earnedScore = Number(a.correct ?? 0);
+
+  // ✅ what you display as "score"
+  const scoreText = maxScore > 0 ? `${earnedScore}/${maxScore}` : `${earnedScore}`;
+
+  // ✅ optional: show points properly (only if totalScore exists)
+  const pct = maxScore > 0 ? Math.round((earnedScore / maxScore) * 100) : 0;
   return (
     <button
       type="button"
@@ -85,8 +89,9 @@ const pct = denom > 0 ? Math.round((a.correct / denom) * 100) : 0;
                 <p className="text-lg font-bold text-slate-900 dark:text-slate-50">
                   {scoreText}
                 </p>
+
                 <p className="text-xs text-slate-500 dark:text-slate-300">
-                  {pct}% • +{a.points ?? 0} pts
+                  {pct}% • {maxScore ? `${totalQ} pts` : `+${earnedScore} pts`}
                 </p>
               </div>
             </div>

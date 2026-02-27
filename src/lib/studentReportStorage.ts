@@ -28,15 +28,7 @@ export type StudentAttempt = {
 
   finishedAt: string;
 
-  perQuestion?: Array<{
-    number: number;
-    answerIndex: number;
-    correctIndex: number;
-    timeUsed: number;
-    maxTime: number;
-    isCorrect: boolean;
-    pointsEarned: number;
-  }>;
+  perQuestion?: never; // or remove the field entirely
 };
 
 
@@ -75,12 +67,14 @@ function mapRowToAttempt(r: any): StudentAttempt {
     quizTitle: r.quizTitle ?? undefined,
 
     totalQuestions: Number(r.totalQuestions ?? 0),
-    totalScore: Number(r.totalScore ?? 0), 
+    totalScore: Number(r.totalScore ?? 0),
     correct: Number(r.correct ?? 0),
     points: Number(r.points ?? 0),
 
     finishedAt: String(r.finishedAt ?? new Date().toISOString()),
-    perQuestion: (r.perQuestion ?? undefined) as any,
+
+    // you said you don't need it, so just omit or set undefined
+    perQuestion: undefined,
   };
 }
 
@@ -127,6 +121,21 @@ export async function saveStudentAttemptSupabase(attempt: StudentAttempt) {
   const user = authData.user;
   if (!user) throw new Error("Not authenticated");
 
+  const totalQ = Number(attempt.totalQuestions ?? 0);
+  const correctCount = Number(attempt.correct ?? 0);
+  const totalScore = Number(attempt.totalScore ?? 0);
+
+  // ✅ enforce correct data (prevents storing 8 or 0)
+  if (!Number.isFinite(totalScore) || totalScore <= 0) {
+    throw new Error("totalScore is required (expected max quiz score like 36).");
+  }
+  if (!Number.isFinite(totalQ) || totalQ <= 0) {
+    throw new Error("totalQuestions invalid");
+  }
+  if (!Number.isFinite(correctCount) || correctCount < 0) {
+    throw new Error("correct invalid");
+  }
+
   const row: DbInsert = {
     profile_id: user.id,
     pin: String(attempt.pin ?? "").trim(),
@@ -139,19 +148,16 @@ export async function saveStudentAttemptSupabase(attempt: StudentAttempt) {
     semester: attempt.semester ?? null,
     quiz_title: attempt.quizTitle ?? null,
 
-    total_questions: Number(attempt.totalQuestions ?? 0),
-    total_score: Number(attempt.totalScore ?? 0),
-    correct: Number(attempt.correct ?? 0),
+    total_questions: totalQ,
+    correct: correctCount,
+    total_score: totalScore,
     points: Number(attempt.points ?? 0),
 
-    // Let DB default to now() if not provided
     finished_at: attempt.finishedAt ?? undefined,
-
-    per_question: attempt.perQuestion ?? null,
+    per_question: null, // ✅ not used
   };
 
   if (!row.pin) throw new Error("pin is required");
-  if (!Number.isFinite(row.total_questions)) throw new Error("totalQuestions invalid");
 
   const { data, error } = await supabase
     .from("student_attempts")
