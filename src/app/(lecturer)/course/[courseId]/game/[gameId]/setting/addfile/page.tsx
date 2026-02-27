@@ -259,24 +259,7 @@ export default function AddFileSetting() {
     localStorage.setItem(metaKey(gameId), JSON.stringify(meta));
   }
 
-  async function insertQuestionsRowsFirst(gameId: string, existingCount: number, imported: Question[]) {
-    // IMPORTANT: Insert rows into questions_api so answers insert (question_answers) passes RLS join checks
-    const payload = imported.map((q, idx) => ({
-      id: q.id,
-      gameId,
-      position: existingCount + idx + 1, // temporary positions
-      type: q.type,
-      text: q.text ?? "",
-      image: q.image ?? null,
-      timeMode: q.timeMode,
-      time: q.time,
-      matches: q.type === "matching" ? (q.matches ?? null) : null,
-      acceptedAnswers: q.type === "input" ? (q.acceptedAnswers ?? null) : null,
-    }));
-
-    const { error } = await supabase.from("questions_api").insert(payload);
-    if (error) throw error;
-  }
+  
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -316,10 +299,7 @@ export default function AddFileSetting() {
       // load existing from DB
       const existing = await getQuestions(gameId);
 
-      // ✅ STEP A: insert new question rows first (so answer inserts pass RLS)
-      await insertQuestionsRowsFirst(gameId, existing.length, imported);
-
-      // ✅ STEP B: now saveQuestions can safely write answers
+      // ✅ just save to base tables
       await saveQuestions(gameId, [...existing, ...imported]);
 
       setFakePct(100);
