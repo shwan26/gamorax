@@ -279,7 +279,7 @@ export default function AssignmentReportHistoryPage() {
 
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/course/${courseId}/game/${gameId}/setting/assignment-reports/${r.id}`}
+                        href={`/course/${courseId}/game/${gameId}/setting/assignment/reports/${r.id}`}
                         className="
                           inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2 text-xs font-semibold
                           bg-white/80 text-slate-700 border border-slate-200/70
