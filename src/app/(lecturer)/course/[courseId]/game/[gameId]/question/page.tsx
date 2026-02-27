@@ -151,27 +151,7 @@ export default function QuestionPage() {
     if (built.length === 0) {
       const first = createBlankQuestion(g.timer?.defaultTime ?? 60);
 
-      // Create first question row
-      const { error: insErr } = await supabase.from("questions_api").insert({
-        id: first.id,
-        gameId,
-        position: 1,
-        type: first.type,
-        text: first.text,
-        image: first.image,
-        timeMode: first.timeMode,
-        time: first.time,
-        matches: first.matches ?? null,
-        acceptedAnswers: first.acceptedAnswers ?? null,
-      });
-
-      if (insErr) {
-        setLoading(false);
-        alert("Create first question error: " + insErr.message);
-        return;
-      }
-
-      // Save answers using shared save (will do 3..5 logic correctly)
+      // ✅ create everything via base-table writer
       await saveQuestionsSerialized(gameId, [first]);
 
       setQuestions([first]);
