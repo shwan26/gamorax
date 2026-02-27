@@ -752,9 +752,11 @@ export default function StudentQuestionPage() {
                   )}
 
                   <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Total correct:{" "}
-                    <span className="font-semibold">{correctCount}</span> • Total
-                    points: <span className="font-semibold">{totalPoints}</span>
+                    Score:{" "}
+                    <span className="font-semibold">
+                      {earnedScore}
+                    </span>{" "}
+                    • Points: <span className="font-semibold">{totalPoints}</span>
                   </div>
                 </div>
               </GlassCard>
