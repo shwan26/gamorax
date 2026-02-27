@@ -59,9 +59,16 @@ export default function AnswerGrid({
   const [wrongRight, setWrongRight] = useState<number | null>(null);
   const wrongTimerRef = useRef<number | null>(null);
 
-  
-
   const isAssignment = mode === "assignment";
+
+  const shuffle = <T,>(arr: T[]) => {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
   useEffect(() => {
     pairsRef.current = pairs;
@@ -227,15 +234,35 @@ export default function AnswerGrid({
     return true;
   }, [disabled, pickedSet, requiredPickCount]);
 
-  const leftItems: string[] = useMemo(
+  const leftBase: string[] = useMemo(
     () => (Array.isArray(q?.left) ? q.left.map((x: any) => String(x ?? "")) : []),
-    [q]
+    [q?.id, q?.questionIndex, q?.left]
   );
 
-  const rightItems: string[] = useMemo(
+  const rightBase: string[] = useMemo(
     () => (Array.isArray(q?.right) ? q.right.map((x: any) => String(x ?? "")) : []),
-    [q]
+    [q?.id, q?.questionIndex, q?.right]
   );
+
+  // ✅ stable per question in assignment mode
+  const [assLeft, setAssLeft] = useState<string[]>([]);
+  const [assRight, setAssRight] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (type !== "matching") return;
+
+    if (mode === "assignment") {
+      setAssLeft(shuffle(leftBase));
+      setAssRight(shuffle(rightBase)); // ✅ shuffle BOTH sides
+    } else {
+      // live: use what server/lecturer sent (already shuffled there)
+      setAssLeft(leftBase);
+      setAssRight(rightBase);
+    }
+  }, [mode, type, qKey, leftBase, rightBase]);
+
+const leftItems = assLeft;
+const rightItems = assRight;
 
   const matchingBusyRef = useRef(false);
 

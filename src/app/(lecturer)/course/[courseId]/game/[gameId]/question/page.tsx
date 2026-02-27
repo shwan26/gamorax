@@ -10,7 +10,7 @@ import {
   type Question,
   type Answer,
   getQuestions,
-  saveQuestions,
+  saveQuestionsSerialized,
   isQuestionComplete,
 } from "@/src/lib/questionStorage";
 
@@ -172,7 +172,7 @@ export default function QuestionPage() {
       }
 
       // Save answers using shared save (will do 3..5 logic correctly)
-      await saveQuestions(gameId, [first]);
+      await saveQuestionsSerialized(gameId, [first]);
 
       setQuestions([first]);
       setActiveIndex(0);
@@ -210,7 +210,7 @@ export default function QuestionPage() {
     saveTimer.current = window.setTimeout(async () => {
       try {
         setSaving(true);
-        await saveQuestions(gameId, questions);
+        await saveQuestionsSerialized(gameId, questions);
       } catch (e: any) {
         console.error(e);
         alert("Auto-save error: " + (e?.message ?? String(e)));
@@ -267,8 +267,13 @@ export default function QuestionPage() {
 
     // delete in DB immediately
     if (qid) {
-      const { error } = await supabase.from("questions_api").delete().eq("id", qid);
-      if (error) alert("Delete question error: " + error.message);
+      // delete answers first (base table)
+      const { error: aErr } = await supabase.from("question_answers").delete().eq("question_id", qid);
+      if (aErr) alert("Delete answers error: " + aErr.message);
+
+      // delete question (base table)
+      const { error: qErr } = await supabase.from("questions").delete().eq("id", qid);
+      if (qErr) alert("Delete question error: " + qErr.message);
     }
 
     setQuestions((prev) => prev.filter((_, i) => i !== idx));
@@ -313,7 +318,7 @@ export default function QuestionPage() {
     // ✅ save the reordered order RIGHT NOW (not waiting for debounced autosave)
     try {
       setSaving(true);
-      await saveQuestions(gameId, next);
+      await saveQuestionsSerialized(gameId, next);
     } catch (e: any) {
       console.error(e);
       alert("Reorder save error: " + (e?.message ?? String(e)));

@@ -165,12 +165,18 @@ function AttemptRowCard({
     .filter(Boolean)
     .join(" • ");
 
-  const denom =
-  Number.isFinite(Number(a.totalScore)) && Number(a.totalScore) > 0
-    ? Number(a.totalScore)
-    : a.totalQuestions;
+  const totalQ = Number(a.totalQuestions ?? 0);
+  const correct = Number(a.correct ?? 0);
 
-  const pct = denom > 0 ? Math.round((a.correct / denom) * 100) : 0;
+  const maxScore =
+    Number.isFinite(Number(a.totalScore)) && Number(a.totalScore) > 0
+      ? Number(a.totalScore)
+      : null;
+
+  const earned = Number(a.points ?? 0);
+
+  // ✅ percentage based on questions
+  const pct = totalQ > 0 ? Math.round((correct / totalQ) * 100) : 0;
 
   return (
     <button
@@ -246,7 +252,7 @@ function AttemptRowCard({
                     Score
                   </div>
                   <div className="text-base font-bold text-slate-900 dark:text-slate-50">
-                    {a.correct}/{denom}
+                    {a.correct}/{totalQ}
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-300">
                     {pct}%
@@ -359,18 +365,8 @@ export default function MeReportsPage() {
 
     return filtered.sort((a, b) => {
       if (sortKey === "finishedAt") {
-        const denomA =
-          Number.isFinite(Number(a.totalScore)) && Number(a.totalScore) > 0
-            ? Number(a.totalScore)
-            : a.totalQuestions;
-
-        const denomB =
-          Number.isFinite(Number(b.totalScore)) && Number(b.totalScore) > 0
-            ? Number(b.totalScore)
-            : b.totalQuestions;
-
-        const av = denomA ? a.correct / denomA : 0;
-        const bv = denomB ? b.correct / denomB : 0;
+        const av = new Date(a.finishedAt).getTime() || 0;
+        const bv = new Date(b.finishedAt).getTime() || 0;
         return (av - bv) * dir;
       }
       if (sortKey === "score") {

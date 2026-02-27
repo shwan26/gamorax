@@ -87,6 +87,7 @@ type PerQuestion = {
 type Score = {
   score: number;      // ✅ total lecturer score sum
   totalTime: number;
+  correctCount: number;
   points: number;
   perQuestion: PerQuestion[];
 };
@@ -109,6 +110,9 @@ type Room = {
     section?: string | null;
     semester?: string | null;
   };
+
+  quizMaxScore: number;                 // ✅ max possible score for quiz
+  scoreByQuestion: Map<number, number>;
 };
 
 
@@ -148,7 +152,10 @@ function getRoom(pin: string): Room {
       scores: new Map(),
       durationByQuestion: new Map(),
       connections: new Map(),
+      quizMaxScore: 0,
+      scoreByQuestion: new Map(),
       meta: {},
+      
     });
 
   }
@@ -197,13 +204,14 @@ function makeLeaderboard(room: Room) {
     .map((st) => {
       const sc =
         room.scores.get(st.profileId) ??
-        ({ score: 0, totalTime: 0, points: 0, perQuestion: [] } satisfies Score);
+        ({ score: 0, correctCount: 0, totalTime: 0, points: 0, perQuestion: [] } satisfies Score);
 
       return {
         studentId: st.studentId ?? st.profileId,
         name: st.displayName,
         avatarSrc: st.avatarUrl ?? undefined,
         score: sc.score,
+        totalScore: room.quizMaxScore,
         points: sc.points,
         totalTime: sc.totalTime,
         perQuestion: sc.perQuestion,
@@ -419,6 +427,8 @@ io.on("connection", (socket: Socket) => {
     if (!p || !meta) return;
 
     const room = getRoom(p);
+    room.quizMaxScore = 0;
+    room.scoreByQuestion = new Map();
 
     // ✅ store only what you need
     room.meta = {
@@ -521,7 +531,7 @@ socket.on(
     // don't reset existing score
     room.scores.set(
       uid,
-      room.scores.get(uid) ?? { score: 0, totalTime: 0, points: 0, perQuestion: [] }
+      room.scores.get(uid) ?? { score: 0, correctCount: 0, totalTime: 0, points: 0, perQuestion: [] }
     );
 
     // track connections
@@ -580,7 +590,6 @@ socket.on(
     const room = getRoom(p);
     if (room.meta) socket.emit("session:meta", room.meta);
 
-
     emitRoomCount(io, p, room);
 
     socket.emit(
@@ -614,6 +623,14 @@ socket.on(
 
     const qIndex = safeInt(question.questionIndex, 0);
     const dur = safeInt(question.durationSec, 20);
+
+    const baseScore = safeInt(question.score, 1);
+
+    // ✅ track max score once per questionIndex
+    if (!room.scoreByQuestion.has(qIndex)) {
+      room.scoreByQuestion.set(qIndex, baseScore);
+      room.quizMaxScore += baseScore;
+    }
 
     const base: LiveQuestionBase = {
       questionIndex: qIndex,
@@ -897,8 +914,7 @@ socket.on(
     for (const [profileId, rec] of ansMap.entries()) {
       const prev =
         room.scores.get(profileId) ??
-        ({ score: 0, totalTime: 0, points: 0, perQuestion: [] } satisfies Score);
-
+        ({ score: 0, correctCount: 0, totalTime: 0, points: 0, perQuestion: [] } satisfies Score);
       // prevent double-score
       if (prev.perQuestion.some((pq) => pq.questionIndex === qIndex)) continue;
 
@@ -1006,6 +1022,7 @@ socket.on(
 
       const next: Score = {
         score: prev.score + scoreEarned,
+        correctCount: prev.correctCount + (isCorrect ? 1 : 0), // ✅
         totalTime: prev.totalTime + timeUsed,
         points: prev.points + pointsEarned,
         perQuestion: [...prev.perQuestion, detail],
@@ -1019,7 +1036,13 @@ socket.on(
       io.to(p).emit("score:update", {
         profileId,
         studentId: st?.studentId ?? profileId,
-        total: next,
+        total: {
+          score: next.score,
+          totalScore: room.quizMaxScore,
+          correctCount: next.correctCount,
+          points: next.points,
+          totalTime: next.totalTime,
+        },
         last: detail,
       });
 
@@ -1046,16 +1069,20 @@ socket.on(
     if (role !== "lecturer" || session.lecturer_id !== uid) return;
 
     const room = rooms.get(p) ?? getRoom(p);
+    const total = payload?.total ?? room.current?.total ?? session.total_questions;
 
     io.to(p).emit("final_results", {
       pin: p,
-      total: payload?.total ?? room.current?.total ?? session.total_questions,
-      totalScore: payload?.totalScore ?? null,  // ✅ add
+      total,
+      totalScore: room.quizMaxScore, // ✅ server truth
       leaderboard: makeLeaderboard(room),
     });
 
-    io.to(p).emit("quiz:finished", payload);
-
+    io.to(p).emit("quiz:finished", {
+      ...payload,
+      total,
+      totalScore: room.quizMaxScore, // ✅ include for client save
+    });
     await supabaseAdmin
       .from("live_sessions")
       .update({ status: "final", is_active: false, ended_at: new Date().toISOString() })

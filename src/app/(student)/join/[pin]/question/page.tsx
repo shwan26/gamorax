@@ -185,6 +185,7 @@ export default function StudentQuestionPage() {
   const metaRef = useRef<any>(null);
 
   const qRef = useRef<any>(null);
+  
   const [now, setNow] = useState(Date.now());
 
   // score state
@@ -193,9 +194,15 @@ export default function StudentQuestionPage() {
   const totalPointsRef = useRef(0);
   const [scoredCount, setScoredCount] = useState(0);
 
+  const [earnedScore, setEarnedScore] = useState(0);
+  const earnedScoreRef = useRef(0);
+
+  const [totalQuizScore, setTotalQuizScore] = useState(0);
+  const totalScoreRef = useRef(0);
+
+
   const [lastWasCorrect, setLastWasCorrect] = useState<boolean | null>(null);
   const [lastEarnedPoints, setLastEarnedPoints] = useState<number>(0);
-  const [totalQuizScore, setTotalQuizScore] = useState<number>(0);
 
   const [finalPoints, setFinalPoints] = useState<number>(0);
 
@@ -407,47 +414,50 @@ export default function StudentQuestionPage() {
     
 
     const onFinal = async (p: any) => {
-    setPhase("final");
-  
-    const denom = Number(p?.totalScore);
-    setTotalQuizScore(Number.isFinite(denom) && denom > 0 ? denom : 0);
+      setPhase("final");
 
-    const pointsFinal = totalPointsRef.current; // ✅ points
-    setFinalPoints(pointsFinal);
+      const denom = Number(p?.totalScore ?? 0);
+      const safeDenom = Number.isFinite(denom) && denom > 0 ? denom : 0;
 
-    const cur = await getCurrentStudent(); // ✅ await
-    if (!cur || !me) return;
+      setTotalQuizScore(safeDenom);
+      totalScoreRef.current = safeDenom;
 
-    const meta = metaRef.current ?? getLiveMeta(pin);
+      const pointsFinal = totalPointsRef.current;
+      setFinalPoints(pointsFinal);
 
-    const totalQuestions =
-      Number(qRef.current?.total ?? 0) || Number(scoredCount ?? 0) || 0;
+      const cur = await getCurrentStudent();
+      if (!cur || !me) return;
 
-    saveStudentAttempt({
-      id: crypto.randomUUID(),
-      studentEmail: cur.email, // ✅ now valid
-      studentId: me.studentId,
-      studentName: me.name,
-      avatarSrc,
+      const meta = metaRef.current ?? getLiveMeta(pin);
 
-      pin,
-      gameId: meta?.gameId,
+      const totalQuestions =
+        Number(p?.total ?? 0) || Number(qRef.current?.total ?? 0) || Number(scoredCount ?? 0) || 0;
 
-      courseCode: meta?.courseCode,
-      courseName: meta?.courseName,
-      section: meta?.section,
-      semester: meta?.semester,
-      quizTitle: meta?.quizTitle,
+      await saveStudentAttempt({
+        id: crypto.randomUUID(),
+        studentEmail: cur.email,
+        studentId: me.studentId,
+        studentName: me.name,
+        avatarSrc,
 
-      totalQuestions,
-      //totalScore: Number.isFinite(totalQuizScore) ? totalQuizScore : 0, // ✅ add
-  
-      correct: Number(correctCountRef.current ?? 0),
-      points: Number(pointsFinal ?? 0),
+        pin,
+        gameId: meta?.gameId,
+        sessionId: undefined, // optional if you have it
 
-      finishedAt: new Date().toISOString(),
-    });
-  };
+        courseCode: meta?.courseCode,
+        courseName: meta?.courseName,
+        section: meta?.section,
+        semester: meta?.semester,
+        quizTitle: meta?.quizTitle,
+
+        totalQuestions,
+        totalScore: totalScoreRef.current, // ✅ REQUIRED (36)
+        correct: Number(earnedScoreRef.current ?? 0),  // ✅ weighted score earned
+        points: Number(pointsFinal ?? 0),
+
+        finishedAt: new Date().toISOString(),
+      });
+    };
 
 
       s.on("question:show", onQuestion);
@@ -473,20 +483,36 @@ export default function StudentQuestionPage() {
       if (p.studentId !== me.studentId) return;
 
       const total = p.total ?? {};
-      const correct = Number(total.score ?? 0);
-      const points = Number(total.points ?? 0);
-      
 
-      setCorrectCount(correct);
+      // ✅ weighted score earned (sum of q.score)
+      const earned = Number(total.score ?? 0);
+
+      // ✅ max weighted score for the quiz
+      const max = Number(total.totalScore ?? 0);
+
+      // ✅ points
+      const points = Number(total.points ?? 0);
+
+      setEarnedScore(earned);
+      earnedScoreRef.current = earned;
+
+      if (Number.isFinite(max) && max > 0) {
+        setTotalQuizScore(max);
+        totalScoreRef.current = max;
+      }
+
       setTotalPoints(points);
       totalPointsRef.current = points;
 
-      // last question feedback
+      // OPTIONAL: if you still want last feedback
       const last = p.last;
       if (last && typeof last.isCorrect === "boolean") {
         setLastWasCorrect(last.isCorrect);
         setLastEarnedPoints(Number(last.pointsEarned ?? 0));
       }
+
+      // OPTIONAL: if you want "correct questions count"
+      // setCorrectCount(Number(total.correctCount ?? 0));
     };
 
     s.on("score:update", onScore);
@@ -762,7 +788,7 @@ export default function StudentQuestionPage() {
                   </div>
 
                   <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
-                    {correctCount}/{Math.max(1, totalQuizScore )}
+                    {earnedScore}/{Math.max(1, totalQuizScore )}
                   </div>
 
                   <div className="text-sm text-slate-600 dark:text-slate-300">
