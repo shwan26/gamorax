@@ -165,18 +165,14 @@ function AttemptRowCard({
     .filter(Boolean)
     .join(" • ");
 
-  const totalQ = Number(a.totalQuestions ?? 0);
-  const correct = Number(a.correct ?? 0);
+  const totalQ = Number(a.totalQuestions ?? 0);         // questions count (optional display)
+  const earnedScore = Number(a.correct ?? 0);           // ✅ weighted earned score
+  const maxScore = Number(a.totalScore ?? 0);           // ✅ weighted max score
 
-  const maxScore =
-    Number.isFinite(Number(a.totalScore)) && Number(a.totalScore) > 0
-      ? Number(a.totalScore)
-      : null;
+  const scoreText = maxScore > 0 ? `${earnedScore}/${maxScore}` : `${earnedScore}`;
 
-  const earned = Number(a.points ?? 0);
-
-  // ✅ percentage based on questions
-  const pct = totalQ > 0 ? Math.round((correct / totalQ) * 100) : 0;
+  const pct =
+    maxScore > 0 ? Math.round((earnedScore / maxScore) * 100) : 0;
 
   return (
     <button
@@ -252,7 +248,7 @@ function AttemptRowCard({
                     Score
                   </div>
                   <div className="text-base font-bold text-slate-900 dark:text-slate-50">
-                    {a.correct}/{totalQ}
+                    {maxScore > 0 ? `${earnedScore}/${maxScore}` : `${earnedScore}`}
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-300">
                     {pct}%

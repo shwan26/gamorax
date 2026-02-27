@@ -25,16 +25,25 @@ function AttemptCard({
 }) {
   const title = a.quizTitle || "Quiz";
   const course = a.courseCode || "No course";
+
   const totalQ = Number(a.totalQuestions ?? 0);
-  const maxScore = Number(a.totalScore ?? 0);
 
-  const earnedScore = Number(a.correct ?? 0);
+  const maxScore = Number(a.totalScore ?? 0);        // max weighted score (e.g. 22)
+  const earnedScore = Number(a.correct ?? 0);        // earned weighted score (e.g. 13)
 
-  // ✅ what you display as "score"
+  const earnedPoints = Number(a.points ?? 0);        // ✅ points earned (e.g. 1530)
+
+  // Score text
   const scoreText = maxScore > 0 ? `${earnedScore}/${maxScore}` : `${earnedScore}`;
 
-  // ✅ optional: show points properly (only if totalScore exists)
+  // Score percentage (based on weighted score)
   const pct = maxScore > 0 ? Math.round((earnedScore / maxScore) * 100) : 0;
+
+  // Points text
+  const pointsText = `${earnedPoints} pts`;
+
+  // Optional: show question count as extra info
+  const questionText = totalQ > 0 ? `${totalQ} Qs` : "";
   return (
     <button
       type="button"
@@ -91,7 +100,7 @@ function AttemptCard({
                 </p>
 
                 <p className="text-xs text-slate-500 dark:text-slate-300">
-                  {pct}% • {maxScore ? `${totalQ} pts` : `+${earnedScore} pts`}
+                  {pct}% • {pointsText}{questionText ? ` • ${questionText}` : ""}
                 </p>
               </div>
             </div>
