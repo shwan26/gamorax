@@ -154,17 +154,36 @@ export async function hasAttempted(assignmentId: string, profileId: string): Pro
   return !!data;
 }
 
+
+// Replace submitAssignmentAttempt in src/lib/assignmentStorage.ts
+
 export async function submitAssignmentAttempt(input: {
   token: string;
   startedAtISO: string;
   answers: Record<string, any>;
-}): Promise<{ totalQuestions: number; correct: number; scorePct: number; points: number }> {
+}): Promise<{
+  totalQuestions: number;
+  correct: number;
+  score: number;
+  timeSpentSec: number;
+}> {
   const { data, error } = await supabase.rpc("submit_assignment_attempt", {
-    p_token: input.token,
+    p_token:      input.token,
     p_started_at: input.startedAtISO,
-    p_answers: input.answers,
+    p_answers:    input.answers,
   });
-  if (error) throw error;
 
-  return data as { totalQuestions: number; correct: number; scorePct: number; points: number };
+  if (error) {
+    const msg = error.message || (error as any).details || (error as any).hint || JSON.stringify(error);
+    throw new Error(msg);
+  }
+
+  const row = (Array.isArray(data) ? data[0] : data) as any;
+
+  return {
+    totalQuestions: Number(row?.totalQuestions ?? row?.total_questions ?? 0),
+    correct:        Number(row?.correct ?? 0),
+    score:          Number(row?.score ?? 0),
+    timeSpentSec:   Number(row?.timeSpentSec ?? row?.time_spent_sec ?? 0),
+  };
 }

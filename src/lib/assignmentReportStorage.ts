@@ -7,29 +7,28 @@ import {
 
 export type AssignmentReportStats = {
   students: number;
-  scorePct: { min: number; max: number; avg: number };
-  points: { min: number; max: number; avg: number };
+  score: { min: number; max: number; avg: number };
 };
 
 export type AssignmentHistoryRow = {
-  id: string;              // assignment id
+  id: string;
   title: string;
-  token: string;           // public_token
+  token: string;
   opensAt: string | null;
   dueAt: string | null;
   durationSec: number;
-
   students: number;
-  avgScorePct: number;
-  avgPoints: number;
+  avgScore: number;
 };
 
 export type AssignmentDetailRow = {
   rank: number;
   studentId: string;
   name: string;
-  scorePct: number;
-  points: number;
+  correct: number;
+  total: number;
+  score: number;
+  timeSpentSec: number;
   submittedAt: string;
 };
 
@@ -39,29 +38,23 @@ function round2(n: number) {
 
 export function computeAssignmentReportStats(attempts: AssignmentAttempt[]): AssignmentReportStats {
   const students = attempts.length;
-
-  const scorePctArr = attempts.map((a) => Number(a.scorePct ?? 0));
-  const pointsArr = attempts.map((a) => Number(a.points ?? 0));
+  const scoreArr = attempts.map((a) => Number(a.score ?? 0));
 
   const stat = (arr: number[]) => {
     if (!arr.length) return { min: 0, max: 0, avg: 0 };
-    const min = Math.min(...arr);
-    const max = Math.max(...arr);
-    const avg = arr.reduce((s, x) => s + x, 0) / arr.length;
-    return { min: round2(min), max: round2(max), avg: round2(avg) };
+    return {
+      min: round2(Math.min(...arr)),
+      max: round2(Math.max(...arr)),
+      avg: round2(arr.reduce((s, x) => s + x, 0) / arr.length),
+    };
   };
 
   return {
     students,
-    scorePct: stat(scorePctArr),
-    points: stat(pointsArr),
+    score: stat(scoreArr),
   };
 }
 
-/**
- * History page: get assignments + attempts grouped by assignment
- * (Uses a single attempts query via IN to avoid N+1)
- */
 export async function listAssignmentsWithAttemptsByGame(gameId: string) {
   const { data: as, error: aErr } = await supabase
     .from("assignments")
@@ -81,14 +74,13 @@ export async function listAssignmentsWithAttemptsByGame(gameId: string) {
   const { data: at, error: tErr } = await supabase
     .from("assignment_attempts")
     .select(
-      "id, assignment_id, profile_id, student_email, student_id, student_name, started_at, submitted_at, total_questions, correct, score_pct, points, answers"
+      "id, assignment_id, profile_id, student_email, student_id, student_name, started_at, submitted_at, total_questions, correct, score_pct, answers"
     )
     .in("assignment_id", ids)
     .order("submitted_at", { ascending: false });
 
   if (tErr) throw tErr;
 
-  // map rows to your AssignmentAttempt type (same as assignmentAttempts.ts)
   const attempts: AssignmentAttempt[] = (at ?? []).map((r: any) => ({
     id: r.id,
     assignmentId: r.assignment_id,
@@ -100,8 +92,7 @@ export async function listAssignmentsWithAttemptsByGame(gameId: string) {
     submittedAt: r.submitted_at,
     totalQuestions: r.total_questions,
     correct: r.correct,
-    scorePct: r.score_pct,
-    points: r.points,
+    score: r.score_pct,
     answers: r.answers ?? {},
   }));
 
@@ -123,31 +114,35 @@ export async function getAssignmentById(id: string) {
   return data as any;
 }
 
-/**
- * Detail page helper: just reuse existing attempt storage
- */
 export async function listAttemptsByAssignmentId(assignmentId: string) {
   return listAttemptsByAssignment(assignmentId);
 }
 
 export function rankAssignmentAttempts(attempts: AssignmentAttempt[]): AssignmentDetailRow[] {
-  const rows = attempts.map((t) => ({
-    rank: 0,
-    studentId: String(t.studentId ?? ""),
-    name: String(t.studentName ?? "Student"),
-    scorePct: Number(t.scorePct ?? 0),
-    points: Number(t.points ?? 0),
-    submittedAt: String(t.submittedAt ?? ""),
-  }));
+  const rows = attempts.map((t) => {
+    const startMs = t.startedAt ? new Date(t.startedAt).getTime() : 0;
+    const endMs = t.submittedAt ? new Date(t.submittedAt).getTime() : 0;
+    const timeSpentSec = startMs && endMs ? Math.max(0, Math.round((endMs - startMs) / 1000)) : 0;
+
+    return {
+      rank: 0,
+      studentId: String(t.studentId ?? ""),
+      name: String(t.studentName ?? "Student"),
+      correct: Number(t.correct ?? 0),
+      total: Number(t.totalQuestions ?? 0),
+      score: Number(t.score ?? 0),
+      timeSpentSec,
+      submittedAt: String(t.submittedAt ?? ""),
+    };
+  });
 
   rows.sort((a, b) => {
-    if (b.points !== a.points) return b.points - a.points;
-    if (b.scorePct !== a.scorePct) return b.scorePct - a.scorePct;
-
+    // rank by score desc, then time asc (faster = better)
+    if (b.score !== a.score) return b.score - a.score;
+    if (a.timeSpentSec !== b.timeSpentSec) return a.timeSpentSec - b.timeSpentSec;
     const ta = new Date(a.submittedAt).getTime();
     const tb = new Date(b.submittedAt).getTime();
     if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
-
     return a.studentId.localeCompare(b.studentId);
   });
 
