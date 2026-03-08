@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import Navbar from "@/src/components/Navbar";
 import AnswerGrid from "@/src/components/live/AnswerGrid";
-import { Trophy, Timer, Lock } from "lucide-react";
+import { Trophy, Timer, Lock, CheckCircle2, XCircle, Clock } from "lucide-react";
 
 import { supabase } from "@/src/lib/supabaseClient";
 import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
@@ -25,6 +25,13 @@ type Phase = "gate" | "intro" | "question" | "final";
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
+}
+
+function formatTime(sec: number): string {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
 
 function DotPattern() {
@@ -104,6 +111,7 @@ export default function AssignmentEntryPage() {
 
   const [passcode, setPasscode] = useState("");
   const [gateError, setGateError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [alreadyAttempted, setAlreadyAttempted] = useState(false);
 
@@ -114,11 +122,13 @@ export default function AssignmentEntryPage() {
   const [result, setResult] = useState<{
     correct: number;
     total: number;
-    points: number;
-    scorePct: number;
+    score: number;
+    timeSpentSec: number;
   } | null>(null);
 
   const answersRef = useRef<Record<string, any>>({});
+  const startedAtRef = useRef<number | null>(null);
+  const finalSavedRef = useRef(false);
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 250);
@@ -136,7 +146,7 @@ export default function AssignmentEntryPage() {
     })();
   }, [token, router]);
 
-  // load live student for avatar/name
+  // load live student
   useEffect(() => {
     (async () => {
       const live = await getOrCreateLiveStudent();
@@ -147,10 +157,8 @@ export default function AssignmentEntryPage() {
   // load meta
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       if (!token) return;
-
       try {
         const m = await getAssignmentMeta(token);
         if (!cancelled) setMeta(m);
@@ -158,29 +166,17 @@ export default function AssignmentEntryPage() {
         if (!cancelled) setMeta(null);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [token]);
 
-  // check already attempted (after meta + user)
+  // check already attempted
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
-      if (!meta?.id) {
-        if (!cancelled) setAlreadyAttempted(false);
-        return;
-      }
-
+      if (!meta?.id) { if (!cancelled) setAlreadyAttempted(false); return; }
       const { data } = await supabase.auth.getUser();
       const uid = data.user?.id;
-      if (!uid) {
-        if (!cancelled) setAlreadyAttempted(false);
-        return;
-      }
-
+      if (!uid) { if (!cancelled) setAlreadyAttempted(false); return; }
       try {
         const yes = await hasAttempted(meta.id, uid);
         if (!cancelled) setAlreadyAttempted(yes);
@@ -188,57 +184,35 @@ export default function AssignmentEntryPage() {
         if (!cancelled) setAlreadyAttempted(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [meta?.id]);
 
   const guard = useMemo(() => {
     if (!meta) return { ok: false, reason: "Invalid assignment link." };
-
     const n = Date.now();
-    if (meta.opens_at && n < new Date(meta.opens_at).getTime()) {
+    if (meta.opens_at && n < new Date(meta.opens_at).getTime())
       return { ok: false, reason: `Not open yet. Opens at ${new Date(meta.opens_at).toLocaleString()}` };
-    }
-    if (meta.due_at && n > new Date(meta.due_at).getTime()) {
+    if (meta.due_at && n > new Date(meta.due_at).getTime())
       return { ok: false, reason: `Expired. Due at ${new Date(meta.due_at).toLocaleString()}` };
-    }
     return { ok: true, reason: "" };
   }, [meta]);
 
   const questions = useMemo(() => {
     const raw =
       (payload as any)?.questions ??
-      (payload as any)?.payload?.questions ??   // ✅ if your API wraps it
-      (payload as any)?.data?.questions ??      // ✅ if your storage wraps it
+      (payload as any)?.payload?.questions ??
+      (payload as any)?.data?.questions ??
       [];
-
     return (Array.isArray(raw) ? raw : []).map((qq: any, idx: number) => {
       const type = qq?.type ?? "multiple_choice";
-
       if (type === "matching") {
-        const left = Array.isArray(qq.left) ? qq.left : [];
-        const right = Array.isArray(qq.right) ? qq.right : [];
-        return {
-          ...qq,
-          questionIndex: idx,
-          number: idx + 1,
-          total: raw.length,
-          left,
-          right,
-        };
+        return { ...qq, questionIndex: idx, number: idx + 1, total: raw.length,
+          left: Array.isArray(qq.left) ? qq.left : [],
+          right: Array.isArray(qq.right) ? qq.right : [] };
       }
-
-      return {
-        ...qq,
-        questionIndex: idx,
-        number: idx + 1,
-        total: raw.length,
-      };
+      return { ...qq, questionIndex: idx, number: idx + 1, total: raw.length };
     });
   }, [payload]);
-
 
   const endAt = useMemo(() => {
     if (!startedAt || !meta) return null;
@@ -250,7 +224,7 @@ export default function AssignmentEntryPage() {
     return Math.max(0, Math.ceil((endAt - now) / 1000));
   }, [endAt, now]);
 
-  const isTimeUp = useMemo(() => (timeLeft !== null ? timeLeft <= 0 : false), [timeLeft]);
+  const isTimeUp = useMemo(() => timeLeft !== null ? timeLeft <= 0 : false, [timeLeft]);
 
   useEffect(() => {
     if (phase !== "question") return;
@@ -264,16 +238,10 @@ export default function AssignmentEntryPage() {
   async function verifyAndLoad() {
     setGateError(null);
     if (!guard.ok) return;
-
     try {
       const p = await getAssignmentPayload(token, meta?.has_passcode ? passcode : undefined);
       setPayload(p);
       setPhase("intro");
-      console.log("PAYLOAD RAW:", p);
-      console.log("keys:", Object.keys(p as any));
-      console.log("questions direct:", (p as any).questions);
-      console.log("questions nested:", (p as any)?.payload?.questions, (p as any)?.data?.questions);
-
     } catch (e: any) {
       setGateError(e?.message ?? "Cannot open assignment.");
     }
@@ -281,59 +249,40 @@ export default function AssignmentEntryPage() {
 
   function start() {
     if (!guard.ok) return;
-    setStartedAt(Date.now());
+    answersRef.current = {};
+    finalSavedRef.current = false;
+    const ts = Date.now();
+    startedAtRef.current = ts;
+    setStartedAt(ts);
+    setQIndex(0);
+    setResult(null);
+    setSubmitError(null);
     setPhase("question");
   }
 
   function nextQuestionOrFinal() {
     const next = qIndex + 1;
-    if (next >= questions.length) {
-      setPhase("final");
-      return;
-    }
+    if (next >= questions.length) { setPhase("final"); return; }
     setQIndex(next);
   }
 
   function submitChoice(indices: number[]) {
     if (!q) return;
-    const qid = String(q.id ?? q.questionIndex);
-    const idx = Array.isArray(indices) ? indices[0] : undefined;
-    answersRef.current[qid] = { index: idx };
+    answersRef.current[String(q.id ?? q.questionIndex)] = { indices };
     nextQuestionOrFinal();
   }
 
   function submitInput(value: string) {
     if (!q) return;
-    const qid = String(q.id ?? q.questionIndex);
-    answersRef.current[qid] = { value };
+    answersRef.current[String(q.id ?? q.questionIndex)] = { value };
     nextQuestionOrFinal();
   }
 
   async function attemptMatch(leftIndex: number, rightIndex: number): Promise<{ correct: boolean }> {
-    const left = Array.isArray(q?.left) ? q.left : [];
-    const right = Array.isArray(q?.right) ? q.right : [];
-    const l = String(left[leftIndex] ?? "");
-    const r = String(right[rightIndex] ?? "");
-    if (!l || !r) return { correct: false };
-
-    const qid = String(q.id ?? q.questionIndex);
-    const prev = answersRef.current[qid]?.pairs ?? [];
-    const nextPairs = [...prev.filter((p: any) => p.left !== l), { left: l, right: r }];
-    answersRef.current[qid] = { pairs: nextPairs };
-
     return { correct: true };
   }
 
-  const finalSavedRef = useRef(false);
-  useEffect(() => {
-    finalSavedRef.current = false;
-    answersRef.current = {};     // (optional but recommended)
-    setResult(null);             // (optional)
-    setStartedAt(null);          // (optional)
-    setQIndex(0);                // (optional)
-    setPhase("gate");            // (optional: forces fresh flow)
-  }, [token]);
-
+  // ── SUBMIT on final ──────────────────────────────────────────────────────
   useEffect(() => {
     if (phase !== "final") return;
     if (finalSavedRef.current) return;
@@ -341,7 +290,7 @@ export default function AssignmentEntryPage() {
 
     (async () => {
       try {
-        const startedAtISO = new Date(startedAt ?? Date.now()).toISOString();
+        const startedAtISO = new Date(startedAtRef.current ?? Date.now()).toISOString();
         const res = await submitAssignmentAttempt({
           token,
           startedAtISO,
@@ -349,50 +298,42 @@ export default function AssignmentEntryPage() {
         });
 
         setResult({
-          correct: res.correct,
-          total: res.totalQuestions,
-          points: res.points,
-          scorePct: res.scorePct,
+          correct:      res.correct,
+          total:        res.totalQuestions,
+          score:        res.score,
+          timeSpentSec: res.timeSpentSec,
         });
-      } catch (e: any) {
-        setGateError(e?.message ?? "Submit failed");
+      } catch (rawErr: unknown) {
+        const msg =
+          (rawErr as any)?.message ||
+          (rawErr as any)?.code ||
+          (rawErr as any)?.details ||
+          String(rawErr) ||
+          "Submit failed";
+        setSubmitError(msg);
       }
     })();
-  }, [phase, token, startedAt]);
+  }, [phase, token]);
+
+  // Reset on token change
+  useEffect(() => {
+    answersRef.current = {};
+    startedAtRef.current = null;
+    finalSavedRef.current = false;
+    setResult(null);
+    setStartedAt(null);
+    setQIndex(0);
+    setPhase("gate");
+    setPayload(null);
+    setGateError(null);
+    setSubmitError(null);
+    setPasscode("");
+  }, [token]);
 
   // ---------- render guards ----------
-  if (!token) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <Navbar />
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          <GlassCard>Missing assignment token.</GlassCard>
-        </div>
-      </div>
-    );
-  }
-
-  if (!meta) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <Navbar />
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          <GlassCard>Invalid assignment link.</GlassCard>
-        </div>
-      </div>
-    );
-  }
-
-  if (!guard.ok) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-        <Navbar />
-        <div className="mx-auto max-w-3xl px-4 py-6">
-          <GlassCard>{guard.reason}</GlassCard>
-        </div>
-      </div>
-    );
-  }
+  if (!token) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950"><Navbar /><div className="mx-auto max-w-3xl px-4 py-6"><GlassCard>Missing assignment token.</GlassCard></div></div>;
+  if (!meta) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950"><Navbar /><div className="mx-auto max-w-3xl px-4 py-6"><GlassCard>Loading assignment...</GlassCard></div></div>;
+  if (!guard.ok) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950"><Navbar /><div className="mx-auto max-w-3xl px-4 py-6"><GlassCard>{guard.reason}</GlassCard></div></div>;
 
   if (alreadyAttempted) {
     return (
@@ -400,12 +341,8 @@ export default function AssignmentEntryPage() {
         <Navbar />
         <div className="mx-auto max-w-3xl px-4 py-6">
           <GlassCard>
-            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              You already submitted this assignment.
-            </div>
-            <div className="mt-4">
-              <PrimaryButton onClick={() => router.push("/me/reports")}>Go to My Reports</PrimaryButton>
-            </div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-200">You already submitted this assignment.</div>
+            <div className="mt-4"><PrimaryButton onClick={() => router.push("/me/reports")}>Go to My Reports</PrimaryButton></div>
           </GlassCard>
         </div>
       </div>
@@ -415,154 +352,178 @@ export default function AssignmentEntryPage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
-
       <div className="mx-auto max-w-4xl px-3 sm:px-4 py-5 sm:py-6">
+
         {/* Gate */}
-        {phase === "gate" ? (
+        {phase === "gate" && (
           <GlassCard className="mb-6">
             <div className="flex items-center gap-2 text-slate-900 dark:text-slate-50">
               <Lock className="h-4 w-4" />
               <div className="text-sm font-extrabold">{meta.has_passcode ? "Enter passcode" : "Ready"}</div>
             </div>
-
             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
               {meta.title} • Duration {meta.duration_sec}s
             </div>
-
             {meta.has_passcode ? (
               <div className="mt-4 space-y-3 max-w-md">
                 <input
                   value={passcode}
                   onChange={(e) => setPasscode(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") void verifyAndLoad(); }}
                   placeholder="Passcode"
-                  className="
-                    w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-base
-                    font-semibold text-slate-800 shadow-sm outline-none
-                    focus:ring-2 focus:ring-[#00D4FF]/50 focus:border-transparent
-                    dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100
-                  "
+                  className="w-full rounded-2xl border border-slate-200/80 bg-white/85 px-4 py-3 text-base font-semibold text-slate-800 shadow-sm outline-none focus:ring-2 focus:ring-[#00D4FF]/50 dark:border-slate-800/70 dark:bg-slate-950/35 dark:text-slate-100"
                 />
-
-                {gateError ? (
-                  <div className="text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>
-                ) : null}
-
-                <PrimaryButton onClick={verifyAndLoad}>Continue</PrimaryButton>
+                {gateError && <div className="text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>}
+                <PrimaryButton onClick={() => void verifyAndLoad()}>Continue</PrimaryButton>
               </div>
             ) : (
               <div className="mt-4">
-                {gateError ? (
-                  <div className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>
-                ) : null}
-                <PrimaryButton onClick={verifyAndLoad}>Continue</PrimaryButton>
+                {gateError && <div className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-300">{gateError}</div>}
+                <PrimaryButton onClick={() => void verifyAndLoad()}>Continue</PrimaryButton>
               </div>
             )}
           </GlassCard>
-        ) : null}
+        )}
 
         {/* Intro */}
-        {phase === "intro" && questions.length === 0 ? (
+        {phase === "intro" && (
           <GlassCard className="mb-6">
-            <div className="text-sm font-semibold text-rose-600">
-              This assignment has no questions (payload returned empty).
-            </div>
-          </GlassCard>
-        ) : null}
-
-        {phase === "intro" ? (
-          <GlassCard className="mb-6">
+            {questions.length === 0 && (
+              <div className="mb-4 text-sm font-semibold text-rose-600">
+                Warning: No questions found in payload.
+              </div>
+            )}
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70 dark:bg-slate-950/40">
+              <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70">
                 <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">
-                  {meLive?.name ?? "Student"}
-                </div>
-                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                  Assignment • {questions.length} questions
-                </div>
+                <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">{meLive?.name ?? "Student"}</div>
+                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Assignment • {questions.length} questions</div>
               </div>
             </div>
-
             <h1 className="mt-4 text-lg font-extrabold text-slate-900 dark:text-slate-50">{meta.title}</h1>
-
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300">
               Duration: <span className="font-semibold">{meta.duration_sec}s</span>
-              {meta.due_at ? (
-                <>
-                  {" "}
-                  • Due: <span className="font-semibold">{new Date(meta.due_at).toLocaleString()}</span>
-                </>
-              ) : null}
+              {meta.due_at && <> • Due: <span className="font-semibold">{new Date(meta.due_at).toLocaleString()}</span></>}
             </div>
-
-            <div className="mt-5">
-              <PrimaryButton onClick={start}>Start</PrimaryButton>
-            </div>
+            <div className="mt-5"><PrimaryButton onClick={start}>Start</PrimaryButton></div>
           </GlassCard>
-        ) : null}
+        )}
 
-        {/* Header + Timer */}
-        {phase === "question" ? (
+        {/* Question header + timer */}
+        {phase === "question" && (
           <GlassCard className="mb-5">
             <div className="flex items-center justify-between">
               <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50">
                 Q{qIndex + 1} / {questions.length}
               </div>
-
               <div className="inline-flex items-center gap-2">
                 <Timer className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                 <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{timeLeft ?? "-"}s</span>
               </div>
             </div>
-
             <div className="mt-2 h-2 rounded-full bg-slate-200/70 overflow-hidden dark:bg-slate-800/60">
               <div
                 className="h-full transition-[width] duration-100"
                 style={{
-                  width:
-                    startedAt && endAt && meta.duration_sec > 0
-                      ? `${(clamp((endAt - now) / 1000, 0, meta.duration_sec) / meta.duration_sec) * 100}%`
-                      : "0%",
+                  width: startedAt && endAt && meta.duration_sec > 0
+                    ? `${(clamp((endAt - now) / 1000, 0, meta.duration_sec) / meta.duration_sec) * 100}%`
+                    : "0%",
                   background: "linear-gradient(90deg, #00D4FF, #38BDF8, #2563EB)",
                 }}
               />
             </div>
-
             <h1 className="mt-4 text-lg font-extrabold text-slate-900 dark:text-slate-50">{q?.text ?? "Question"}</h1>
           </GlassCard>
-        ) : null}
+        )}
 
-        {/* Final */}
-        {phase === "final" ? (
+        {/* ── FINAL card ── */}
+        {phase === "final" && (
           <GlassCard className="mb-6">
-            <div className="flex flex-col items-center gap-4 py-5 text-center">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-200/80 bg-white shadow-sm dark:border-slate-800/70">
+                <img src={avatarSrc} alt="Avatar" className="h-10 w-10" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-extrabold text-slate-900 dark:text-slate-50 truncate">{meLive?.name ?? "Student"}</div>
+                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  {meta.title} • {questions.length} questions
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-4 py-4 text-center">
               <div className="rounded-3xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-800/70 dark:bg-slate-950/45">
                 <Trophy className="h-6 w-6 text-slate-700 dark:text-[#A7F3FF]" />
               </div>
 
               <div className="text-lg font-extrabold text-slate-900 dark:text-slate-50">Final Score</div>
 
-              <div className="text-5xl sm:text-7xl font-extrabold text-slate-900 dark:text-slate-50">
-                {result ? `${result.correct}/${result.total || 1}` : "Submitting..."}
-              </div>
-
               {result ? (
-                <div className="text-sm text-slate-600 dark:text-slate-300">
-                  Points <span className="font-semibold text-slate-900 dark:text-slate-50">{result.points}</span>
-                  {" • "}
-                  <span className="font-semibold">{result.scorePct}%</span>
-                </div>
-              ) : null}
+                <>
+                  {/* correct / total */}
+                  <div className="text-7xl font-extrabold text-slate-900 dark:text-slate-50">
+                    {result.correct}/{result.total}
+                  </div>
 
+                  {/* 2-stat row: Score | Time */}
+                  <div className="grid grid-cols-2 gap-3 w-full max-w-xs mt-2">
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-950/45 text-center">
+                      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400">Score</div>
+                      <div className="text-xl font-extrabold text-[#2563EB] dark:text-[#A7F3FF] tabular-nums">
+                        {result.score}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3 dark:border-slate-800/70 dark:bg-slate-950/45 text-center">
+                      <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1">
+                        <Clock className="h-3 w-3" /> Time
+                      </div>
+                      <div className="text-xl font-extrabold text-slate-900 dark:text-slate-50 tabular-nums">
+                        {formatTime(result.timeSpentSec)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* correct / wrong breakdown */}
+                  <div className="w-full max-w-xs mt-1">
+                    <div className="flex items-center justify-center gap-4 text-sm">
+                      <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <CheckCircle2 className="h-4 w-4" />
+                        {result.correct} correct
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 text-rose-500 dark:text-rose-400 font-semibold">
+                        <XCircle className="h-4 w-4" />
+                        {result.total - result.correct} wrong
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : submitError ? (
+                <div className="space-y-3 w-full max-w-sm">
+                  <div className="rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-3 text-sm font-semibold text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-300">
+                    Submit failed: {submitError}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Check the browser console for details. Your answers were recorded locally.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-[#2563EB] dark:border-slate-700 dark:border-t-[#38BDF8]" />
+                  <div className="text-sm text-slate-500 dark:text-slate-400">Submitting your answers…</div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-center">
               <PrimaryButton onClick={() => router.push("/me/reports")}>Go to My Reports</PrimaryButton>
             </div>
           </GlassCard>
-        ) : null}
+        )}
 
         {/* Answer Grid */}
-        {phase === "question" ? (
+        {phase === "question" && (
           <div className="mt-6">
             <AnswerGrid
               q={q}
@@ -578,16 +539,14 @@ export default function AssignmentEntryPage() {
               onSubmitMatching={
                 q?.type === "matching"
                   ? ({ pairs }) => {
-                      const qid = String(q.id ?? q.questionIndex);
-                      answersRef.current[qid] = { pairs };
+                      answersRef.current[String(q.id ?? q.questionIndex)] = { pairs };
                       nextQuestionOrFinal();
                     }
                   : undefined
               }
             />
-
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-// src/lib/assignmentAttempts.ts
+// src/lib/assignmentAttemptStorage.ts
 import { supabase } from "@/src/lib/supabaseClient";
 
 export type AssignmentAttempt = {
@@ -15,8 +15,7 @@ export type AssignmentAttempt = {
 
   totalQuestions: number;
   correct: number;
-  scorePct: number;
-  points: number;
+  score: number;       // was score_pct — now stores earned score sum
 
   answers: Record<string, any>;
 };
@@ -33,23 +32,18 @@ function mapRow(r: any): AssignmentAttempt {
     submittedAt: r.submitted_at,
     totalQuestions: r.total_questions,
     correct: r.correct,
-    scorePct: r.score_pct,
-    points: r.points,
+    score: r.score_pct,   // column is score_pct in DB, maps to score here
     answers: r.answers ?? {},
   };
 }
 
-/**
- * Lecturer report: list attempts for an assignment.
- * RLS policy should allow lecturer to SELECT attempts for assignments they own.
- */
 export async function listAttemptsByAssignment(assignmentId: string): Promise<AssignmentAttempt[]> {
   if (!assignmentId) return [];
 
   const { data, error } = await supabase
     .from("assignment_attempts")
     .select(
-      "id, assignment_id, profile_id, student_email, student_id, student_name, started_at, submitted_at, total_questions, correct, score_pct, points, answers"
+      "id, assignment_id, profile_id, student_email, student_id, student_name, started_at, submitted_at, total_questions, correct, score_pct, answers"
     )
     .eq("assignment_id", assignmentId)
     .order("submitted_at", { ascending: false });
@@ -57,7 +51,6 @@ export async function listAttemptsByAssignment(assignmentId: string): Promise<As
   if (error) throw error;
   return (data ?? []).map(mapRow);
 }
-
 
 export async function hasAttempted(assignmentId: string, profileId: string): Promise<boolean> {
   if (!assignmentId || !profileId) return false;
@@ -69,8 +62,6 @@ export async function hasAttempted(assignmentId: string, profileId: string): Pro
     .eq("profile_id", profileId)
     .maybeSingle();
 
-  // maybeSingle returns "no rows" sometimes as PGRST116 depending on client/version
   if (error && (error as any).code !== "PGRST116") throw error;
-
   return !!data;
 }
