@@ -4,27 +4,44 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/src/lib/supabaseClient";
 
-type Role = "lecturer" | "student";
-
 export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
     (async () => {
       try {
-        // ✅ Use full URL so PKCE exchange works
-        const { error } = await supabase.auth.exchangeCodeForSession(window.location.href);
-        if (error) console.error("exchangeCodeForSession error:", error.message);
-
-        // ✅ Read role without useSearchParams (avoids Suspense build error)
         const sp = new URLSearchParams(window.location.search);
-        const r = sp.get("role");
-        const role: Role = r === "student" ? "student" : "lecturer";
+        const code = sp.get("code");
+        const next = sp.get("next") || "/login";
+        const role = sp.get("role");
 
-        router.replace(`/login?role=${role}`);
+        if (!code) {
+          router.replace("/login?error=missing_code");
+          return;
+        }
+
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error) {
+          console.error("exchangeCodeForSession error:", error.message);
+          router.replace("/login?error=auth_callback_failed");
+          return;
+        }
+
+        if (next === "/reset-password") {
+          router.replace("/reset-password");
+          return;
+        }
+
+        if (role === "student" || role === "lecturer") {
+          router.replace(`/login?role=${role}`);
+          return;
+        }
+
+        router.replace("/login");
       } catch (e: any) {
         console.error(e?.message ?? e);
-        router.replace("/login");
+        router.replace("/login?error=unexpected_callback_error");
       }
     })();
   }, [router]);
