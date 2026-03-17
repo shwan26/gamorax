@@ -40,8 +40,10 @@ export default function AuthCallbackPage() {
 
         router.replace("/login");
       } catch (e: any) {
-        console.error(e?.message ?? e);
-        router.replace("/login?error=unexpected_callback_error");
+        console.error("unexpected callback error:", e);
+        router.replace(
+          `/login?error=${encodeURIComponent(e?.message ?? "unexpected_callback_error")}`
+        );
       }
     })();
   }, [router]);
