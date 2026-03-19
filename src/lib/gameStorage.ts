@@ -25,7 +25,6 @@ export type QuestionRow = {
   timeMode: "default" | "specific";
   time: number;
 
-  // optional (if your view includes it)
   type?: string;
   matches?: any;
   acceptedAnswers?: string[] | null;
@@ -137,7 +136,6 @@ export async function deleteGame(id: string) {
 /* =======================
    DUPLICATE (copy questions + answers)
 ======================= */
-
 export async function duplicateGameToCourse(input: {
   sourceGameId: string;
   targetCourseId: string;
@@ -156,7 +154,7 @@ export async function duplicateGameToCourse(input: {
     shuffleAnswers: source.shuffleAnswers,
   });
 
-  // 3) load source questions
+  // 3) load source questions from VIEW
   const { data: oldQs, error: qErr } = await supabase
     .from("questions_api")
     .select("*")
@@ -167,22 +165,20 @@ export async function duplicateGameToCourse(input: {
 
   const questions = (oldQs ?? []) as QuestionRow[];
 
-  // 4) copy each question + answers
+  // 4) copy each question into REAL TABLE + copy answers
   for (const q of questions) {
     const { data: newQ, error: newQErr } = await supabase
-      .from("questions_api")
+      .from("questions")
       .insert({
-        gameId: newGameId,
+        quiz_id: newGameId,
         position: q.position,
-        text: q.text,
-        image: q.image,
-        timeMode: q.timeMode,
-        time: q.time,
-
-        // optional new features (safe if your view supports them)
-        type: q.type,
-        matches: q.matches,
-        acceptedAnswers: q.acceptedAnswers ?? [],
+        q_type: q.type ?? "multiple_choice",
+        text: q.text ?? "",
+        image_url: q.image ?? null,
+        time_mode: q.timeMode,
+        time_seconds: q.time,
+        matches: q.matches ?? null,
+        accepted_answers: q.acceptedAnswers ?? null,
       })
       .select("id")
       .single();
@@ -199,16 +195,18 @@ export async function duplicateGameToCourse(input: {
     if (aErr) throw aErr;
 
     const answers = (oldAs ?? []) as AnswerRow[];
+
     if (answers.length) {
-      const { error: aInsErr } = await supabase.from("answers_api").insert(
+      const { error: aInsErr } = await supabase.from("question_answers").insert(
         answers.map((a) => ({
-          questionId: newQuestionId,
-          answerIndex: a.answerIndex,
-          text: a.text,
-          image: a.image,
-          correct: a.correct,
+          question_id: newQuestionId,
+          position: a.answerIndex,
+          text: a.text ?? "",
+          image_url: a.image ?? null,
+          is_correct: a.correct,
         }))
       );
+
       if (aInsErr) throw aInsErr;
     }
   }

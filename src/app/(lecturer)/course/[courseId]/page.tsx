@@ -6,7 +6,7 @@ import Navbar from "@/src/components/LecturerNavbar";
 import Link from "next/link";
 import { supabase } from "@/src/lib/supabaseClient";
 import CoursePageSkeleton from "@/src/components/skeletons/CoursePageSkeleton";
-
+import { duplicateGameToCourse } from "@/src/lib/gameStorage";
 
 import {
   ArrowLeft,
@@ -333,94 +333,18 @@ export default function CoursePage() {
     const original = games.find((g) => g.id === gameId);
     if (!original) return;
 
-    // 1) create new game
-    const { data: newGame, error: insErr } = await supabase
-      .from("games_api")
-      .insert({
-        courseId: original.courseId,
-        quizNumber: `${original.quizNumber} (Copy)`,
-        timer: original.timer,
-        shuffleQuestions: original.shuffleQuestions,
-        shuffleAnswers: original.shuffleAnswers,
-      })
-      .select("id")
-      .single();
+    try {
+      const { newGameId } = await duplicateGameToCourse({
+        sourceGameId: gameId,
+        targetCourseId: courseId,
+        newQuizNumber: `${original.quizNumber} (Copy)`,
+      });
 
-    if (insErr) return alert("Duplicate game error: " + insErr.message);
-
-    const newGameId = newGame.id as string;
-
-    // 2) load old questions
-    const { data: oldQs, error: qErr } = await supabase
-      .from("questions_api")
-      .select("id, position, text, image, timeMode, time")
-      .eq("gameId", gameId)
-      .order("position", { ascending: true });
-
-    if (qErr) {
-      alert("Duplicate questions load error: " + qErr.message);
+      await loadAll();
       router.push(`/course/${courseId}/game/${newGameId}/question`);
-      return;
+    } catch (e: any) {
+      alert(e?.message ?? "Duplicate game error");
     }
-
-    const oldQuestions = (oldQs ?? []) as Array<
-      Pick<QuestionRow, "id" | "position" | "text" | "image" | "timeMode" | "time">
-    >;
-
-    // 3) copy each question + answers
-    for (const q of oldQuestions) {
-      const { data: newQ, error: newQErr } = await supabase
-        .from("questions_api")
-        .insert({
-          gameId: newGameId,
-          position: q.position,
-          text: q.text,
-          image: q.image,
-          timeMode: q.timeMode,
-          time: q.time,
-        })
-        .select("id")
-        .single();
-
-      if (newQErr) {
-        alert("Duplicate question insert error: " + newQErr.message);
-        break;
-      }
-
-      const newQuestionId = newQ.id as string;
-
-      const { data: oldAs, error: aErr } = await supabase
-        .from("answers_api")
-        .select("answerIndex, text, image, correct")
-        .eq("questionId", q.id)
-        .order("answerIndex", { ascending: true });
-
-      if (aErr) {
-        alert("Duplicate answers load error: " + aErr.message);
-        continue;
-      }
-
-      const answers = (oldAs ?? []) as Array<
-        Pick<AnswerRow, "answerIndex" | "text" | "image" | "correct">
-      >;
-
-      if (answers.length) {
-        const { error: aInsErr } = await supabase.from("answers_api").insert(
-          answers.map((a) => ({
-            questionId: newQuestionId,
-            answerIndex: a.answerIndex,
-            text: a.text,
-            image: a.image,
-            correct: a.correct,
-          }))
-        );
-
-        if (aInsErr) alert("Duplicate answers insert error: " + aInsErr.message);
-      }
-    }
-
-    await loadAll();
-    router.push(`/course/${courseId}/game/${newGameId}/question`);
   }
 
   const filteredSorted = useMemo(() => {
