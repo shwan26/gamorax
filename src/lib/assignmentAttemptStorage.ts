@@ -15,7 +15,7 @@ export type AssignmentAttempt = {
 
   totalQuestions: number;
   correct: number;
-  score: number;       // was score_pct — now stores earned score sum
+  score: number;       
 
   answers: Record<string, any>;
 };
@@ -32,7 +32,7 @@ function mapRow(r: any): AssignmentAttempt {
     submittedAt: r.submitted_at,
     totalQuestions: r.total_questions,
     correct: r.correct,
-    score: r.score_pct,   // column is score_pct in DB, maps to score here
+    score: r.score_pct,   
     answers: r.answers ?? {},
   };
 }
