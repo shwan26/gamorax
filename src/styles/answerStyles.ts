@@ -12,7 +12,7 @@ export const BADGE_INNER =
   "flex items-center justify-center rounded-2xl text-white shadow-sm bg-gradient-to-br";
 
 /**
- * Answer card surface (optional reuse)
+ * Answer card surface 
  */
 export const ANSWER_CARD =
   "group relative overflow-hidden rounded-3xl border border-slate-200/70 bg-white/60 p-5 sm:p-6 shadow-sm backdrop-blur transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800/70 dark:bg-slate-950/45";

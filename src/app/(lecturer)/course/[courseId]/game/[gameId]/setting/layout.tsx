@@ -90,7 +90,7 @@ export default function SettingLayout({ children }: { children: React.ReactNode 
   const menu = [
     { label: "General", href: `${base}/setting/general`, icon: Settings },
     { label: "Add File", href: `${base}/setting/addfile`, icon: FileUp },
-    { label: "Timer & Score", href: `${base}/setting/timer`, icon: Timer },
+    { label: "Timer/Score", href: `${base}/setting/timer`, icon: Timer },
     { label: "Report", href: `${base}/setting/reports`, icon: BarChart3 },
     { label: "Assignment", href: `${base}/setting/assignment`, icon: Link2 },
     { label: "Assignment Report", href: `${base}/setting/assignment/reports`, icon: BarChart3 },
