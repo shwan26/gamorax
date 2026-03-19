@@ -3,9 +3,6 @@ import { supabase } from "@/src/lib/supabaseClient";
 
 export type StudentAttempt = {
   id: string;
-
-  // ✅ legacy fields (client-only / old localStorage era)
-  // Supabase does NOT need these (profile_id from auth.uid()), but keeping them avoids TS breaks.
   studentEmail?: string;
   studentId?: string | null;
   studentName?: string;
@@ -28,7 +25,7 @@ export type StudentAttempt = {
 
   finishedAt: string;
 
-  perQuestion?: never; // or remove the field entirely
+  perQuestion?: never; 
 };
 
 
@@ -48,8 +45,8 @@ type DbInsert = {
   total_score: number; 
   correct: number;
   points: number;
-  finished_at?: string; // timestamptz
-  per_question?: any; // jsonb
+  finished_at?: string; 
+  per_question?: any; 
 };
 
 function mapRowToAttempt(r: any): StudentAttempt {
@@ -72,16 +69,10 @@ function mapRowToAttempt(r: any): StudentAttempt {
     points: Number(r.points ?? 0),
 
     finishedAt: String(r.finishedAt ?? new Date().toISOString()),
-
-    // you said you don't need it, so just omit or set undefined
     perQuestion: undefined,
   };
 }
 
-/**
- * RLS ensures students can only read their own rows (profile_id = auth.uid()).
- * Signature keeps _email so old UI code compiles.
- */
 export async function getAttemptsByStudent(_email: string): Promise<StudentAttempt[]> {
   const { data, error } = await supabase
     .from("student_attempts_api")
@@ -125,7 +116,7 @@ export async function saveStudentAttemptSupabase(attempt: StudentAttempt) {
   const correctCount = Number(attempt.correct ?? 0);
   const totalScore = Number(attempt.totalScore ?? 0);
 
-  // ✅ enforce correct data (prevents storing 8 or 0)
+  // ✅ enforce correct data
   if (!Number.isFinite(totalScore) || totalScore <= 0) {
     throw new Error("totalScore is required (expected max quiz score like 36).");
   }
@@ -173,11 +164,6 @@ export async function saveStudentAttemptSupabase(attempt: StudentAttempt) {
   };
 }
 
-/**
- * ✅ BACKWARD COMPAT:
- * old code imports `saveStudentAttempt` from studentReportStorage.
- * We keep it as a wrapper.
- */
 export async function saveStudentAttempt(attempt: StudentAttempt) {
   return saveStudentAttemptSupabase(attempt);
 }
@@ -214,12 +200,6 @@ export async function deleteMyAttemptSupabase(id: string) {
   if (error) throw error;
 }
 
-/**
- * ✅ BACKWARD COMPAT:
- * /me/profile imports `deleteAttemptsByStudent`.
- * Old localStorage version probably deleted by email.
- * Supabase version deletes ALL attempts for current authenticated user.
- */
 export async function deleteAttemptsByStudent(_email: string) {
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   if (authErr) throw authErr;

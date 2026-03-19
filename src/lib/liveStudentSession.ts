@@ -2,9 +2,6 @@
 import type { LiveStudent } from "@/src/lib/liveStorage";
 import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
 import { toLiveStudent } from "@/src/lib/studentAvatar";
-// (optional) if you still want the botttsUrl approach instead of toLiveStudent,
-// you can remove toLiveStudent import and use your old builder.
-
 const KEY = "gamorax_live_student";
 
 /** Guard: sessionStorage only exists in the browser */
@@ -41,7 +38,7 @@ export function clearLiveStudent() {
 }
 
 /* -------------------------------------------------------
-   ✅ New source of truth: Supabase profile (async)
+   Supabase profile (async)
 ------------------------------------------------------- */
 export async function getLiveStudentFromProfile(): Promise<LiveStudent | null> {
   const me = await getCurrentStudent();
@@ -51,15 +48,6 @@ export async function getLiveStudentFromProfile(): Promise<LiveStudent | null> {
   return toLiveStudent(me, 96);
 }
 
-/* -------------------------------------------------------
-   ✅ Combined entry points
-------------------------------------------------------- */
-
-/**
- * New preferred async getter:
- * - If sessionStorage already has it, return it (fast)
- * - Otherwise derive from profile and cache to sessionStorage
- */
 export async function getOrCreateLiveStudent(): Promise<LiveStudent | null> {
   const fromSession = readLiveStudent();
   if (fromSession) return fromSession;
@@ -71,11 +59,6 @@ export async function getOrCreateLiveStudent(): Promise<LiveStudent | null> {
   return live;
 }
 
-/**
- * Legacy sync getter (if some old code expects sync):
- * - Returns session value only
- * - If nothing in session, returns null (cannot call async profile)
- */
 export function getOrCreateLiveStudentSync(): LiveStudent | null {
   return readLiveStudent();
 }

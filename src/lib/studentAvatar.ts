@@ -8,34 +8,24 @@ export function getSeedFromAccount(me: StudentAccount) {
 }
 
 function getSeedFromLiveStudent(s: LiveStudent) {
-  // LiveStudent doesn’t have email/avatarSeed, so use stable fields
   return (s.studentId || s.name || "student").trim();
 }
 
-/**
- * Always returns a valid avatar URL (no /icons/student.png fallback).
- */
 export function getAvatarSrc(
   input: StudentAccount | LiveStudent | null | undefined,
   size = 96
 ) {
   if (!input) return botttsUrl("student", size);
 
-  // LiveStudent already stores avatarSrc
   if ("avatarSrc" in input && input.avatarSrc) return input.avatarSrc;
 
-  // StudentAccount -> compute from seed/email/studentId
   if ("email" in input) {
     return botttsUrl(getSeedFromAccount(input), size);
   }
 
-  // LiveStudent without avatarSrc
   return botttsUrl(getSeedFromLiveStudent(input), size);
 }
 
-/**
- * Build LiveStudent from StudentAccount (keeps your liveStorage type unchanged).
- */
 export function toLiveStudent(me: StudentAccount, size = 96): LiveStudent {
   const seed = getSeedFromAccount(me);
 

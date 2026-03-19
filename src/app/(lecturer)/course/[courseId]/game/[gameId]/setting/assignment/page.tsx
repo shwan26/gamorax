@@ -330,7 +330,7 @@ export default function AssignmentSettingPage() {
           <div className="pointer-events-none absolute -left-20 -top-20 h-56 w-56 rounded-full bg-[#00D4FF]/14 blur-3xl" />
           <div className="pointer-events-none absolute -right-24 -bottom-24 h-56 w-56 rounded-full bg-[#2563EB]/10 blur-3xl dark:bg-[#3B82F6]/18" />
 
-          <div className="relative grid gap-4 lg:grid-cols-[320px_1fr]">
+          <div className="relative grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
             {/* left qr */}
             <div
               className="
@@ -345,7 +345,7 @@ export default function AssignmentSettingPage() {
             </div>
 
             {/* right details */}
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
               <div className="flex items-start gap-3">
                 <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-3 shadow-sm dark:border-slate-800/70 dark:bg-slate-950/60">
                   <Link2 className="h-5 w-5 text-slate-800 dark:text-[#A7F3FF]" />
@@ -354,7 +354,7 @@ export default function AssignmentSettingPage() {
                   <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
                     Share this assignment link
                   </p>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300 break-all font-mono">
+                  <p className="mt-1 break-all text-sm font-mono text-slate-600 dark:text-slate-300">
                     {createdPanel.link.replace(/^https?:\/\//, "")}
                   </p>
 

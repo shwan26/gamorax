@@ -10,9 +10,6 @@ import LecturerLiveLayout from "./LecturerLiveLayout";
 import { supabase } from "@/src/lib/supabaseClient";
 
 /* ---------------- helpers ---------------- */
-
-
-
 function getDurationSec(q: any): number {
   const t = Number(q?.time);
   if (Number.isFinite(t) && t > 0) return Math.min(60 * 60, Math.round(t));
@@ -246,9 +243,6 @@ export default function LecturerLiveFlow({
       return { ...baseQ, left, right, matches: pairs };
     }
 
-
-
-    // Input
     return { ...baseQ };
   }, [baseQ?.id, baseQ?.type, qIndex, gameId, shuffleAnswers, pinKey]);
 
@@ -521,8 +515,6 @@ export default function LecturerLiveFlow({
           console.warn("Missing sessionId; cannot save report with rows mapping.");
           return;
         }
-
-        // 2) Build studentId -> profileId map from live_participants
 
         const { data: parts } = await supabase
           .from("live_participants")
