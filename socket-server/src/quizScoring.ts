@@ -17,6 +17,5 @@ export function calcPoints({
 
   const timeLeft = Math.max(0, m - t);
 
-  // ✅ your rule:
   return s * 100 + 10 * timeLeft;
 }

@@ -118,16 +118,6 @@ export default function GameSubNavbar({
               <span>Setting</span>
             </Link>
 
-            <Link
-              href={`${base}/preview/question`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`${common} ${isPreview ? activeCls : inactiveCls}`}
-            >
-              <Eye className="h-4 w-4" />
-              <span>Preview</span>
-            </Link>
-
             {/* ✅ Live blocks navigation when quiz not ready */}
             <Link
               href={`${base}/live`}
@@ -142,6 +132,18 @@ export default function GameSubNavbar({
               <Radio className="h-4 w-4" />
               <span>Live</span>
             </Link>
+
+            <Link
+              href={`${base}/preview/question`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${common} ${isPreview ? activeCls : inactiveCls}`}
+            >
+              <Eye className="h-4 w-4" />
+              <span>Preview</span>
+            </Link>
+
+            
           </div>
         </div>
       </div>
