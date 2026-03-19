@@ -33,9 +33,16 @@ export default function QuestionEditorForm({
   }
 
   function switchType(nextType: QuestionType) {
+    const nextMinScore = nextType === "matching" ? 5 : 1;
+    const normalizedScore =
+      nextType === "matching"
+        ? Math.max(5, Math.min(10, Math.round((question.score ?? 5) / 5) * 5))
+        : Math.max(1, Math.min(10, Math.floor(question.score ?? 1)));
+
     if (nextType === "multiple_choice") {
       onUpdate({
         type: nextType,
+        score: normalizedScore,
         answers: question.answers?.length ? question.answers : makeMCAnswers(4),
       });
       return;
@@ -44,6 +51,7 @@ export default function QuestionEditorForm({
     if (nextType === "true_false") {
       onUpdate({
         type: nextType,
+        score: normalizedScore,
         answers: [
           { text: "True", correct: true },
           { text: "False", correct: false },
@@ -55,6 +63,7 @@ export default function QuestionEditorForm({
     if (nextType === "matching") {
       onUpdate({
         type: nextType,
+        score: Math.max(5, normalizedScore),
         matches: question.matches?.length
           ? question.matches
           : Array.from({ length: 5 }, () => ({ left: "", right: "" })),
@@ -64,9 +73,13 @@ export default function QuestionEditorForm({
 
     onUpdate({
       type: nextType,
+      score: normalizedScore,
       acceptedAnswers: question.acceptedAnswers?.length ? question.acceptedAnswers : [""],
     });
   }
+
+  const minScore = question.type === "matching" ? 5 : 1;
+  const scoreStep = question.type === "matching" ? 5 : 1;
 
   return (
     <div className="pb-12">
@@ -258,22 +271,30 @@ export default function QuestionEditorForm({
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                min={1}
+                min={minScore}
                 max={10}
-                step={1}
-                value={question.score ?? 1}
+                step={scoreStep}
+                value={question.score ?? minScore}
                 onChange={(e) => {
                   const raw = Number(e.target.value);
+
                   const clamped = Number.isFinite(raw)
-                    ? Math.max(1, Math.min(10, Math.floor(raw)))
-                    : 1;
+                    ? question.type === "matching"
+                      ? Math.max(5, Math.min(10, Math.round(raw / 5) * 5))
+                      : Math.max(1, Math.min(10, Math.floor(raw)))
+                    : minScore;
+
                   onUpdate({ score: clamped });
                 }}
                 onBlur={(e) => {
                   const raw = Number(e.target.value);
+
                   const clamped = Number.isFinite(raw)
-                    ? Math.max(1, Math.min(10, Math.floor(raw)))
-                    : 1;
+                    ? question.type === "matching"
+                      ? Math.max(5, Math.min(10, Math.round(raw / 5) * 5))
+                      : Math.max(1, Math.min(10, Math.floor(raw)))
+                    : minScore;
+
                   if (String(clamped) !== e.target.value) onUpdate({ score: clamped });
                 }}
                 className="
