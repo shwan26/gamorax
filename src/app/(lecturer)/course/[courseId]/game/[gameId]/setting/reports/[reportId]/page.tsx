@@ -89,7 +89,6 @@ function StatCard({
             {label}
           </div>
 
-          {/* ✅ min/avg/max same row */}
           <div className="mt-1.5 grid grid-cols-3 gap-2">
             <div className="flex items-baseline justify-between rounded-xl border border-slate-200/60 bg-white/55 px-2 py-1.5 dark:border-slate-800/60 dark:bg-slate-950/45">
               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
@@ -339,13 +338,14 @@ export default function ReportDetailPage() {
         name: String(r.name ?? ""),
         score: Number(r.score ?? 0),
         points: Number(r.points ?? 0),
-        timeSpent: Number((r as any).totalTime ?? 0), // ✅ from storage
+        timeSpent: Number((r as any).totalTime ?? 0), 
     }));
 
     rows.sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points;
-        if (b.score !== a.score) return b.score - a.score;
-        return a.studentId.localeCompare(b.studentId);
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.points !== a.points) return b.points - a.points;
+      if (a.timeSpent !== b.timeSpent) return a.timeSpent - b.timeSpent;
+      return a.studentId.localeCompare(b.studentId);
     });
 
     return rows.map((r, i) => ({ ...r, rank: i + 1 }));
@@ -741,11 +741,6 @@ export default function ReportDetailPage() {
               </tbody>
             </table>
           </div>
-        </div>
-
-        {/* footer note */}
-        <div className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Points rule: points += (correct answers * 100) + (10 * time bonus)
         </div>
       </div>
     </div>

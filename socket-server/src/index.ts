@@ -1,5 +1,5 @@
 // src/index.ts
-import "./env.js"; // IMPORTANT: .js extension for NodeNext output
+import "./env.js"; 
 import express from "express";
 import cors from "cors";
 import { createServer } from "http";
@@ -10,10 +10,7 @@ import { createClient } from "@supabase/supabase-js";
 import { calcPoints } from "./quizScoring.js";
 
 /* -------------------- Supabase clients -------------------- */
-/**
- * ✅ supabaseAuth (ANON) is ONLY for verifying JWT access tokens.
- * ✅ supabaseAdmin (SERVICE ROLE) is for DB reads/writes bypassing RLS.
- */
+
 const supabaseAuth = createClient(
   process.env.SUPABASE_URL!,
   process.env.SUPABASE_ANON_KEY!,
@@ -1074,14 +1071,14 @@ socket.on(
     io.to(p).emit("final_results", {
       pin: p,
       total,
-      totalScore: room.quizMaxScore, // ✅ server truth
+      totalScore: room.quizMaxScore, 
       leaderboard: makeLeaderboard(room),
     });
 
     io.to(p).emit("quiz:finished", {
       ...payload,
       total,
-      totalScore: room.quizMaxScore, // ✅ include for client save
+      totalScore: room.quizMaxScore, 
     });
     await supabaseAdmin
       .from("live_sessions")
