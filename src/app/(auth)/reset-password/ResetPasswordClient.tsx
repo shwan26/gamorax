@@ -1,11 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/src/lib/supabaseClient";
+import { Eye, EyeOff } from "lucide-react";
+
+type Role = "student" | "lecturer";
 
 export default function ResetPasswordClient() {
   const router = useRouter();
+  const sp = useSearchParams();
+
+  const roleParam = sp.get("role");
+  const emailParam = sp.get("email");
+
+  const role: Role = roleParam === "student" ? "student" : "lecturer";
+  const email = emailParam ?? "";
+
+  const loginHref = useMemo(() => {
+    return role === "student" ? "/login?role=student" : "/login?role=lecturer";
+  }, [role]);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -14,12 +28,14 @@ export default function ResetPasswordClient() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   useEffect(() => {
     let mounted = true;
 
     async function initRecoverySession() {
       try {
-        // First try current session
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -29,7 +45,6 @@ export default function ResetPasswordClient() {
           return;
         }
 
-        // Recovery links often come back with tokens in the hash
         const hash = window.location.hash.startsWith("#")
           ? window.location.hash.substring(1)
           : window.location.hash;
@@ -45,14 +60,14 @@ export default function ResetPasswordClient() {
             refresh_token,
           });
 
-          if (error) {
-            throw error;
-          }
+          if (error) throw error;
 
-          // Optional: clean URL after session is set
-          window.history.replaceState({}, document.title, "/reset-password");
+          const cleanUrl = `/reset-password?role=${encodeURIComponent(role)}${
+            email ? `&email=${encodeURIComponent(email)}` : ""
+          }`;
+
+          window.history.replaceState({}, document.title, cleanUrl);
         } else {
-          // No valid recovery tokens
           throw new Error("Invalid or expired recovery link.");
         }
 
@@ -70,7 +85,7 @@ export default function ResetPasswordClient() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [role, email]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,7 +123,7 @@ export default function ResetPasswordClient() {
     setMessage("Password updated successfully.");
 
     setTimeout(() => {
-      router.replace("/login");
+      router.replace(loginHref);
     }, 1200);
   };
 
@@ -123,27 +138,63 @@ export default function ResetPasswordClient() {
                 Enter your new password below.
               </p>
 
+              {email ? (
+                <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-slate-800/70 dark:bg-slate-900/60 dark:text-slate-200">
+                  <span className="font-medium">Email:</span> {email}
+                </div>
+              ) : null}
+
               {checkingSession ? (
                 <p className="mt-6 text-sm text-slate-600 dark:text-slate-400">
                   Verifying reset link...
                 </p>
               ) : (
                 <form onSubmit={onSubmit} className="mt-6 space-y-3">
-                  <input
-                    type="password"
-                    placeholder="New password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="h-11 w-full rounded-xl border px-3"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="New password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-11 w-full rounded-xl border px-3 pr-11"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 hover:text-slate-700"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
 
-                  <input
-                    type="password"
-                    placeholder="Confirm new password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="h-11 w-full rounded-xl border px-3"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="h-11 w-full rounded-xl border px-3 pr-11"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500 hover:text-slate-700"
+                      aria-label={
+                        showConfirmPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
 
                   {error && <p className="text-sm text-red-600">{error}</p>}
                   {message && <p className="text-sm text-green-600">{message}</p>}
