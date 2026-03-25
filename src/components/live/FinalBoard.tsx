@@ -284,14 +284,14 @@ export default function FinalBoard({
       const bc = safeNum(b.score, 0);
       if (bc !== ac) return bc - ac;
 
+      const at = safeNum(a.totalTime, 999999);
+      const bt = safeNum(b.totalTime, 999999);
+      if (at !== bt) return at - bt;
+
       const ap = safeNum(a.points, -1);
       const bp = safeNum(b.points, -1);
       const hasPoints = ap >= 0 || bp >= 0;
       if (hasPoints && bp !== ap) return bp - ap;
-
-      const at = safeNum(a.totalTime, 999999);
-      const bt = safeNum(b.totalTime, 999999);
-      if (at !== bt) return at - bt;
 
       return String(a.studentId ?? "").localeCompare(String(b.studentId ?? ""));
     });
@@ -369,7 +369,7 @@ export default function FinalBoard({
               All Players
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              Sorted by correct → points → time
+              Sorted by correct → time → points
             </div>
           </div>
 
