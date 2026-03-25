@@ -3,7 +3,7 @@
 import { Answer } from "@/src/lib/questionStorage";
 import { Check, ImagePlus, Trash2 } from "lucide-react";
 import {
-  ANSWER_LABELS,
+  MC_LABELS,
   BADGE_ACCENT,
   BADGE_OUTER,
   BADGE_INNER,
@@ -50,7 +50,7 @@ export default function AnswerInput({
         <div className={BADGE_OUTER}>
           <div className={`${BADGE_INNER} ${BADGE_ACCENT} h-11 w-11`}>
             <span className="text-sm font-bold">
-              {ANSWER_LABELS[index] ?? String(index + 1)}
+              {MC_LABELS[index] ?? String(index + 1)}
             </span>
           </div>
         </div>
@@ -60,7 +60,7 @@ export default function AnswerInput({
           <input
             value={answer.text}
             onChange={(e) => onChange({ text: e.target.value })}
-            placeholder={`Answer ${ANSWER_LABELS[index] ?? index + 1}`}
+            placeholder={`Answer ${MC_LABELS[index] ?? index + 1}`}
             className="
               w-full rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2.5 text-sm
               shadow-sm outline-none
@@ -74,7 +74,7 @@ export default function AnswerInput({
             <div className="flex items-start gap-3">
               <img
                 src={answer.image}
-                alt={`Answer ${ANSWER_LABELS[index] ?? index + 1} image`}
+                alt={`Answer ${MC_LABELS[index] ?? index + 1} image`}
                 className="
                   max-h-28 rounded-xl border border-slate-200/80 bg-white shadow-sm
                   dark:border-slate-800/70 dark:bg-slate-950/40

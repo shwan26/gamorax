@@ -1,7 +1,8 @@
 "use client";
 
-const MC_LABELS = ["A", "B", "C", "D", "E"] as const;
-
+import {
+  MC_LABELS,
+} from "@/src/styles/answerStyles";
 type RevealProps = {
   // For choice questions (MC/TF)
   type?: "multiple_choice" | "true_false" | "matching" | "input";

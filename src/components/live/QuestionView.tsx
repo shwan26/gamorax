@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ANSWER_LABELS,
+  MC_LABELS,
   BADGE_ACCENT,
   BADGE_OUTER,
   BADGE_INNER,
@@ -20,8 +20,6 @@ function DotPattern() {
     />
   );
 }
-
-const MC_LABELS = ["A", "B", "C", "D", "E"] as const;
 
 export default function QuestionView({
   q,
@@ -110,7 +108,7 @@ export default function QuestionView({
                           ? i === 0
                             ? "T"
                             : "F"
-                          : (MC_LABELS[i] ?? ANSWER_LABELS[i])}
+                          : (MC_LABELS[i] ?? MC_LABELS[i])}
                       </span>
                     </div>
                   </div>

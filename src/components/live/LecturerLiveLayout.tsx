@@ -33,6 +33,35 @@ function guessOptionCountForChoice(q: LiveDisplayQuestion) {
   return clamp(byText || rawLen || 4, 2, 5);
 }
 
+function AnswerQuestionImage({ image, alt }: { image?: string | null; alt?: string }) {
+  if (!image) return null;
+
+  return (
+    <div className="mb-2 rounded-2xl border border-slate-200/70 bg-white/70 p-2 shadow-sm backdrop-blur ...">
+
+      <div
+        className="
+          overflow-hidden rounded-2xl border border-slate-200/70
+          dark:border-slate-800/70 bg-slate-50 dark:bg-slate-900
+        "
+      >
+        <div
+          className="
+            flex h-[160px] sm:h-[200px] md:h-[260px] w-full items-center justify-center
+            bg-slate-50 dark:bg-slate-900
+          "
+        >
+          <img
+            src={image}
+            alt={alt ?? "Question image"}
+            className="h-full w-full object-contain"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function LecturerLiveLayout({
   courseId,
   gameId,
@@ -223,7 +252,7 @@ export default function LecturerLiveLayout({
 
                 <div
                   className="
-                    rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
+                    mb-4 rounded-3xl border border-slate-200/70 bg-white/70 p-4 shadow-sm backdrop-blur
                     dark:border-slate-800/70 dark:bg-slate-950/55
                   "
                 >
@@ -308,6 +337,8 @@ export default function LecturerLiveLayout({
                     </span>
                   </div>
                 </div>
+
+                <AnswerQuestionImage image={(q as any)?.image ?? null} alt={q.text} />
 
                 <div
                   className="
