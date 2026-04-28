@@ -24,12 +24,24 @@ export default function AuthCallbackPage() {
 
         if (error) {
           console.error("exchangeCodeForSession error:", error.message);
+
+          if (next === "/reset-password") {
+            router.replace("/forgot-password?error=invalid_recovery_link");
+            return;
+          }
+
           router.replace("/login?error=auth_callback_failed");
           return;
         }
 
         if (next === "/reset-password") {
-          router.replace("/reset-password");
+          const email = sp.get("email");
+
+          router.replace(
+            `/reset-password?role=${role ?? "lecturer"}${
+              email ? `&email=${encodeURIComponent(email)}` : ""
+            }`
+          );
           return;
         }
 

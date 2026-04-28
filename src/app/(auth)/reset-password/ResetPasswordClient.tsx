@@ -32,60 +32,31 @@ export default function ResetPasswordClient() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    async function initRecoverySession() {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+  async function checkSession() {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
-        if (session) {
-          if (mounted) setCheckingSession(false);
-          return;
-        }
+    if (!mounted) return;
 
-        const hash = window.location.hash.startsWith("#")
-          ? window.location.hash.substring(1)
-          : window.location.hash;
-
-        const hashParams = new URLSearchParams(hash);
-        const access_token = hashParams.get("access_token");
-        const refresh_token = hashParams.get("refresh_token");
-        const type = hashParams.get("type");
-
-        if (type === "recovery" && access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-
-          if (error) throw error;
-
-          const cleanUrl = `/reset-password?role=${encodeURIComponent(role)}${
-            email ? `&email=${encodeURIComponent(email)}` : ""
-          }`;
-
-          window.history.replaceState({}, document.title, cleanUrl);
-        } else {
-          throw new Error("Invalid or expired recovery link.");
-        }
-
-        if (mounted) setCheckingSession(false);
-      } catch (err: any) {
-        if (mounted) {
-          setError(err?.message ?? "Unable to verify reset link.");
-          setCheckingSession(false);
-        }
-      }
+    if (error || !session) {
+      setError("Invalid or expired recovery link. Please request a new password reset email.");
+      setCheckingSession(false);
+      return;
     }
 
-    initRecoverySession();
+    setCheckingSession(false);
+  }
 
-    return () => {
-      mounted = false;
-    };
-  }, [role, email]);
+  checkSession();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

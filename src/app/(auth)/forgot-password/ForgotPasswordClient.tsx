@@ -73,7 +73,7 @@ export default function ForgotPasswordPage() {
       const APP_URL = "https://www.gamorax.app";
 
       const { error } = await supabase.auth.resetPasswordForEmail(e, {
-        redirectTo: `${APP_URL}/reset-password?role=${role}&email=${encodeURIComponent(e)}`,
+        redirectTo: `${APP_URL}/auth/callback?next=/reset-password&role=${role}&email=${encodeURIComponent(e)}`,
       });
       if (error) throw error;
 
