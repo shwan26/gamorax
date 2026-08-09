@@ -7,6 +7,22 @@ import { Eye, EyeOff } from "lucide-react";
 
 type Role = "student" | "lecturer";
 
+// React Strict Mode can run effects twice in development. Reuse the same
+// exchange so a one-time recovery code is never submitted twice.
+const recoveryCodeExchanges = new Map<string, Promise<void>>();
+
+function exchangeRecoveryCode(code: string) {
+  const existing = recoveryCodeExchanges.get(code);
+  if (existing) return existing;
+
+  const exchange = supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+    if (error) throw error;
+  });
+
+  recoveryCodeExchanges.set(code, exchange);
+  return exchange;
+}
+
 export default function ResetPasswordClient() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -36,14 +52,8 @@ export default function ResetPasswordClient() {
 
     async function initRecoverySession() {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (session) {
-          if (mounted) setCheckingSession(false);
-          return;
-        }
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get("code");
 
         const hash = window.location.hash.startsWith("#")
           ? window.location.hash.substring(1)
@@ -54,27 +64,41 @@ export default function ResetPasswordClient() {
         const refresh_token = hashParams.get("refresh_token");
         const type = hashParams.get("type");
 
-        if (type === "recovery" && access_token && refresh_token) {
+        // Current Supabase recovery links use PKCE and return a one-time code.
+        if (code) {
+          await exchangeRecoveryCode(code);
+        } else if (type === "recovery" && access_token && refresh_token) {
+          // Keep supporting older implicit-flow recovery links.
           const { error } = await supabase.auth.setSession({
             access_token,
             refresh_token,
           });
 
           if (error) throw error;
-
-          const cleanUrl = `/reset-password?role=${encodeURIComponent(role)}${
-            email ? `&email=${encodeURIComponent(email)}` : ""
-          }`;
-
-          window.history.replaceState({}, document.title, cleanUrl);
         } else {
-          throw new Error("Invalid or expired recovery link.");
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (!session) {
+            throw new Error("Invalid or expired recovery link.");
+          }
         }
 
+        // Remove one-time credentials from the address bar after they are used.
+        const cleanUrl = `/reset-password?role=${encodeURIComponent(role)}${
+          email ? `&email=${encodeURIComponent(email)}` : ""
+        }`;
+        window.history.replaceState({}, document.title, cleanUrl);
+
         if (mounted) setCheckingSession(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (mounted) {
-          setError(err?.message ?? "Unable to verify reset link.");
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Unable to verify reset link."
+          );
           setCheckingSession(false);
         }
       }
