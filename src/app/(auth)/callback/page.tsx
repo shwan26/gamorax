@@ -11,19 +11,17 @@ export default function AuthCallbackPage() {
     (async () => {
       try {
         const sp = new URLSearchParams(window.location.search);
-        const code = sp.get("code");
         const next = sp.get("next") || "/login";
         const role = sp.get("role");
 
-        if (!code) {
-          router.replace("/login?error=missing_code");
-          return;
-        }
+        // createBrowserClient exchanges the PKCE code automatically.
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-        if (error) {
-          console.error("exchangeCodeForSession error:", error.message);
+        if (error || !session) {
+          if (error) console.error("Auth callback error:", error.message);
           router.replace("/login?error=auth_callback_failed");
           return;
         }
@@ -39,10 +37,11 @@ export default function AuthCallbackPage() {
         }
 
         router.replace("/login");
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error("unexpected callback error:", e);
+        const message = e instanceof Error ? e.message : "unexpected_callback_error";
         router.replace(
-          `/login?error=${encodeURIComponent(e?.message ?? "unexpected_callback_error")}`
+          `/login?error=${encodeURIComponent(message)}`
         );
       }
     })();

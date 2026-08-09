@@ -70,16 +70,18 @@ export default function ForgotPasswordPage() {
 
     setSubmitting(true);
     try {
-      const APP_URL = "https://www.gamorax.app";
+      const redirectUrl = new URL("/reset-password", window.location.origin);
+      redirectUrl.searchParams.set("role", role);
+      redirectUrl.searchParams.set("email", e);
 
       const { error } = await supabase.auth.resetPasswordForEmail(e, {
-        redirectTo: `${APP_URL}/reset-password?role=${role}&email=${encodeURIComponent(e)}`,
+        redirectTo: redirectUrl.toString(),
       });
       if (error) throw error;
 
       setSent(true);
-    } catch (err: any) {
-      alert(err?.message ?? "Failed to send reset email");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to send reset email");
     } finally {
       setSubmitting(false);
     }
