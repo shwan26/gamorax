@@ -1,9 +1,9 @@
 "use client";
 
-import { Question, QuestionType } from "@/src/lib/questionStorage";
+import { Question, QuestionType } from "@/src/lib/games/questionStorage";
 import { ImagePlus, Trash2, Timer } from "lucide-react";
 
-import MultipleChoiceEditor from "./MulipleChoiceEditor";
+import MultipleChoiceEditor from "./MultipleChoiceEditor";
 import TrueFalseEditor from "./TrueFalseEditor";
 import MatchingEditor from "./MatchingEditor";
 import InputAnswerEditor from "./InputAnswerEditor";

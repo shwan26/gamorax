@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import StudentNavbar from "@/src/components/StudentNavbar";
-import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
+import StudentNavbar from "@/src/components/navigation/StudentNavbar";
+import { getCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
 import {
   getAttemptsByStudent,
   type StudentAttempt,
-} from "@/src/lib/studentReportStorage";
+} from "@/src/lib/reports/studentReportStorage";
 import {
   Search,
   Filter,
@@ -15,7 +15,7 @@ import {
   ArrowDownZA,
   Trophy,
 } from "lucide-react";
-import type { StudentAccount } from "@/src/lib/studentAuthStorage";
+import type { StudentAccount } from "@/src/lib/auth/studentAuthStorage";
 
 
 function fmt(iso: string) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 import { Eye, EyeOff } from "lucide-react";
 
 type Role = "student" | "lecturer";

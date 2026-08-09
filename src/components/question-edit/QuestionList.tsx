@@ -1,6 +1,6 @@
 "use client";
 
-import type { Question } from "@/src/lib/questionStorage";
+import type { Question } from "@/src/lib/games/questionStorage";
 import { Plus, Trash2, Copy, GripVertical } from "lucide-react";
 
 export default function QuestionList({

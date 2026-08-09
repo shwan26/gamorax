@@ -1,5 +1,5 @@
 // src/lib/assignmentAttemptStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export type AssignmentAttempt = {
   id: string;

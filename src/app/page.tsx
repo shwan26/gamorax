@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import Navbar from "../components/Navbar";
+import Navbar from "@/src/components/navigation/Navbar";
 import {
   ArrowRight,
   GraduationCap,

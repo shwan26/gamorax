@@ -1,7 +1,7 @@
-import type { Game } from "@/src/lib/gameStorage";
-import type { Question } from "@/src/lib/questionStorage";
-import type { LiveStatus } from "@/src/lib/liveStorage"; // ✅ use the one type
-import type { LiveQuestionType } from "@/src/lib/liveStorage";
+import type { Game } from "@/src/lib/games/gameStorage";
+import type { Question } from "@/src/lib/games/questionStorage";
+import type { LiveStatus } from "@/src/lib/live/liveStorage"; // ✅ use the one type
+import type { LiveQuestionType } from "@/src/lib/live/liveStorage";
 
 export type { LiveStatus }; // optional re-export if you want
 

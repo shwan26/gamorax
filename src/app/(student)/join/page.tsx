@@ -2,16 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Navbar from "../../../components/Navbar";
-import GradientButton from "@/src/components/GradientButton";
+import Navbar from "@/src/components/navigation/Navbar";
+import GradientButton from "@/src/components/ui/GradientButton";
 import {
   getCurrentStudent,
   logoutStudent, // ✅ make sure this exists in your studentAuthStorage
-} from "@/src/lib/studentAuthStorage";
-import { botttsUrl } from "@/src/lib/dicebear";
+} from "@/src/lib/auth/studentAuthStorage";
+import { botttsUrl } from "@/src/lib/avatars/dicebear";
 import { ArrowLeft, UserRound, LogOut } from "lucide-react";
 import Link from "next/link";
-import type { StudentAccount } from "@/src/lib/studentAuthStorage";
+import type { StudentAccount } from "@/src/lib/auth/studentAuthStorage";
 
 
 

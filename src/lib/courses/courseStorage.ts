@@ -1,5 +1,5 @@
 // src/lib/courseStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export type Course = {
   id: string;

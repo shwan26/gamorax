@@ -4,9 +4,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import Navbar from "@/src/components/LecturerNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
 import LecturerLiveFlow from "@/src/components/live/LecturerLiveFlow";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 type CourseRow = {
   id: string;

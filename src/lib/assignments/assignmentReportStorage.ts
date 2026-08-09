@@ -1,9 +1,9 @@
 // src/lib/assignmentReportStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 import {
   listAttemptsByAssignment,
   type AssignmentAttempt,
-} from "@/src/lib/assignmentAttemptStorage";
+} from "@/src/lib/assignments/assignmentAttemptStorage";
 
 export type AssignmentReportStats = {
   students: number;

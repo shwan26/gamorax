@@ -3,11 +3,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getQuestions, type Question } from "@/src/lib/questionStorage";
-import { socket } from "@/src/lib/socket";
-import { getLiveStateByPin, type LiveReportRow, saveLiveReport } from "@/src/lib/liveStorage";
+import { getQuestions, type Question } from "@/src/lib/games/questionStorage";
+import { socket } from "@/src/lib/live/socket";
+import { getLiveStateByPin, type LiveReportRow, saveLiveReport } from "@/src/lib/live/liveStorage";
 import LecturerLiveLayout from "./LecturerLiveLayout";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 /* ---------------- helpers ---------------- */
 function getDurationSec(q: any): number {

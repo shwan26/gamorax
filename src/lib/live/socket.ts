@@ -1,4 +1,4 @@
-// src/lib/socket.ts
+// Browser-only Socket.IO client.
 import { io, type Socket } from "socket.io-client";
 
 let _socket: Socket | null = null;

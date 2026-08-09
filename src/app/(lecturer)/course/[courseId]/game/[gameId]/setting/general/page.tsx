@@ -2,9 +2,9 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import GradientButton from "@/src/components/GradientButton";
+import GradientButton from "@/src/components/ui/GradientButton";
 import { Settings, Shuffle, Trash2, Hash, Pencil, Check, X } from "lucide-react";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 /* ------------------------------ types ------------------------------ */
 

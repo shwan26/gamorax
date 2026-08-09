@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/src/components/LecturerNavbar";
-import { supabase } from "@/src/lib/supabaseClient";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
+import { supabase } from "@/src/lib/supabase/client";
 import { LogOut, Trash2, UserRound } from "lucide-react";
-import GradientButton from "@/src/components/GradientButton";
+import GradientButton from "@/src/components/ui/GradientButton";
 
 function Skel({ className = "" }: { className?: string }) {
   return (

@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
+import { getCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
 import localFont from "next/font/local";
-import { botttsUrl } from "@/src/lib/dicebear";
+import { botttsUrl } from "@/src/lib/avatars/dicebear";
 import { Plus, FileText } from "lucide-react";
 
 const caesar = localFont({
-  src: "../../public/fonts/CaesarDressing-Regular.ttf",
+  src: "../../../public/fonts/CaesarDressing-Regular.ttf",
 });
 
 export default function StudentNavbar() {

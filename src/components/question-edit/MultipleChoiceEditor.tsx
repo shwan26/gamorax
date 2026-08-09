@@ -1,6 +1,6 @@
 "use client";
 
-import { Question } from "@/src/lib/questionStorage";
+import { Question } from "@/src/lib/games/questionStorage";
 import AnswerInput from "./AnswerInput";
 import { Plus } from "lucide-react";
 import { useEffect } from "react";

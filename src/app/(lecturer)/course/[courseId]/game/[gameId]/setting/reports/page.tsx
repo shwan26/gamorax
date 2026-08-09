@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { getQuestions, type Question } from "@/src/lib/questionStorage";
+import { getQuestions, type Question } from "@/src/lib/games/questionStorage";
 
 import { useParams } from "next/navigation";
-import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getReportsByQuiz, type LiveReport } from "@/src/lib/liveStorage";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
+import { getReportsByQuiz, type LiveReport } from "@/src/lib/live/liveStorage";
 
 import {
   ClipboardList,

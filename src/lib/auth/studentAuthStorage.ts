@@ -1,7 +1,7 @@
 // src/lib/studentAuthStorage.ts
 // ✅ Migrated from localStorage auth -> Supabase Auth + profiles (my_profile_api)
 
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export type StudentAccount = {
   id: string;

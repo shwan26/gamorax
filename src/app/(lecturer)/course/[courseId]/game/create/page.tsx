@@ -6,17 +6,17 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Gamepad2, Copy } from "lucide-react";
 
-import Navbar from "@/src/components/LecturerNavbar";
-import { supabase } from "@/src/lib/supabaseClient";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
+import { supabase } from "@/src/lib/supabase/client";
 
 import {
   createGame,
   duplicateGameToCourse,
   getAllMyGames,
   type Game,
-} from "@/src/lib/gameStorage";
+} from "@/src/lib/games/gameStorage";
 
-import { getCourses, type Course } from "@/src/lib/courseStorage";
+import { getCourses, type Course } from "@/src/lib/courses/courseStorage";
 
 type Mode = "new" | "copy";
 

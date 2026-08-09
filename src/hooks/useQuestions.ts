@@ -2,7 +2,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getQuestions, type Question } from "@/src/lib/questionStorage";
+import { getQuestions, type Question } from "@/src/lib/games/questionStorage";
 
 export function useQuestions(gameId: string) {
   const [questions, setQuestions] = useState<Question[]>([]);

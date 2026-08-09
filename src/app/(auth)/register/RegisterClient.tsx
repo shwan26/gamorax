@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Navbar from "@/src/components/Navbar";
-import GradientButton from "@/src/components/GradientButton";
-import { supabase } from "@/src/lib/supabaseClient";
+import Navbar from "@/src/components/navigation/Navbar";
+import GradientButton from "@/src/components/ui/GradientButton";
+import { supabase } from "@/src/lib/supabase/client";
 import { ArrowLeft, GraduationCap, UserRound, Eye, EyeOff } from "lucide-react";
-import { deriveStudentIdFromEmail } from "@/src/lib/studentAuthStorage";
+import { deriveStudentIdFromEmail } from "@/src/lib/auth/studentAuthStorage";
 
 type Role = "lecturer" | "student";
 

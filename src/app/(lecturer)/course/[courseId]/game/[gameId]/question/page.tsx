@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import Navbar from "@/src/components/LecturerNavbar";
-import GameSubNavbar from "@/src/components/GameSubNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
+import GameSubNavbar from "@/src/components/navigation/GameSubNavbar";
 
 import {
   type Question,
@@ -12,13 +12,13 @@ import {
   getQuestions,
   saveQuestionsSerialized,
   isQuestionComplete,
-} from "@/src/lib/questionStorage";
+} from "@/src/lib/games/questionStorage";
 
 import QuestionList from "@/src/components/question-edit/QuestionList";
 import QuestionEditorForm from "@/src/components/question-edit/QuestionEditorForm";
 import DeleteModal from "@/src/components/question-edit/DeleteModal";
 import QuestionPageSkeleton from "@/src/components/skeletons/QuestionPageSkeleton";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 /* ------------------------------ helpers ------------------------------ */
 

@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { getGameById, type Game } from "@/src/lib/gameStorage";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
 
 import {
   listAssignmentsWithAttemptsByGame,
   computeAssignmentReportStats,
   type AssignmentHistoryRow,
-} from "@/src/lib/assignmentReportStorage";
+} from "@/src/lib/assignments/assignmentReportStorage";
 
 import {
   ClipboardList,

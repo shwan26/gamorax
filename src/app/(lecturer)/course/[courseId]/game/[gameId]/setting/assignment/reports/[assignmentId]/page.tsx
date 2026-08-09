@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { ArrowLeft } from "lucide-react";
-import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getCourseById, type Course } from "@/src/lib/courseStorage";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
+import { getCourseById, type Course } from "@/src/lib/courses/courseStorage";
 
 import {
   getAssignmentById,
@@ -14,9 +14,9 @@ import {
   computeAssignmentReportStats,
   rankAssignmentAttempts,
   type AssignmentDetailRow,
-} from "@/src/lib/assignmentReportStorage";
+} from "@/src/lib/assignments/assignmentReportStorage";
 
-import { type AssignmentAttempt } from "@/src/lib/assignmentAttemptStorage";
+import { type AssignmentAttempt } from "@/src/lib/assignments/assignmentAttemptStorage";
 
 import {
   Download,

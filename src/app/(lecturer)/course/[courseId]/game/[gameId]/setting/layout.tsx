@@ -5,17 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 
-import Navbar from "@/src/components/LecturerNavbar";
-import GameSubNavbar from "@/src/components/GameSubNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
+import GameSubNavbar from "@/src/components/navigation/GameSubNavbar";
 
 import { useQuestions } from "@/src/hooks/useQuestions";
-import { isQuestionComplete } from "@/src/lib/questionStorage";
+import { isQuestionComplete } from "@/src/lib/games/questionStorage";
 
-import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getCourseById, type Course } from "@/src/lib/courseStorage";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
+import { getCourseById, type Course } from "@/src/lib/courses/courseStorage";
 
 import { Settings, FileUp, Timer, BarChart3, Link2 } from "lucide-react";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export default function SettingLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();

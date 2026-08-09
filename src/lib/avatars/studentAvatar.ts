@@ -1,7 +1,7 @@
 // src/lib/studentAvatar.ts
-import type { StudentAccount } from "@/src/lib/studentAuthStorage";
-import type { LiveStudent } from "@/src/lib/liveStorage";
-import { botttsUrl } from "@/src/lib/dicebear";
+import type { StudentAccount } from "@/src/lib/auth/studentAuthStorage";
+import type { LiveStudent } from "@/src/lib/live/liveStorage";
+import { botttsUrl } from "@/src/lib/avatars/dicebear";
 
 export function getSeedFromAccount(me: StudentAccount) {
   return (me.avatarSeed || me.email || me.studentId || me.id || "student").trim();
