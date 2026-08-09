@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Navbar from "@/src/components/Navbar";
-import GradientButton from "@/src/components/GradientButton";
-import { supabase } from "@/src/lib/supabaseClient";
+import Navbar from "@/src/components/navigation/Navbar";
+import GradientButton from "@/src/components/ui/GradientButton";
+import { supabase } from "@/src/lib/supabase/client";
 import { ArrowLeft, GraduationCap, UserRound, Eye, EyeOff } from "lucide-react";
 
 type Role = "lecturer" | "student";

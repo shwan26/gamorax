@@ -1,6 +1,6 @@
 // src/lib/assignment.ts
-import { supabase } from "@/src/lib/supabaseClient";
-import { getQuestions } from "@/src/lib/questionStorage";
+import { supabase } from "@/src/lib/supabase/client";
+import { getQuestions } from "@/src/lib/games/questionStorage";
 
 /* ======================
    Types

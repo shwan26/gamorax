@@ -3,11 +3,11 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 
-import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getQuestions, saveQuestions, type Question } from "@/src/lib/questionStorage";
-import { importQuestionsFromExcel } from "@/src/lib/importQuestionsFromExcel";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
+import { getQuestions, saveQuestions, type Question } from "@/src/lib/games/questionStorage";
+import { importQuestionsFromExcel } from "@/src/lib/import/questionsFromExcel";
 import { UploadCloud, FileSpreadsheet, Info, CheckCircle2 } from "lucide-react";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 type ImportMeta = {
   fileName: string;

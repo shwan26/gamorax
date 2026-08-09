@@ -1,5 +1,5 @@
 // src/lib/questionStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export type QuestionType = "multiple_choice" | "true_false" | "matching" | "input";
 

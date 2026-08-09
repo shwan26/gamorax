@@ -1,4 +1,4 @@
-// src/lib/supabaseClient.ts
+// Browser-only Supabase client.
 import { createBrowserClient } from "@supabase/ssr";
 
 export function createClient() {

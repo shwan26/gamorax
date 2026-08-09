@@ -3,13 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import Navbar from "@/src/components/Navbar";
+import Navbar from "@/src/components/navigation/Navbar";
 import AnswerGrid from "@/src/components/live/AnswerGrid";
 import { Trophy, Timer, Lock, CheckCircle2, XCircle, Clock } from "lucide-react";
 
-import { supabase } from "@/src/lib/supabaseClient";
-import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
-import { getAvatarSrc } from "@/src/lib/studentAvatar";
+import { supabase } from "@/src/lib/supabase/client";
+import { getOrCreateLiveStudent } from "@/src/lib/live/liveStudentSession";
+import { getAvatarSrc } from "@/src/lib/avatars/studentAvatar";
 
 import {
   getAssignmentMeta,
@@ -17,9 +17,9 @@ import {
   submitAssignmentAttempt,
   type AssignmentMeta,
   type AssignmentPayload,
-} from "@/src/lib/assignmentStorage";
+} from "@/src/lib/assignments/assignmentStorage";
 
-import { hasAttempted } from "@/src/lib/assignmentAttemptStorage";
+import { hasAttempted } from "@/src/lib/assignments/assignmentAttemptStorage";
 
 type Phase = "gate" | "intro" | "question" | "final";
 

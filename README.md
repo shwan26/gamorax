@@ -39,19 +39,38 @@ A real-time quiz game built for classroom live sessions with lobby PIN join, liv
 
 ---
 
-## Project Structure (high level)
+## Project Structure
+
 ```txt
 gamorax/
-├── server.js
+├── public/                     # Static assets and import templates
+├── socket-server/              # Socket.IO backend
+├── src/
+│   ├── app/                    # Next.js routes, layouts, and API handlers
+│   ├── components/
+│   │   ├── auth/               # Route and role guards
+│   │   ├── live/               # Live-game UI
+│   │   ├── navigation/         # Shared navigation bars
+│   │   ├── question-edit/      # Question editor UI
+│   │   ├── skeletons/          # Loading states
+│   │   └── ui/                 # Reusable UI primitives
+│   ├── hooks/                  # Shared React hooks
+│   ├── lib/
+│   │   ├── assignments/        # Assignment data access
+│   │   ├── auth/               # Student authentication helpers
+│   │   ├── avatars/            # Avatar generation and mapping
+│   │   ├── courses/            # Course data access
+│   │   ├── games/              # Game and question data access
+│   │   ├── import/             # File import helpers
+│   │   ├── live/               # Live sessions, reports, and sockets
+│   │   ├── reports/            # Student report data access
+│   │   └── supabase/           # Supabase client setup
+│   └── styles/                 # Global and shared styles
+├── next.config.ts
 ├── package.json
-├── next.config.js
-├── tsconfig.json
-├── .env                
-├── public/
-│   └── icons/
-├── src/  #frontend website
-└── socket-server/ #backend server
+└── tsconfig.json
 ```
+
 ## Getting Started
 install dependencies:
 ```bash

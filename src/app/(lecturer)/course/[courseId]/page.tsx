@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Navbar from "@/src/components/LecturerNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
 import Link from "next/link";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 import CoursePageSkeleton from "@/src/components/skeletons/CoursePageSkeleton";
-import { duplicateGameToCourse } from "@/src/lib/gameStorage";
+import { duplicateGameToCourse } from "@/src/lib/games/gameStorage";
 
 import {
   ArrowLeft,

@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 import { Sparkles } from "lucide-react";
 
 const caesar = localFont({
-  src: "../../public/fonts/CaesarDressing-Regular.ttf",
+  src: "../../../public/fonts/CaesarDressing-Regular.ttf",
 });
 
 export default function Navbar() {

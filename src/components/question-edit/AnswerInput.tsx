@@ -1,6 +1,6 @@
 "use client";
 
-import { Answer } from "@/src/lib/questionStorage";
+import { Answer } from "@/src/lib/games/questionStorage";
 import { Check, ImagePlus, Trash2 } from "lucide-react";
 import {
   ANSWER_LABELS,

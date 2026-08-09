@@ -2,10 +2,10 @@
 
 import { useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import Navbar from "@/src/components/LecturerNavbar";
-import GradientButton from "@/src/components/GradientButton";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
+import GradientButton from "@/src/components/ui/GradientButton";
 import { BookOpen } from "lucide-react";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 function Field({
   label,

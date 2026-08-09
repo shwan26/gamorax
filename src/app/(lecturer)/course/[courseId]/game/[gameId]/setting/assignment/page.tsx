@@ -4,16 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Link2, Trash2, Copy, Download, KeyRound } from "lucide-react";
 
-import type { Question } from "@/src/lib/questionStorage";
-import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getQuestions } from "@/src/lib/questionStorage";
+import type { Question } from "@/src/lib/games/questionStorage";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
+import { getQuestions } from "@/src/lib/games/questionStorage";
 
 import {
   createAssignment,
   deleteAssignment,
   listAssignmentsByGame,
   type Assignment,
-} from "@/src/lib/assignmentStorage";
+} from "@/src/lib/assignments/assignmentStorage";
 
 import QRCode from "react-qr-code";
 

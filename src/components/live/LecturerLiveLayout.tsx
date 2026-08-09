@@ -1,9 +1,9 @@
 // src/components/live/LecturerLiveLayout.tsx
 "use client";
 
-import type { Course } from "@/src/lib/courseStorage";
-import type { Game } from "@/src/lib/gameStorage";
-import type { LiveStatus } from "@/src/lib/liveStorage";
+import type { Course } from "@/src/lib/courses/courseStorage";
+import type { Game } from "@/src/lib/games/gameStorage";
+import type { LiveStatus } from "@/src/lib/live/liveStorage";
 import type { LiveDisplayQuestion } from "@/src/components/live/types";
 
 import QuestionView from "@/src/components/live/QuestionView";

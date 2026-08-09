@@ -4,17 +4,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import Navbar from "@/src/components/Navbar";
-import { socket, setSocketAccessToken } from "@/src/lib/socket";
+import Navbar from "@/src/components/navigation/Navbar";
+import { socket, setSocketAccessToken } from "@/src/lib/live/socket";
 
-import { getCurrentStudent, updateCurrentStudent } from "@/src/lib/studentAuthStorage";
-import type { LiveStudent } from "@/src/lib/liveStorage";
-import { getOrCreateLiveStudent, writeLiveStudent } from "@/src/lib/liveStudentSession";
-import { getAvatarSrc, toLiveStudent } from "@/src/lib/studentAvatar";
-import { randomSeed } from "@/src/lib/dicebear";
-import { deriveStudentIdFromEmail } from "@/src/lib/studentAuthStorage";
-import { joinLiveSessionSupabase, saveLiveMeta } from "@/src/lib/liveStorage";
-import { supabase } from "@/src/lib/supabaseClient";
+import { getCurrentStudent, updateCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
+import type { LiveStudent } from "@/src/lib/live/liveStorage";
+import { getOrCreateLiveStudent, writeLiveStudent } from "@/src/lib/live/liveStudentSession";
+import { getAvatarSrc, toLiveStudent } from "@/src/lib/avatars/studentAvatar";
+import { randomSeed } from "@/src/lib/avatars/dicebear";
+import { deriveStudentIdFromEmail } from "@/src/lib/auth/studentAuthStorage";
+import { joinLiveSessionSupabase, saveLiveMeta } from "@/src/lib/live/liveStorage";
+import { supabase } from "@/src/lib/supabase/client";
 
 function DotPattern() {
   return (

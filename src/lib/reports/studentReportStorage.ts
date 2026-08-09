@@ -1,5 +1,5 @@
 // src/lib/studentReportStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export type StudentAttempt = {
   id: string;

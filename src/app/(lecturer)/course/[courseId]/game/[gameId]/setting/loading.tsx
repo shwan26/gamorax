@@ -1,6 +1,6 @@
 "use client";
 
-import Navbar from "@/src/components/LecturerNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
 
 function SkeletonLine({ w = "w-40" }: { w?: string }) {
   return <div className={`h-3 ${w} animate-pulse rounded-full bg-slate-200/70 dark:bg-slate-800/70`} />;

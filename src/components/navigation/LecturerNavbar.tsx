@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import localFont from "next/font/local";
 
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 type LecturerProfile = {
   id: string;
@@ -20,7 +20,7 @@ type Lecturer = {
 };
 
 const caesar = localFont({
-  src: "../../public/fonts/CaesarDressing-Regular.ttf",
+  src: "../../../public/fonts/CaesarDressing-Regular.ttf",
 });
 
 export default function LecturerNavbar() {

@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Navbar from "@/src/components/LecturerNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 import {
   Plus,
   Search,

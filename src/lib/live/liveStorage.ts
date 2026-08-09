@@ -1,5 +1,5 @@
 // src/lib/liveStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 /* =========================
    LIVE SOCKET TYPES

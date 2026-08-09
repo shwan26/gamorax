@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Navbar from "@/src/components/LecturerNavbar";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
 import Link from "next/link";
 
 import {
@@ -10,8 +10,8 @@ import {
   updateCourse,
   deleteCourse,
   type Course,
-} from "@/src/lib/courseStorage";
-import { getGamesByCourseId, deleteGame } from "@/src/lib/gameStorage";
+} from "@/src/lib/courses/courseStorage";
+import { getGamesByCourseId, deleteGame } from "@/src/lib/games/gameStorage";
 import { ArrowLeft, Settings, Trash2 } from "lucide-react";
 
 type FormState = {

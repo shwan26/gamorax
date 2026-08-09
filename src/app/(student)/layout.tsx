@@ -1,4 +1,4 @@
-import RoleGuard from "@/src/components/RoleGuard";
+import RoleGuard from "@/src/components/auth/RoleGuard";
 
 export default function StudentLayout({
   children,

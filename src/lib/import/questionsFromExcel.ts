@@ -1,6 +1,6 @@
 // src/lib/importQuestionsFromExcel.ts
 import readXlsxFile from "read-excel-file";
-import type { Question } from "@/src/lib/questionStorage";
+import type { Question } from "@/src/lib/games/questionStorage";
 
 /* =======================
    helpers

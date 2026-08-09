@@ -1,5 +1,5 @@
 // src/lib/gameStorage.ts
-import { supabase } from "@/src/lib/supabaseClient";
+import { supabase } from "@/src/lib/supabase/client";
 
 export type GameTimer = {
   mode: "automatic" | "manual";

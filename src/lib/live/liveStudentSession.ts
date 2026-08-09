@@ -1,7 +1,7 @@
 // src/lib/liveStudentSession.ts
-import type { LiveStudent } from "@/src/lib/liveStorage";
-import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
-import { toLiveStudent } from "@/src/lib/studentAvatar";
+import type { LiveStudent } from "@/src/lib/live/liveStorage";
+import { getCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
+import { toLiveStudent } from "@/src/lib/avatars/studentAvatar";
 const KEY = "gamorax_live_student";
 
 /** Guard: sessionStorage only exists in the browser */

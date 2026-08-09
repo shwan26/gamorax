@@ -3,16 +3,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Navbar from "@/src/components/Navbar";
-import { socket } from "@/src/lib/socket";
-import type { LiveStudent } from "@/src/lib/liveStorage";
-import { getOrCreateLiveStudent } from "@/src/lib/liveStudentSession";
+import Navbar from "@/src/components/navigation/Navbar";
+import { socket } from "@/src/lib/live/socket";
+import type { LiveStudent } from "@/src/lib/live/liveStorage";
+import { getOrCreateLiveStudent } from "@/src/lib/live/liveStudentSession";
 import AnswerGrid from "@/src/components/live/AnswerGrid";
 import { Trophy, CheckCircle2, XCircle, Timer } from "lucide-react";
-import { getAvatarSrc } from "@/src/lib/studentAvatar";
-import { getCurrentStudent } from "@/src/lib/studentAuthStorage";
-import { saveStudentAttempt } from "@/src/lib/studentReportStorage";
-import { getLiveMeta, saveLiveMeta } from "@/src/lib/liveStorage";
+import { getAvatarSrc } from "@/src/lib/avatars/studentAvatar";
+import { getCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
+import { saveStudentAttempt } from "@/src/lib/reports/studentReportStorage";
+import { getLiveMeta, saveLiveMeta } from "@/src/lib/live/liveStorage";
 import TimerBar from "@/src/components/live/TimerBar";
 
 type Phase = "question" | "waiting" | "answer" | "final";

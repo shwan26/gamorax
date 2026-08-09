@@ -1,6 +1,6 @@
 "use client";
 
-import { Question } from "@/src/lib/questionStorage";
+import { Question } from "@/src/lib/games/questionStorage";
 import { Plus, Trash2 } from "lucide-react";
 
 export default function InputAnswerEditor({

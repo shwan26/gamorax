@@ -2,9 +2,9 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import type { StudentAccount } from "@/src/lib/studentAuthStorage";
-import { getCurrentStudent, updateCurrentStudent } from "@/src/lib/studentAuthStorage";
-import { botttsUrl, randomSeed } from "@/src/lib/dicebear";
+import type { StudentAccount } from "@/src/lib/auth/studentAuthStorage";
+import { getCurrentStudent, updateCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
+import { botttsUrl, randomSeed } from "@/src/lib/avatars/dicebear";
 
 export default function AvatarPicker() {
   const [me, setMe] = useState<StudentAccount | null>(null);

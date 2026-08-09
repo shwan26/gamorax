@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { getGameById, updateGameTimer, type Game } from "@/src/lib/gameStorage";
-import { getQuestions, saveQuestions } from "@/src/lib/questionStorage";
+import { getGameById, updateGameTimer, type Game } from "@/src/lib/games/gameStorage";
+import { getQuestions, saveQuestions } from "@/src/lib/games/questionStorage";
 
 import { Clock3, TimerReset, SlidersHorizontal, BadgeDollarSign } from "lucide-react";
 

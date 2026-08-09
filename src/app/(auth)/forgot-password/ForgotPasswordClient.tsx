@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import Navbar from "@/src/components/Navbar";
-import GradientButton from "@/src/components/GradientButton";
-import { supabase } from "@/src/lib/supabaseClient";
+import Navbar from "@/src/components/navigation/Navbar";
+import GradientButton from "@/src/components/ui/GradientButton";
+import { supabase } from "@/src/lib/supabase/client";
 
 import { ArrowLeft, GraduationCap, UserRound } from "lucide-react";
 

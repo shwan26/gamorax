@@ -4,12 +4,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import Navbar from "@/src/components/LecturerNavbar";
-import GameSubNavbar from "@/src/components/GameSubNavbar";
-import GradientButton from "@/src/components/GradientButton";
+import Navbar from "@/src/components/navigation/LecturerNavbar";
+import GameSubNavbar from "@/src/components/navigation/GameSubNavbar";
+import GradientButton from "@/src/components/ui/GradientButton";
 
-import { supabase } from "@/src/lib/supabaseClient";
-import { socket, setSocketAccessToken } from "@/src/lib/socket";
+import { supabase } from "@/src/lib/supabase/client";
+import { socket, setSocketAccessToken } from "@/src/lib/live/socket";
 
 import QRCode from "react-qr-code";
 import { Users, Play, Link2, KeyRound, X } from "lucide-react";

@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { getGameById, type Game } from "@/src/lib/gameStorage";
-import { getCourseById, type Course } from "@/src/lib/courseStorage";
-import { getQuestions, type Question } from "@/src/lib/questionStorage";
+import { getGameById, type Game } from "@/src/lib/games/gameStorage";
+import { getCourseById, type Course } from "@/src/lib/courses/courseStorage";
+import { getQuestions, type Question } from "@/src/lib/games/questionStorage";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -14,7 +14,7 @@ import {
   getReportById,
   computeLiveReportStats,
   type LiveReport,
-} from "@/src/lib/liveStorage";
+} from "@/src/lib/live/liveStorage";
 
 import {
   Download,

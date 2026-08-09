@@ -2,20 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import StudentNavbar from "@/src/components/StudentNavbar";
+import StudentNavbar from "@/src/components/navigation/StudentNavbar";
 import {
   getCurrentStudent,
   logoutStudent,
   updateCurrentStudent,
   deriveStudentIdFromEmail,
-} from "@/src/lib/studentAuthStorage";
-import { botttsUrl, randomSeed } from "@/src/lib/dicebear";
-import { deleteCurrentStudent } from "@/src/lib/studentAuthStorage";
-import { deleteAttemptsByStudent } from "@/src/lib/studentReportStorage";
-import { clearLiveStudent } from "@/src/lib/liveStudentSession";
+} from "@/src/lib/auth/studentAuthStorage";
+import { botttsUrl, randomSeed } from "@/src/lib/avatars/dicebear";
+import { deleteCurrentStudent } from "@/src/lib/auth/studentAuthStorage";
+import { deleteAttemptsByStudent } from "@/src/lib/reports/studentReportStorage";
+import { clearLiveStudent } from "@/src/lib/live/liveStudentSession";
 import { LogOut, Trash2, UserRound, Shuffle } from "lucide-react";
-import GradientButton from "@/src/components/GradientButton";
-import { supabase } from "@/src/lib/supabaseClient";
+import GradientButton from "@/src/components/ui/GradientButton";
+import { supabase } from "@/src/lib/supabase/client";
 
 function DotPattern() {
   return (
