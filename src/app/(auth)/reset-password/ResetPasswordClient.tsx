@@ -7,22 +7,6 @@ import { Eye, EyeOff } from "lucide-react";
 
 type Role = "student" | "lecturer";
 
-// React Strict Mode can run effects twice in development. Reuse the same
-// exchange so a one-time recovery code is never submitted twice.
-const recoveryCodeExchanges = new Map<string, Promise<void>>();
-
-function exchangeRecoveryCode(code: string) {
-  const existing = recoveryCodeExchanges.get(code);
-  if (existing) return existing;
-
-  const exchange = supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
-    if (error) throw error;
-  });
-
-  recoveryCodeExchanges.set(code, exchange);
-  return exchange;
-}
-
 export default function ResetPasswordClient() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -52,37 +36,16 @@ export default function ResetPasswordClient() {
 
     async function initRecoverySession() {
       try {
-        const url = new URL(window.location.href);
-        const code = url.searchParams.get("code");
+        // createBrowserClient handles the PKCE code exchange during
+        // initialization. Wait for it and verify that it created a session.
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-        const hash = window.location.hash.startsWith("#")
-          ? window.location.hash.substring(1)
-          : window.location.hash;
-
-        const hashParams = new URLSearchParams(hash);
-        const access_token = hashParams.get("access_token");
-        const refresh_token = hashParams.get("refresh_token");
-        const type = hashParams.get("type");
-
-        // Current Supabase recovery links use PKCE and return a one-time code.
-        if (code) {
-          await exchangeRecoveryCode(code);
-        } else if (type === "recovery" && access_token && refresh_token) {
-          // Keep supporting older implicit-flow recovery links.
-          const { error } = await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
-
-          if (error) throw error;
-        } else {
-          const {
-            data: { session },
-          } = await supabase.auth.getSession();
-
-          if (!session) {
-            throw new Error("Invalid or expired recovery link.");
-          }
+        if (sessionError) throw sessionError;
+        if (!session) {
+          throw new Error("Invalid or expired recovery link.");
         }
 
         // Remove one-time credentials from the address bar after they are used.
@@ -226,7 +189,11 @@ export default function ResetPasswordClient() {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="h-11 w-full rounded-2xl bg-black text-white disabled:opacity-60"
+                    className="h-11 w-full rounded-2xl font-semibold text-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#00D4FF]/50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+                    style={{
+                      background:
+                        "linear-gradient(90deg, #020024 0%, #1D4ED8 60%, #00D4FF 100%)",
+                    }}
                   >
                     {loading ? "Updating..." : "Update password"}
                   </button>

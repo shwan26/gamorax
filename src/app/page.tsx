@@ -10,9 +10,6 @@ import {
   Sparkles,
   ShieldCheck,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { supabase } from "../lib/supabaseClient";
 
 function FeatureCard({
   icon: Icon,
@@ -141,29 +138,6 @@ function RoleCard({
 }
 
 export default function HomePage() {
-  const router = useRouter();
-
-  useEffect(() => {
-    const run = async () => {
-      const sp = new URLSearchParams(window.location.search);
-      const code = sp.get("code");
-
-      if (!code) return;
-
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-
-      if (error) {
-        console.error("Recovery exchange failed:", error.message);
-        router.replace("/login?error=recovery_failed");
-        return;
-      }
-
-      router.replace("/reset-password");
-    };
-
-    run();
-  }, [router]);
-
   return (
     <div className="min-h-screen app-surface app-bg">
       <Navbar />
