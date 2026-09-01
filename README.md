@@ -1,120 +1,74 @@
-# Gamorax 🎮 Version 1.0⚡
-A real-time quiz game built for classroom live sessions with lobby PIN join, live questions, scoring, and downloadable reports.
+# 🎮 Gamorax
 
-> Built with Next.js + Socket.IO + Supabase. Designed to be simple to host, fast to join, and fun to play.
+**A real-time quiz platform built for live classroom sessions** — lecturers host with a join PIN, students play in real time, and the platform generates instant leaderboards and downloadable reports.
 
----
+> 👥 **Team project** (3 members) · 🔐 The live demo requires creating a free account to try the host/student flow.
 
-## Key Features
-### Quiz Features
-- multiple choice
-- true/false
-- matching
-- answer input
-
-### Live Game
-- ✅ Lecturer hosts a quiz → system generates a **PIN** 
-- ✅ Students join via **/join/[pin]** (QR code supported)
-- ✅ Live lobby shows joined students (name + ID + avatar)
-- ✅ Lecturer starts the session → students receive questions in real time
-- ✅ Time-based scoring + leaderboard
-- ✅ End-of-game report (rank, correct count, points)
-
-### Student Identity + Avatars
-- Student auth stored locally (current version)
-- DiceBear avatar seed + avatar preview & save
-- Lobby renders avatar if `avatarSrc` exists (fallback to initials)
-
-### Reporting
-- Stores latest report per game
-- Export-friendly rows (rank, studentId, name, score, points)
+🔗 **Live Demo:** [gamorax.app](https://gamorax.app)
 
 ---
 
-## Tech Stack
-- **Frontend:** Next.js (App Router), TypeScript
-- **Backend:** Node.js (`server.js`) + Socket.IO
-- **Storage (current):** `supabase` 
-- **UI:** QR join, modern lobby/host view
+## ✨ Why It's Interesting
+
+Gamorax was built to make live classroom quizzes fast to set up, effortless to join, and genuinely engaging — no app installs, no lag between question and score. It combines a Next.js frontend, a Socket.IO real-time backend, and Supabase for data, supporting live multiplayer sessions with instant scoring and leaderboard updates.
 
 ---
 
-## Project Structure
+## 🚀 Key Features
 
-```txt
-gamorax/
-├── public/                     # Static assets and import templates
-├── socket-server/              # Socket.IO backend
-├── src/
-│   ├── app/                    # Next.js routes, layouts, and API handlers
-│   ├── components/
-│   │   ├── auth/               # Route and role guards
-│   │   ├── live/               # Live-game UI
-│   │   ├── navigation/         # Shared navigation bars
-│   │   ├── question-edit/      # Question editor UI
-│   │   ├── skeletons/          # Loading states
-│   │   └── ui/                 # Reusable UI primitives
-│   ├── hooks/                  # Shared React hooks
-│   ├── lib/
-│   │   ├── assignments/        # Assignment data access
-│   │   ├── auth/               # Student authentication helpers
-│   │   ├── avatars/            # Avatar generation and mapping
-│   │   ├── courses/            # Course data access
-│   │   ├── games/              # Game and question data access
-│   │   ├── import/             # File import helpers
-│   │   ├── live/               # Live sessions, reports, and sockets
-│   │   ├── reports/            # Student report data access
-│   │   └── supabase/           # Supabase client setup
-│   └── styles/                 # Global and shared styles
-├── next.config.ts
-├── package.json
-└── tsconfig.json
-```
+**Live Game Flow**
+- Lecturer hosts a quiz → the system generates a unique join **PIN**
+- Students join instantly via link or **QR code** — no installs required
+- Live lobby shows students joining in real time (name, ID, avatar)
+- Real-time question delivery with time-based scoring
+- Live leaderboard updates as students answer
+- End-of-game report: rank, correct answers, and points per student
 
-## Getting Started
-install dependencies:
+**Quiz Formats Supported**
+- Multiple choice · True/False · Matching · Free-text answer input
+
+**Student Experience**
+- Custom DiceBear-generated avatars with live preview
+- Simple, fast join flow — no friction between PIN and first question
+
+**Reporting**
+- Auto-generated results after every session
+- Export-ready rows: rank, student ID, name, score, points
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js (App Router), TypeScript |
+| Real-time backend | Node.js + Socket.IO |
+| Database | Supabase |
+| UI | QR-code join flow, live host & lobby views |
+
+---
+
+## 👥 Team & My Contribution
+
+Gamorax was built by a 3-person team:
+
+| Member | Focus |
+|---|---|
+| **Shwan (me)** | Frontend & backend — Next.js app, Socket.IO real-time server, core game logic (PIN join, live scoring, leaderboard) |
+| **Tulip** | Database — Supabase schema design and data layer, System architecture |
+| **Lucas** | UX flow and planning |
+
+---
+
+## ⚙️ Running Locally
+
+**Requirements:** Node.js, npm/pnpm/yarn
+
 ```bash
 npm install
-npm i read-excel-file
-npm i lucide-react
-
-```
-run the development server:
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-.env / .env.local :
-```bash
-NEXT_PUBLIC_SOCKET_URL=http://localhost:4000
-CORS_ORIGIN=http://localhost:3000
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-```
-
-socket-server/.env :
-```bash
-PORT=4000
-CORS_ORIGIN=http://localhost:3000
-
-SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_keys
-```
-
-run app:
-```bash
 npm run dev
 ```
 
-build app:
-```bash
-npm run build
-```
+The app needs two `.env` files — one for the Next.js app, one for the Socket.IO server (Supabase keys, socket URL, CORS origin). See [`/socket-server`](./socket-server) for backend-specific setup.
+
+---
